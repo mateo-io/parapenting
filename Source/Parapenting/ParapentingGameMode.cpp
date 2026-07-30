@@ -92,9 +92,20 @@ void AParapentingGameMode::BeginPlay()
 
     ASkyAtmosphere* AtmosphereActor = World->SpawnActor<ASkyAtmosphere>();
     USkyAtmosphereComponent* Atmosphere = AtmosphereActor->GetComponent();
-    Atmosphere->SetRayleighScatteringScale(1.25f);
-    Atmosphere->SetMieScatteringScale(0.22f);
-    Atmosphere->SetMieAnisotropy(0.72f);
+    // These scales are absolute scattering coefficients in 1/km, not
+    // multipliers. Earth's values are the component defaults: Rayleigh
+    // 0.0331 and Mie 0.003996. Feeding 1.25 and 0.22 made the atmosphere
+    // roughly forty times too dense, so all the blue scattered out within a
+    // few kilometres and the sky read as a flat opaque orange at every time
+    // of day. Stay near the physical values and express any artistic bias as
+    // a small factor on them.
+    constexpr float EarthRayleighScattering = 0.0331f;
+    constexpr float EarthMieScattering = 0.003996f;
+    // Clean, dry alpine air: slightly richer Rayleigh, noticeably less
+    // aerosol haze than the global average.
+    Atmosphere->SetRayleighScatteringScale(EarthRayleighScattering * 1.10f);
+    Atmosphere->SetMieScatteringScale(EarthMieScattering * 0.75f);
+    Atmosphere->SetMieAnisotropy(0.76f);
 
     AActor* CloudActor = World->SpawnActor<AActor>();
     UVolumetricCloudComponent* Clouds =
@@ -115,8 +126,13 @@ void AParapentingGameMode::BeginPlay()
     AExponentialHeightFog* Fog = World->SpawnActor<AExponentialHeightFog>();
     Fog->GetComponent()->SetFogDensity(0.00025f);
     Fog->GetComponent()->SetFogHeightFalloff(0.12f);
+    // Inscattering is a luminance, not a tint. At 0.55/0.72/0.88 the fog was
+    // brighter than most of the terrain it covered, so it painted distant
+    // ground pale blue and fought the atmosphere's own aerial perspective.
+    // Keep it dim: the SkyAtmosphere supplies distance colour, and this layer
+    // only adds valley haze on top.
     Fog->GetComponent()->SetFogInscatteringColor(
-        FLinearColor(0.55f, 0.72f, 0.88f));
+        FLinearColor(0.055f, 0.075f, 0.105f));
     Fog->GetComponent()->SetStartDistance(18000.0f);
     Fog->GetComponent()->SetVolumetricFog(false);
 

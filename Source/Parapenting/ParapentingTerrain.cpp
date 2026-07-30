@@ -1,4 +1,5 @@
 #include "ParapentingTerrain.h"
+#include "ParapentingMaterials.h"
 #include "Physics/TerrainModel.h"
 #include "Physics/TerrainRenderLayout.h"
 
@@ -11,8 +12,13 @@ namespace
 {
 using Layout = Parapenting::Physics::TerrainRenderLayout;
 
+// bBakeShading exists only for the unlit fallback material, which cannot
+// receive light and therefore needs a fixed key direction baked into the
+// vertex colour. With the lit material the renderer does this properly and
+// baking it again would shade the terrain twice.
 FLinearColor TerrainColour(double X, double Y, double Z,
-                           const Parapenting::Physics::Vec3& N)
+                           const Parapenting::Physics::Vec3& N,
+                           bool bBakeShading)
 {
     const float HeightTint = FMath::Clamp(
         static_cast<float>((Z - 80.0) / 1200.0), 0.0f, 1.0f);
@@ -83,13 +89,18 @@ FLinearColor TerrainColour(double X, double Y, double Z,
         Steepness * (0.72f + 0.28f * DetailNoise));
     Colour = FMath::Lerp(Colour, Snow, SnowBlend);
 
-    const float SunExposure = FMath::Clamp(
-        static_cast<float>(N.x * -0.48 + N.y * -0.25 + N.z * 0.84),
-        0.35f, 1.0f);
-    const float CurvatureLight = 0.92f + Curvature * 0.09f;
-    Colour *= (0.76f + 0.25f * SunExposure)
-        * (0.91f + 0.13f * DetailNoise + 0.04f * MicroNoise)
-        * CurvatureLight;
+    // Surface variation is albedo, not lighting, so it applies either way.
+    Colour *= (0.91f + 0.13f * DetailNoise + 0.04f * MicroNoise);
+    // Cavity darkening reads as ambient occlusion and is cheap to keep.
+    Colour *= 0.92f + Curvature * 0.09f;
+
+    if (bBakeShading)
+    {
+        const float SunExposure = FMath::Clamp(
+            static_cast<float>(N.x * -0.48 + N.y * -0.25 + N.z * 0.84),
+            0.35f, 1.0f);
+        Colour *= 0.76f + 0.25f * SunExposure;
+    }
     return Colour;
 }
 }
@@ -100,9 +111,9 @@ AParapentingTerrain::AParapentingTerrain()
     SetRootComponent(TerrainRoot);
     TerrainTiles.Reserve(Layout::TileCount());
 
-    UMaterial* VertexMaterial = LoadObject<UMaterial>(
-        nullptr,
-        TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+    UMaterialInterface* VertexMaterial =
+        Parapenting::LoadVertexColourMaterial();
+    const bool bBakeShading = !Parapenting::bVertexColourMaterialIsLit;
 
     const int32 VertexSide = Layout::cellsPerTile + 1;
     const double TileWidth =
@@ -161,7 +172,14 @@ AParapentingTerrain::AParapentingTerrain()
                     Normals.Add(Normal);
                     Tangents.Add(FProcMeshTangent(Tangent, false));
                     UVs.Add(FVector2D(X / 48.0, Y / 48.0));
-                    Colours.Add(TerrainColour(X, Y, Z, N).ToFColor(true));
+                    // Vertex colours are read raw by the material; the engine
+                    // does not sRGB-decode them. Encoding to sRGB here would
+                    // be undone a second time by the output transform, which
+                    // lifts every midtone and desaturates the whole terrain.
+                    // Store linear.
+                    Colours.Add(
+                        TerrainColour(X, Y, Z, N, bBakeShading)
+                            .ToFColor(false));
                 }
             }
 

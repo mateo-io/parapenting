@@ -1,5 +1,6 @@
 #include "ParagliderPawn.h"
 #include "ParaglidingAudioComponent.h"
+#include "ParapentingMaterials.h"
 #include "Physics/TerrainModel.h"
 #include "Physics/CameraFeedback.h"
 #include "Physics/PilotPose.h"
@@ -1301,8 +1302,8 @@ void AParagliderPawn::BuildCanopyMesh()
     GhostColors.Init(FColor(40, 210, 255, 150), Vertices.Num());
     GhostCanopyVisual->CreateMeshSection(
         0, Vertices, Triangles, Normals, UVs, GhostColors, Tangents, false);
-    if (UMaterial* Material = LoadObject<UMaterial>(
-        nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial")))
+    if (UMaterialInterface* Material =
+        Parapenting::LoadVertexColourMaterial())
     {
         CanopyVisual->SetMaterial(0, Material);
         GhostCanopyVisual->SetMaterial(0, Material);
@@ -1401,9 +1402,12 @@ void AParagliderPawn::UpdateCanopyMesh()
                 ? FLinearColor(0.95f, 0.20f, 0.055f)
                 : FLinearColor(1.0f, 0.72f, 0.055f);
             const FLinearColor Unloaded(0.08f, 0.055f, 0.045f);
+            // Linear, not sRGB: mesh vertex colours reach the material
+            // unconverted, so encoding here would gamma the skin twice and
+            // render the striped canopy as near-white. See ParapentingTerrain.
             const FColor SkinColor = FLinearColor::LerpUsingHSV(
                 Unloaded, Inflated,
-                0.18f + 0.82f * LocalPressure).ToFColor(true);
+                0.18f + 0.82f * LocalPressure).ToFColor(false);
             const float CellThickness = FMath::Sin(Chord01 * PI)
                 * (38.0f - 12.0f * AbsSpan) * LocalPressure;
             Vertices[Index] = UpperVertex;

@@ -41,7 +41,12 @@ LANDING_N = 1_169_899.00
 LANDING_ELEVATION_M = 565.0
 
 X_MIN, X_MAX = -1800.0, 6100.0
-Y_MIN, Y_MAX = -4500.0, 2500.0
+# Y_MAX reaches past the Hoehematte landing field, which sits at local
+# y = 2685 and is the landing for four of the shipped routes. The previous
+# 2500 left it 185 m outside the surveyed grid, so those routes touched down
+# on the analytic proxy. The extra ~800 m of margin covers the landing
+# circuit rather than stopping at the field boundary.
+Y_MIN, Y_MAX = -4500.0, 3500.0
 OUTPUT_CELL_M = 20.0
 
 

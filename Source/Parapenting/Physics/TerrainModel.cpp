@@ -20,6 +20,11 @@ double Gaussian(double x, double centre, double width)
     const double q = (x - centre) / width;
     return std::exp(-0.5 * q * q);
 }
+
+// Route-left offset at which the analytic Grindelwald lane takes over from the
+// analytic Interlaken proxy. Shared with ProvenanceAt so the two cannot
+// disagree about where the boundary is.
+constexpr double GrindelwaldLaneYM = 5000.0;
 }
 
 bool TerrainModel::LoadHeightfieldAscii(const std::string& filePath)
@@ -37,6 +42,21 @@ bool TerrainModel::HasHeightfield()
     return SurveyedTerrain.IsLoaded();
 }
 
+TerrainProvenance TerrainModel::ProvenanceAt(double x, double y)
+{
+    double ignored = 0.0;
+    if (SurveyedTerrain.Sample(x, y, ignored))
+        return TerrainProvenance::Surveyed;
+    return y > GrindelwaldLaneYM
+        ? TerrainProvenance::AnalyticGrindelwald
+        : TerrainProvenance::AnalyticInterlaken;
+}
+
+bool TerrainModel::IsSurveyed(double x, double y)
+{
+    return ProvenanceAt(x, y) == TerrainProvenance::Surveyed;
+}
+
 double TerrainModel::HeightM(double x, double y)
 {
     double surveyedElevation = 0.0;
@@ -45,7 +65,7 @@ double TerrainModel::HeightM(double x, double y)
     // Grindelwald is held in a separate sparse regional lane so its verified
     // route geometry can coexist with the detailed Interlaken heightfield
     // without stretching that mesh over the 20 km geographic separation.
-    if (y > 5000.0)
+    if (y > GrindelwaldLaneYM)
     {
         constexpr double RouteDxM = 4021.2845;
         constexpr double RouteDyM = -2199.4248;

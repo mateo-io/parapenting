@@ -90,6 +90,25 @@ target_compile_options(parapenting_regression_matrix PRIVATE
     -Wall -Wextra -Wpedantic
 )
 
+add_executable(parapenting_terrain_survey_tests
+    TerrainSurveyTests.cpp
+    ../Source/Parapenting/Physics/TerrainModel.cpp
+    ../Source/Parapenting/Physics/HeightfieldGrid.cpp
+    ../Source/Parapenting/Physics/RouteCatalogue.cpp
+    ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/AerodynamicPolar.cpp
+    ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+    ../Source/Parapenting/Physics/WingCatalogue.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
+)
+target_include_directories(parapenting_terrain_survey_tests PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_terrain_survey_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
 add_executable(parapenting_still_air_probe
     StillAirProbe.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp

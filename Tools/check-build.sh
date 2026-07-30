@@ -34,6 +34,9 @@ run_tests() {
     cmake -S "$ROOT/Tests" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release >/dev/null
     cmake --build "$BUILD_DIR" -j"$(sysctl -n hw.ncpu)"
     "$BUILD_DIR/parapenting_physics_tests"
+    # Run from the project root: the survey test reads the provenance file.
+    (cd "$ROOT" && "$BUILD_DIR/parapenting_terrain_survey_tests" \
+        Content/Terrain/interlaken.provenance.json)
 }
 
 case "${1:-all}" in

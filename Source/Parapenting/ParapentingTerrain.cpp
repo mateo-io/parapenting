@@ -119,10 +119,20 @@ FLinearColor TerrainColour(double X, double Y, double Z,
 
 AParapentingTerrain::AParapentingTerrain()
 {
+    PrimaryActorTick.bCanEverTick = false;
     TerrainRoot = CreateDefaultSubobject<USceneComponent>(TEXT("TerrainRoot"));
     SetRootComponent(TerrainRoot);
     TerrainTiles.Reserve(Layout::TileCount());
+}
 
+void AParapentingTerrain::BeginPlay()
+{
+    Super::BeginPlay();
+    BuildTerrainMesh();
+}
+
+void AParapentingTerrain::BuildTerrainMesh()
+{
     UMaterialInterface* VertexMaterial =
         Parapenting::LoadVertexColourMaterial();
     const bool bBakeShading = !Parapenting::bVertexColourMaterialIsLit;
@@ -140,11 +150,12 @@ AParapentingTerrain::AParapentingTerrain()
             const FName TileName(*FString::Printf(
                 TEXT("TerrainTile_%02d_%02d"), TileX, TileY));
             UProceduralMeshComponent* Tile =
-                CreateDefaultSubobject<UProceduralMeshComponent>(TileName);
+                NewObject<UProceduralMeshComponent>(this, TileName);
             Tile->SetupAttachment(TerrainRoot);
             Tile->bUseAsyncCooking = false;
             Tile->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             Tile->SetCastShadow(true);
+            Tile->RegisterComponent();
 
             TArray<FVector> Vertices;
             TArray<int32> Triangles;

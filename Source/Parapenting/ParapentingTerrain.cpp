@@ -20,8 +20,11 @@ FLinearColor TerrainColour(double X, double Y, double Z,
                            const Parapenting::Physics::Vec3& N,
                            bool bBakeShading)
 {
+    // Meadow gives way to alpine pasture and scree across the treeline, which
+    // in this region runs roughly 1800-2100 m. Reaching full alpine tone by
+    // 1280 m drained the colour out of the whole flyable band.
     const float HeightTint = FMath::Clamp(
-        static_cast<float>((Z - 80.0) / 1200.0), 0.0f, 1.0f);
+        static_cast<float>((Z - 400.0) / 1800.0), 0.0f, 1.0f);
     const float Steepness = FMath::Clamp(
         static_cast<float>(1.0 - N.z) * 3.1f, 0.0f, 1.0f);
     const float BroadNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
@@ -49,8 +52,17 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     // North-facing bowls retain snow lower than sun-exposed faces.
     const float NorthAspect = FMath::Clamp(
         static_cast<float>(0.5 - 0.5 * N.y), 0.0f, 1.0f);
+    // Summer snow line in the Bernese Oberland sits around 2600-2900 m, and
+    // north-facing bowls hold it a few hundred metres lower. The previous
+    // 1160 m line put permanent snow below every launch in the region:
+    // Amisbuehl, Beatenberg and the whole Grindelwald shelf came out white.
+    constexpr double SnowLineM = 2650.0;
+    constexpr double NorthAspectDropM = 260.0;
+    constexpr double SnowTransitionM = 340.0;
     const float SnowBlend = FMath::Clamp(
-        static_cast<float>((Z - (1160.0 - 150.0 * NorthAspect)) / 260.0)
+        static_cast<float>(
+            (Z - (SnowLineM - NorthAspectDropM * NorthAspect))
+                / SnowTransitionM)
             * (0.68f + 0.32f * static_cast<float>(N.z)),
         0.0f, 1.0f);
 

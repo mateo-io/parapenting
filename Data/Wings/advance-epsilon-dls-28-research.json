@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 2,
+  "status": "research-candidate-unlicensed",
+  "manufacturer": "ADVANCE",
+  "model": "EPSILON DLS",
+  "size": "28",
+  "classification": "EN/LTF B",
+  "intendedRole": "current basic-intermediate B comparison calibration",
+  "publishedGeometry": {
+    "flatAreaM2": 27.6,
+    "projectedAreaM2": 23.3,
+    "flatSpanM": 11.92,
+    "projectedSpanM": 9.23,
+    "maxChordM": 2.91,
+    "flatAspectRatio": 5.14,
+    "projectedAspectRatio": 3.67,
+    "cells": 47,
+    "gliderMassKg": 4.35
+  },
+  "publishedEnvelope": {
+    "certifiedAllUpMassKg": [91.0, 118.0],
+    "idealAllUpMassKg": [99.0, 113.0],
+    "certification": "EN/LTF B"
+  },
+  "defaultSimulationSetup": {
+    "pilotBodyMassKg": 85.0,
+    "estimatedHarnessAndEquipmentMassKg": 14.0,
+    "allUpMassKg": 103.35,
+    "harness": "seated GH/ABS seatboard"
+  },
+  "simulationPerformanceTargets": {
+    "status": "research approximation; not published manufacturer data",
+    "trimSpeedKmh": 38.5,
+    "topSpeedKmh": 52.0,
+    "minimumSinkMps": 1.02,
+    "bestGlide": 9.4
+  },
+  "simulationBrakePolar": {
+    "status": "research approximation; not manufacturer data",
+    "effectiveBrakeFraction": [0.0, 0.25, 0.5, 0.75, 1.0],
+    "liftCoefficientDelta": [0.0, 0.10, 0.24, 0.36, 0.43],
+    "dragCoefficientDelta": [0.0, 0.006, 0.074, 0.255, 0.62]
+  },
+  "simulationBrakeFeel": {
+    "status": "research approximation; not measured manufacturer data",
+    "standardFreePlayFraction": 0.11,
+    "fullTravelForceScaleN": 54.0,
+    "pressureExponent": 1.78
+  },
+  "simulationCollapseRecovery": {
+    "status": "research approximation; not measured manufacturer data",
+    "collapseResistanceScale": 1.12,
+    "passiveReinflationRatePerS": 0.22,
+    "brakeReinflationGainPerS": 0.18,
+    "pumpReinflationGainPerS": 1.12,
+    "frontalReinflationRatePerS": 0.39,
+    "cravatSusceptibilityScale": 0.74,
+    "recoverySurgeGain": 1.95
+  },
+  "sources": [
+    {
+      "title": "EPSILON DLS official product page and technical data",
+      "url": "https://www.advance.swiss/en/products/paragliders/epsilon-dls",
+      "accessed": "2026-07-30"
+    }
+  ],
+  "limitations": [
+    "The official product data supplies geometry, mass, loading and certification, not a complete aerodynamic polar.",
+    "Performance targets, brake pressure, handling, collapse and recovery parameters are simulator research estimates.",
+    "Exact line geometry, structural deformation and manoeuvre response require manufacturer cooperation and instrumented validation.",
+    "Manufacturer identity, trade dress and visual design require permission before commercial release."
+  ]
+}

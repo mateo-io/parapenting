@@ -1,0 +1,23 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Simulation",
+  "Description": "A physics-first paragliding simulator.",
+  "Modules": [
+    {
+      "Name": "Parapenting",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "ProceduralMeshComponent",
+      "Enabled": true
+    }
+  ],
+  "TargetPlatforms": [
+    "Mac",
+    "Win64"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "name": "Amisbuehl to Lehn v0",
+  "coordinateSystem": "WGS84",
+  "launch": {
+    "name": "Amisbuehl, Beatenberg",
+    "latitude": 46.702636,
+    "longitude": 7.823467,
+    "elevationM": 1297,
+    "orientationDegrees": 135,
+    "lv95EastM": 2629431.02,
+    "lv95NorthM": 1172452.38,
+    "status": "verified against DHV site database and DCI/SHV information"
+  },
+  "landing": {
+    "name": "Lehn, Unterseen",
+    "latitude": 46.680956,
+    "longitude": 7.823861,
+    "elevationM": 565,
+    "lv95EastM": 2629472.97,
+    "lv95NorthM": 1170042.46,
+    "localFromLaunchM": {
+      "south": 2409.9,
+      "east": 42.0
+    },
+    "status": "verified against DHV site database and DCI/SHV information"
+  },
+  "v0Conditions": {
+    "windDirectionDegrees": 135,
+    "windSpeedMps": 2.0,
+    "turbulence": 0.0,
+    "thermals": false
+  },
+  "notes": [
+    "Coordinates are initial route anchors, not surveyed field boundaries.",
+    "Validate against the local club and licensed terrain data before release."
+  ]
+}

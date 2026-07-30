@@ -1,0 +1,14 @@
+{
+  "name": "parapenting",
+  "version": "1.0.0",
+  "description": "Physics-first paraglider simulation for macOS and Windows, centered on Interlaken and Grindelwald in the Bernese Oberland.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

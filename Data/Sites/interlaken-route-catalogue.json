@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 4,
+  "region": "Interlaken and Grindelwald, Bern, Switzerland",
+  "status": "research catalogue; simulator availability does not imply a site is open",
+  "sources": [
+    "https://www.shv-fsvl.ch/fileadmin/files/redakteure/Allgemein/Sicherheit/SHVInfotafeln/Interlaken.pdf",
+    "https://www.shv-fsvl.ch/en/federation/news/news/neue-landevolte-am-landeplatz-lehn-in-interlaken/",
+    "https://www.shv-fsvl.ch/fileadmin/files/redakteure/0_Bilder/Sicherheit/Luftraum/Interlaken_Flugplatz.pdf",
+    "https://deltaclub-interlaken.ch/fluggebiet/",
+    "https://deltaclub-interlaken.ch/startplatz-amisbuehl/",
+    "https://deltaclub-interlaken.ch/startplatz-hohwald/",
+    "https://deltaclub-interlaken.ch/startplaetze-niederhorn/",
+    "https://service.dhv.de/db2/details.php?item=1581&popup=1&qi=glp_details",
+    "https://service.dhv.de/db2/details.php?item=1582&popup=1&qi=glp_details",
+    "https://deltaclub-interlaken.ch/wp-content/uploads/2024/08/Interlaken_Jubi_Infotafel_D.pdf",
+    "https://www.jungfrau-taechi.ch/newsfeed/startfirstkl",
+    "https://www.paragliding-jungfrau.ch/wp/downloads/Startplatz%20First.pdf",
+    "https://service.dhv.de/db2/details.php?item=1585&popup=1&qi=glp_details"
+  ],
+  "launches": [
+    {
+      "id": "amisbuehl-upper",
+      "name": "Amisbühl oben",
+      "latitude": 46.7025,
+      "longitude": 7.8222,
+      "elevationM": 1325,
+      "orientation": "SE",
+      "notes": "Friday-Sunday priority rules apply between solo, tandem and hang-glider lanes."
+    },
+    {
+      "id": "bergbo",
+      "name": "Bergbo",
+      "latitude": 46.70034,
+      "longitude": 7.82049,
+      "elevationM": 1275,
+      "orientation": "SE",
+      "notes": "Strong valley wind can require flying through lee turbulence near Hüenderhubel."
+    },
+    {
+      "id": "hohwald",
+      "name": "Hohwald",
+      "latitude": 46.7138,
+      "longitude": 7.8238,
+      "elevationM": 1585,
+      "orientation": "SE-S",
+      "notes": "Seasonal restrictions apply during winter ski operations."
+    },
+    {
+      "id": "niederhorn-south",
+      "name": "Niederhorn south",
+      "latitude": 46.711111,
+      "longitude": 7.777894,
+      "elevationM": 1926,
+      "orientation": "S",
+      "notes": "West wind can spill over the ridge and create rotor; launch early on active thermal days."
+    },
+    {
+      "id": "grindelwald-first",
+      "name": "Grindelwald First",
+      "latitude": 46.65745,
+      "longitude": 8.055133,
+      "elevationM": 2123,
+      "orientation": "SE-SW",
+      "notes": "The 2024 club notice limits launching to south of the start tower or west of the path; always verify current local rules."
+    }
+  ],
+  "landings": [
+    {
+      "id": "lehn",
+      "name": "Lehn",
+      "latitude": 46.680956,
+      "longitude": 7.823861,
+      "elevationM": 565,
+      "difficulty": "easy",
+      "circuit": "right in valley wind, left in mountain wind"
+    },
+    {
+      "id": "hoehematte",
+      "name": "Höhematte",
+      "latitude": 46.686117,
+      "longitude": 7.858719,
+      "elevationM": 569,
+      "difficulty": "experienced",
+      "notes": "City overflight, building/tree lee and heavy tandem traffic; use north-west portion."
+    },
+    {
+      "id": "grindelwald-grund",
+      "name": "Grindelwald Grund",
+      "latitude": 46.620292,
+      "longitude": 8.029056,
+      "elevationM": 950,
+      "difficulty": "normal",
+      "notes": "Large landing near the station, but the glide from First is long. The simulator does not encode a current official circuit."
+    },
+    {
+      "id": "grindelwald-bodmi",
+      "name": "Grindelwald Bodmi",
+      "latitude": 46.628758,
+      "longitude": 8.043319,
+      "elevationM": 1129,
+      "difficulty": "experienced",
+      "notes": "Difficult landing for experienced pilots. The simulator does not encode a current official circuit."
+    }
+  ],
+  "routes": [
+    {"id": "amisbuehl-lehn", "launch": "amisbuehl-upper", "landing": "lehn", "classification": "verified-site-pairing"},
+    {"id": "amisbuehl-hoehematte", "launch": "amisbuehl-upper", "landing": "hoehematte", "classification": "verified-site-pairing"},
+    {"id": "bergbo-lehn", "launch": "bergbo", "landing": "lehn"},
+    {"id": "bergbo-hoehematte", "launch": "bergbo", "landing": "hoehematte"},
+    {"id": "hohwald-lehn", "launch": "hohwald", "landing": "lehn", "classification": "verified-site-pairing"},
+    {"id": "hohwald-hoehematte", "launch": "hohwald", "landing": "hoehematte", "classification": "verified-site-pairing"},
+    {"id": "niederhorn-lehn", "launch": "niederhorn-south", "landing": "lehn"},
+    {"id": "niederhorn-hoehematte", "launch": "niederhorn-south", "landing": "hoehematte"},
+    {"id": "grindelwald-first-grund", "launch": "grindelwald-first", "landing": "grindelwald-grund", "classification": "verified-site-pairing"},
+    {"id": "grindelwald-first-bodmi", "launch": "grindelwald-first", "landing": "grindelwald-bodmi", "classification": "verified-site-pairing"}
+  ],
+  "safety": [
+    "A verified-site-pairing means the current DCI launch page lists that landing within glide; it is not a prescribed real-world route.",
+    "Numeric wind envelopes are conservative simulator-authored training values, not published site limits or operational advice.",
+    "Check current DCI site rules, closures, local signs, DABS and Meiringen HX airspace status in real life.",
+    "At First, check the current Jungfrau-Tächi launch-area notice and local operating procedure; catalogue inclusion never confirms availability.",
+    "Simulator weather modes are training scenarios and never operational flight advice."
+  ]
+}

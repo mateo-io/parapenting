@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "status": "research-candidate-unlicensed",
+  "manufacturer": "Bruce Goldsmith Design",
+  "model": "EPIC 2",
+  "size": "ML",
+  "classification": "EN/LTF B",
+  "intendedRole": "initial low-B validation candidate",
+  "publishedGeometry": {
+    "flatAreaM2": 27.0,
+    "projectedAreaM2": 22.8,
+    "flatSpanM": 11.8,
+    "projectedSpanM": 9.3,
+    "rootChordM": 2.8,
+    "flatAspectRatio": 5.2,
+    "projectedAspectRatio": 3.8,
+    "cells": 45,
+    "mainLinesABC": "3/4/3",
+    "totalLineLengthM": 254.0,
+    "lineHeightM": 7.3,
+    "gliderMassKg": 5.1
+  },
+  "publishedEnvelope": {
+    "certifiedAllUpMassKg": [85.0, 110.0],
+    "trimSpeedKmh": 39.0,
+    "topSpeedKmh": 53.0,
+    "minimumSinkMps": 1.0,
+    "bestGlide": 9.5,
+    "brakeRangeMmAtMaximumAllUpMass": 720.0,
+    "brakeFreePlayMm": 70.0,
+    "acceleratorTravelMm": 120.0
+  },
+  "defaultSimulationSetup": {
+    "pilotBodyMassKg": 85.0,
+    "estimatedEquipmentMassKg": 20.0,
+    "allUpMassKg": 105.0,
+    "harness": "seated GH/ABS seatboard",
+    "seatboardWidthM": 0.42,
+    "carabinerSpacingM": 0.46
+  },
+  "simulationBrakePolar": {
+    "status": "research approximation; not manufacturer data",
+    "effectiveBrakeFraction": [0.0, 0.25, 0.5, 0.75, 1.0],
+    "liftCoefficientDelta": [0.0, 0.095, 0.235, 0.355, 0.42],
+    "dragCoefficientDelta": [0.0, 0.005, 0.07, 0.245, 0.6]
+  },
+  "simulationBrakeFeel": {
+    "status": "research approximation; not measured manufacturer data",
+    "shortStandardLongTravelMm": [520.0, 620.0, 720.0],
+    "standardFreePlayFraction": 0.1,
+    "fullTravelForceScaleN": 52.0,
+    "pressureExponent": 1.75
+  },
+  "simulationCollapseRecovery": {
+    "status": "research approximation; not measured manufacturer data",
+    "collapseResistanceScale": 1.0,
+    "passiveReinflationRatePerS": 0.17,
+    "brakeReinflationGainPerS": 0.16,
+    "pumpReinflationGainPerS": 1.05,
+    "frontalReinflationRatePerS": 0.31,
+    "cravatSusceptibilityScale": 1.0,
+    "recoverySurgeGain": 2.4
+  },
+  "sources": [
+    {
+      "title": "EPIC 2 product page",
+      "url": "https://www.flybgd.com/en/paragliders/epic-2--paraglider-2021-1782-0.html",
+      "accessed": "2026-07-30"
+    },
+    {
+      "title": "EPIC 2 Owner's Manual V7 February 2026",
+      "url": "https://www.flybgd.com/files/file/en/1772120994-637-2.pdf",
+      "accessed": "2026-07-30"
+    }
+  ],
+  "limitations": [
+    "Published values do not determine a complete aerodynamic or structural model.",
+    "The research brake curve is calibrated to a plausible low-B envelope, not a measured manufacturer polar.",
+    "Exact handling, collapse, line-load and deformation behaviour requires manufacturer data and instrumented flight validation.",
+    "Manufacturer identity and visual design require permission before commercial release."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "source": "manual-example-not-live-weather",
+  "observedUtc": "2026-07-30T10:00:00Z",
+  "location": "Interlaken",
+  "windFromDegrees": 340,
+  "windSpeedMps": 2.5,
+  "gustSpeedMps": 4.0,
+  "thermalTopMslM": 2100,
+  "warning": "Simulator input only. Never use this file for real flight decisions."
+}

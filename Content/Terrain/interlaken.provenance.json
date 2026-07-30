@@ -1,16 +1,6 @@
 {
   "assets": [
     {
-      "assetId": "swissalti3d_2025_2624-1167_2_2056_5728.tif",
-      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2624-1167/swissalti3d_2025_2624-1167_2_2056_5728.tif",
-      "sha256": "5a7f27163eafe11a978867fbbfa60c84bb728f629a953e12d0bdda956e1cfc2c"
-    },
-    {
-      "assetId": "swissalti3d_2025_2624-1168_2_2056_5728.tif",
-      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2624-1168/swissalti3d_2025_2624-1168_2_2056_5728.tif",
-      "sha256": "666fa5d234209d22175783c848e3ac64a912a82f431ba6ffaad40f593d7f7572"
-    },
-    {
       "assetId": "swissalti3d_2025_2624-1169_2_2056_5728.tif",
       "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2624-1169/swissalti3d_2025_2624-1169_2_2056_5728.tif",
       "sha256": "19dceab595a92ac1ea609b071bb3eaea1252bb5e52b1f95bc7d238fe58a8dbdd"
@@ -34,11 +24,6 @@
       "assetId": "swissalti3d_2025_2624-1173_2_2056_5728.tif",
       "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2624-1173/swissalti3d_2025_2624-1173_2_2056_5728.tif",
       "sha256": "a1e9f2515b9ad093fb031a656fe40ebe8b0dff6518dcc1a48a1e44a2ac724500"
-    },
-    {
-      "assetId": "swissalti3d_2025_2625-1165_2_2056_5728.tif",
-      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2625-1165/swissalti3d_2025_2625-1165_2_2056_5728.tif",
-      "sha256": "cfabb9839a81f858a3f5e0681ce0d1eebbe6ca7e5f14fb868147792aa6764922"
     },
     {
       "assetId": "swissalti3d_2025_2625-1166_2_2056_5728.tif",
@@ -81,9 +66,9 @@
       "sha256": "5a0a075b2f624a732a695e9262a318f24637ac45920ccb1341f247b5f9a023bb"
     },
     {
-      "assetId": "swissalti3d_2025_2626-1165_2_2056_5728.tif",
-      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2626-1165/swissalti3d_2025_2626-1165_2_2056_5728.tif",
-      "sha256": "05d17687ceb0b2af8d9c8c494fe2ed6a15c5471845d2a70be7843e0076d03d2a"
+      "assetId": "swissalti3d_2025_2625-1174_2_2056_5728.tif",
+      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2625-1174/swissalti3d_2025_2625-1174_2_2056_5728.tif",
+      "sha256": "2598402a07b81d8912d6dc10beb2e57b58d9f167fa96df753e82ea1ef27e8f08"
     },
     {
       "assetId": "swissalti3d_2025_2626-1166_2_2056_5728.tif",
@@ -124,6 +109,11 @@
       "assetId": "swissalti3d_2025_2626-1173_2_2056_5728.tif",
       "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2626-1173/swissalti3d_2025_2626-1173_2_2056_5728.tif",
       "sha256": "4a393300c08cb99806cae6764712104b55acb1a5f1df9cc41d01bb7c8da9878f"
+    },
+    {
+      "assetId": "swissalti3d_2025_2626-1174_2_2056_5728.tif",
+      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2626-1174/swissalti3d_2025_2626-1174_2_2056_5728.tif",
+      "sha256": "ac39db1a2b56c7cf2d48f8d561d401d3774363029d94ef8d5d7b73f0808a4062"
     },
     {
       "assetId": "swissalti3d_2025_2627-1166_2_2056_5728.tif",
@@ -409,6 +399,11 @@
       "assetId": "swissalti3d_2025_2633-1168_2_2056_5728.tif",
       "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2633-1168/swissalti3d_2025_2633-1168_2_2056_5728.tif",
       "sha256": "a358d86d034f842097ec667441ba7035619f1eebe962bd677b181ec0236f1a47"
+    },
+    {
+      "assetId": "swissalti3d_2025_2633-1169_2_2056_5728.tif",
+      "href": "https://data.geo.admin.ch/ch.swisstopo.swissalti3d/swissalti3d_2025_2633-1169/swissalti3d_2025_2633-1169_2_2056_5728.tif",
+      "sha256": "aa54324f940215c847605ebd7e54fe78ae60cfc914d7017ebf1108bc58fcf74d"
     }
   ],
   "boundsLocalM": [
@@ -426,13 +421,13 @@
     "landing": "Lehn",
     "landingElevationM": 565.0,
     "landingLv95": [
-      2629396.79,
-      1169899.0
+      2629472.932417443,
+      1170042.44916586
     ],
     "launch": "Amisbuehl oben",
     "launchLv95": [
-      2629258.04,
-      1172293.04
+      2629334.166984138,
+      1172436.7771718092
     ]
   },
   "safety": "Simulator terrain only; never use for real-world navigation.",

@@ -33,12 +33,46 @@ FILTERS = {
     "state": "current",
 }
 
-# EPSG:2056 positions derived from the verified WGS84 route anchors.
-LAUNCH_E = 2_629_258.04
-LAUNCH_N = 1_172_293.04
-LANDING_E = 2_629_396.79
-LANDING_N = 1_169_899.00
+# WGS84 route anchors. These are the authoritative site positions and must
+# stay identical to the GeoPoints in Source/Parapenting/Physics/RouteCatalogue.cpp.
+LAUNCH_LAT, LAUNCH_LON = 46.702500, 7.822200      # Amisbuehl oben
+LANDING_LAT, LANDING_LON = 46.680956, 7.823861    # Lehn
 LANDING_ELEVATION_M = 565.0
+
+
+def wgs84_to_lv95(latitude_deg: float, longitude_deg: float) -> tuple[float, float]:
+    """swisstopo approximate WGS84 -> LV95 (EPSG:2056), ~1 m accurate.
+
+    Reproduces the Bern reference point to 0.34 m.
+    """
+    phi = (latitude_deg * 3600.0 - 169028.66) / 10000.0
+    lam = (longitude_deg * 3600.0 - 26782.5) / 10000.0
+    easting = (
+        2600072.37
+        + 211455.93 * lam
+        - 10938.51 * lam * phi
+        - 0.36 * lam * phi**2
+        - 44.54 * lam**3
+    )
+    northing = (
+        1200147.07
+        + 308807.95 * phi
+        + 3745.25 * lam**2
+        + 76.63 * phi**2
+        - 194.56 * lam**2 * phi
+        + 119.79 * phi**3
+    )
+    return easting, northing
+
+
+# Derived, not transcribed. The previous build hardcoded an LV95 pair that sat
+# (+76.1, +143.6) m from where these WGS84 anchors actually project - a 163 m
+# georeferencing error that shifted the entire surveyed grid relative to the
+# sites. It showed up as elevation error on sloped launches: Bergbo came out
+# 42 m below its surveyed height, Amisbuehl 12 m. Deriving the projection here
+# keeps the two coordinate systems from drifting apart again.
+LAUNCH_E, LAUNCH_N = wgs84_to_lv95(LAUNCH_LAT, LAUNCH_LON)
+LANDING_E, LANDING_N = wgs84_to_lv95(LANDING_LAT, LANDING_LON)
 
 X_MIN, X_MAX = -1800.0, 6100.0
 # Y_MAX reaches past the Hoehematte landing field, which sits at local

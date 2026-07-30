@@ -355,6 +355,9 @@ private:
     bool bLanded = false;
     bool bGroundLaunching = false;
     bool bLaunchHeld = false;
+    // Opt-in only, via TogglePreflightBriefing. It used to re-show itself on
+    // every wing, weather, preset and time change, each of which also resets
+    // the flight, so it covered the viewport almost continuously.
     bool bBriefingVisible = false;
     bool bHardLanding = false;
     bool bRolloutFinalized = false;

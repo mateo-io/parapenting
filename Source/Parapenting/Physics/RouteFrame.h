@@ -21,11 +21,46 @@ namespace Parapenting::Physics
 //   CRS    : LV95 / LN02, EPSG:2056
 struct RouteFrame
 {
-    static constexpr double launchEastingM = 2629258.04;
-    static constexpr double launchNorthingM = 1172293.04;
-    static constexpr double landingEastingM = 2629396.79;
-    static constexpr double landingNorthingM = 1169899.00;
+    // WGS84 is authoritative: these must match the Amisbuehl oben and Lehn
+    // GeoPoints in RouteCatalogue.cpp, and the generator's anchors.
+    static constexpr double launchLatitudeDeg = 46.702500;
+    static constexpr double launchLongitudeDeg = 7.822200;
+    static constexpr double landingLatitudeDeg = 46.680956;
+    static constexpr double landingLongitudeDeg = 7.823861;
     static constexpr double landingElevationM = 565.0;
+
+    // swisstopo approximate WGS84 -> LV95 (EPSG:2056), ~1 m accurate;
+    // reproduces the Bern reference point to 0.34 m.
+    static double Wgs84ToEastingM(double latitudeDeg, double longitudeDeg)
+    {
+        const double phi = (latitudeDeg * 3600.0 - 169028.66) / 10000.0;
+        const double lam = (longitudeDeg * 3600.0 - 26782.5) / 10000.0;
+        return 2600072.37 + 211455.93 * lam - 10938.51 * lam * phi
+            - 0.36 * lam * phi * phi - 44.54 * lam * lam * lam;
+    }
+
+    static double Wgs84ToNorthingM(double latitudeDeg, double longitudeDeg)
+    {
+        const double phi = (latitudeDeg * 3600.0 - 169028.66) / 10000.0;
+        const double lam = (longitudeDeg * 3600.0 - 26782.5) / 10000.0;
+        return 1200147.07 + 308807.95 * phi + 3745.25 * lam * lam
+            + 76.63 * phi * phi - 194.56 * lam * lam * phi
+            + 119.79 * phi * phi * phi;
+    }
+
+    // Projected, not transcribed. A hardcoded LV95 pair previously sat
+    // (+76.1, +143.6) m from where these anchors actually project, shifting
+    // the whole surveyed grid 163 m relative to the sites. On the four sites
+    // then measured, mean elevation error was 14.5 m; deriving the projection
+    // brings it to 1.1 m.
+    static inline const double launchEastingM =
+        Wgs84ToEastingM(launchLatitudeDeg, launchLongitudeDeg);
+    static inline const double launchNorthingM =
+        Wgs84ToNorthingM(launchLatitudeDeg, launchLongitudeDeg);
+    static inline const double landingEastingM =
+        Wgs84ToEastingM(landingLatitudeDeg, landingLongitudeDeg);
+    static inline const double landingNorthingM =
+        Wgs84ToNorthingM(landingLatitudeDeg, landingLongitudeDeg);
 
     // Unit basis, derived from the launch/landing pair exactly as the
     // generator does it. Derived rather than transcribed: hand-written

@@ -2,6 +2,7 @@
 #include "AtmosphereModel.h"
 #include "TerrainModel.h"
 #include "TerrainRenderLayout.h"
+#include "RouteFrame.h"
 #include "RouteCatalogue.h"
 #include "WingCatalogue.h"
 #include "SpanwiseCanopyModel.h"
@@ -166,15 +167,22 @@ int main()
     }
     {
         using Layout = TerrainRenderLayout;
-        static_assert(Layout::TileCount() == 128);
-        static_assert(Layout::VerticesPerTile() == 1681);
-        static_assert(Layout::TrianglesPerTile() == 3200);
+        static_assert(Layout::TileCount() == 64);
+        static_assert(Layout::VerticesPerTile() == 2601);
+        static_assert(Layout::TrianglesPerTile() == 5000);
         assert(Layout::TotalVertices() < 220000);
         assert(Layout::TotalTriangles() < 420000);
-        assert(Layout::SampleSpacingXM() < 25.0);
-        assert(Layout::SampleSpacingYM() <= 25.0);
-        assert(Layout::xMinM <= -1800.0 && Layout::xMaxM >= 6100.0);
-        assert(Layout::yMinM <= -4500.0 && Layout::yMaxM >= 10000.0);
+        // Sample spacing should track the 20 m heightfield: fine enough to
+        // resolve it, coarse enough not to spend vertices on nothing.
+        assert(Layout::SampleSpacingXM() > 15.0
+            && Layout::SampleSpacingXM() <= 22.0);
+        assert(Layout::SampleSpacingYM() > 15.0
+            && Layout::SampleSpacingYM() <= 22.0);
+        // The visible mesh must not claim ground the survey does not cover.
+        assert(Layout::xMinM >= RouteFrame::surveyedXMinM);
+        assert(Layout::xMaxM <= RouteFrame::surveyedXMaxM);
+        assert(Layout::yMinM >= RouteFrame::surveyedYMinM);
+        assert(Layout::yMaxM <= RouteFrame::surveyedYMaxM);
     }
     {
         assert(TerrainModel::LoadHeightfieldAscii(

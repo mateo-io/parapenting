@@ -1707,7 +1707,6 @@ void AParagliderPawn::SetWeatherChill()
     AirModel.SetMode(Parapenting::Physics::WeatherMode::Chill);
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("MANUAL WEATHER");
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::SetWeatherRidge()
@@ -1715,7 +1714,6 @@ void AParagliderPawn::SetWeatherRidge()
     AirModel.SetMode(Parapenting::Physics::WeatherMode::Ridge);
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("MANUAL WEATHER");
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::SetWeatherLocalizedRotor()
@@ -1723,7 +1721,6 @@ void AParagliderPawn::SetWeatherLocalizedRotor()
     AirModel.SetMode(Parapenting::Physics::WeatherMode::LocalizedRotor);
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("MANUAL WEATHER");
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::SetWeatherRotorEverywhere()
@@ -1731,7 +1728,6 @@ void AParagliderPawn::SetWeatherRotorEverywhere()
     AirModel.SetMode(Parapenting::Physics::WeatherMode::RotorEverywhere);
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("MANUAL WEATHER");
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::SelectWing(Parapenting::Physics::WingProfileId Id)
@@ -1739,7 +1735,6 @@ void AParagliderPawn::SelectWing(Parapenting::Physics::WingProfileId Id)
     SelectedWing = Id;
     ApplyEquipmentConfiguration();
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::ApplyEquipmentConfiguration()
@@ -1761,7 +1756,6 @@ void AParagliderPawn::CycleWingSize()
         (static_cast<int32>(SelectedWingSize) + 1) % 3);
     ApplyEquipmentConfiguration();
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::CycleBrakeTravel()
@@ -1770,7 +1764,6 @@ void AParagliderPawn::CycleBrakeTravel()
         (static_cast<int32>(SelectedBrakeTravel) + 1) % 3);
     ApplyEquipmentConfiguration();
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::CycleWeatherPreset()
@@ -1792,7 +1785,6 @@ void AParagliderPawn::CycleWeatherPreset()
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("OFFLINE PRESET");
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::CycleTimeOfDay()
@@ -1802,7 +1794,6 @@ void AParagliderPawn::CycleTimeOfDay()
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("OFFLINE TIME OVERRIDE");
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::FetchLiveWeather()
@@ -2152,7 +2143,6 @@ void AParagliderPawn::PreviousRoute()
     const std::size_t Count = Parapenting::Physics::RouteProfileCount();
     SelectedRouteIndex = (SelectedRouteIndex + Count - 1) % Count;
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::NextRoute()
@@ -2160,7 +2150,6 @@ void AParagliderPawn::NextRoute()
     SelectedRouteIndex =
         (SelectedRouteIndex + 1) % Parapenting::Physics::RouteProfileCount();
     ResetFlight();
-    bBriefingVisible = true;
 }
 
 void AParagliderPawn::ToggleTelemetryRecording()

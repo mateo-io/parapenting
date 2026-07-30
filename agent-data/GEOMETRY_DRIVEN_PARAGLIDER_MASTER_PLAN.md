@@ -448,6 +448,28 @@ Canopy attachment nodes
 - No legacy direct-control force remains active.
 - All still-air and incident regression suites pass.
 
+## Known risks and mitigations
+
+- **Level 4 gates are provisional.** Trim speed and glide ratio are first
+  validated on rigid geometry; Levels 5–6 change the effective airfoil shape,
+  so the still-air baseline must be re-recorded and the Level 4 gates re-run
+  after the membrane solver lands. Budget this into Level 7, not as a surprise.
+- **Engine integration.** The fixed 120 Hz physics rate must be decoupled from
+  the Unreal tick (accumulator with fixed substeps, interpolated render
+  state). Decide this in Level 0 and encode it in the solver contract;
+  retrofitting determinism onto a variable tick is far more expensive.
+- **Parallel operation, not big-bang cutover.** Keep the legacy handling model
+  behind a runtime flag until Level 10. Every level's exit gate should be
+  runnable against both models so regressions are attributable.
+- **Membrane solver is the schedule risk.** 14 hours for a stable,
+  non-exploding membrane with asymmetric deformation is the most optimistic
+  line in the budget. If it slips, cut scope to a coarser mesh with stronger
+  rib constraints rather than borrowing hours from validation (Level 9).
+- **Section polars are a data problem, not a code problem.** Level 4 assumes
+  usable polars for a low-Reynolds, deformable parafoil section. Identify the
+  source (XFOIL runs on the digitized profile, published parafoil data, or
+  both) during Level 1 while the geometry is being digitized.
+
 ## Hour budget
 
 | Level | Workstream | Hours |

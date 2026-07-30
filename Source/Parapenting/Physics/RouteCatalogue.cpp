@@ -147,11 +147,12 @@ Vec3 GeoPointInPrimaryFrameM(const GeoPoint& point)
         std::hypot(primaryLandingEast, primaryLandingNorth);
     const double forwardEast = primaryLandingEast / primaryLength;
     const double forwardNorth = primaryLandingNorth / primaryLength;
-    const double leftEast = -forwardNorth;
-    const double leftNorth = forwardEast;
+    // +Y is route-RIGHT, matching the flight frame and RouteFrame.h.
+    const double rightEast = forwardNorth;
+    const double rightNorth = -forwardEast;
     return {
         east * forwardEast + north * forwardNorth,
-        east * leftEast + north * leftNorth,
+        east * rightEast + north * rightNorth,
         point.elevationM - 565.0
     };
 }
@@ -167,8 +168,11 @@ Vec3 RoutePointLocalM(const RouteProfile& route, const GeoPoint& point)
         "first-frame", "First frame", 46.657450, 8.055133, 2123.0};
     const Vec3 origin = GeoPointInPrimaryFrameM(first);
     const Vec3 raw = GeoPointInPrimaryFrameM(point) - origin;
+    // Translated onto the route-left side, away from the surveyed Interlaken
+    // grid. Sign follows the frame flip to route-right +Y; the lane itself is
+    // still a geographically invented placement pending its own region.
     return {
-        raw.x, 8500.0 + raw.y,
+        raw.x, -8500.0 + raw.y,
         point.elevationM - 565.0};
 }
 }

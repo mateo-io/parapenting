@@ -408,9 +408,9 @@
   ],
   "boundsLocalM": [
     -1800.0,
-    -4500.0,
+    -3500.0,
     6100.0,
-    3500.0
+    4500.0
   ],
   "catalogue": "https://ogd.swisstopo.admin.ch/services/swiseld/services/assets/ch.swisstopo.swissalti3d/search",
   "coordinateSystem": "LV95/LN02 EPSG:2056",

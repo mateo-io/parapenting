@@ -11,6 +11,7 @@
 #include "RouteFrame.h"
 #include "RouteCatalogue.h"
 #include "TerrainModel.h"
+#include "WingCatalogue.h"
 
 #include <cmath>
 #include <cstdio>
@@ -126,10 +127,17 @@ int main(int argc, char** argv)
     CheckNear(RouteFrame::routeLengthM, length, 1e-9, "route length");
     CheckNear(RouteFrame::forwardEast, dE / length, 1e-12, "forward east");
     CheckNear(RouteFrame::forwardNorth, dN / length, 1e-12, "forward north");
-    CheckNear(RouteFrame::leftEast, -RouteFrame::forwardNorth, 1e-12,
-              "left east is -forward north");
-    CheckNear(RouteFrame::leftNorth, RouteFrame::forwardEast, 1e-12,
-              "left north is forward east");
+    // +Y is route-right: right = (forward_n, -forward_e).
+    CheckNear(RouteFrame::rightEast, RouteFrame::forwardNorth, 1e-12,
+              "right east is forward north");
+    CheckNear(RouteFrame::rightNorth, -RouteFrame::forwardEast, 1e-12,
+              "right north is -forward east");
+    // Handedness: forward x right must point DOWN in ENU, i.e. the 2D cross
+    // product forward_e*right_n - forward_n*right_e is -1. This is what makes
+    // the frame forward/right/up and matches Unreal.
+    CheckNear(RouteFrame::forwardEast * RouteFrame::rightNorth
+                  - RouteFrame::forwardNorth * RouteFrame::rightEast,
+              -1.0, 1e-12, "frame is forward/right/up (left-handed in ENU)");
     CheckNear(
         RouteFrame::forwardEast * RouteFrame::forwardEast
             + RouteFrame::forwardNorth * RouteFrame::forwardNorth,
@@ -152,7 +160,7 @@ int main(int argc, char** argv)
     // Round trip.
     for (double x : {-1800.0, 0.0, 2398.0, 6100.0})
     {
-        for (double y : {-4500.0, 0.0, 2500.0, 10000.0})
+        for (double y : {-3500.0, 0.0, 2500.0, 4500.0})
         {
             const double e = RouteFrame::LocalToEastingM(x, y);
             const double n = RouteFrame::LocalToNorthingM(x, y);
@@ -179,6 +187,79 @@ int main(int argc, char** argv)
     CheckNear(primaryLanding.x, RouteFrame::routeLengthM, 25.0,
               "catalogue landing x near frame");
     CheckNear(primaryLanding.y, 0.0, 25.0, "catalogue landing y near frame");
+
+    // ---------------------------------------------------------------------
+    // Level 0 exit gate: left input, left geography and left world trajectory
+    // must all agree. This is the check that was missing while the terrain
+    // frame ran route-left against a flight frame running forward/right/up,
+    // which mirrored the entire surveyed landscape about the route axis.
+    // ---------------------------------------------------------------------
+    std::printf("\nHandedness gate\n");
+    {
+        Check(TerrainModel::LoadHeightfieldAscii(
+                  "Content/Terrain/interlaken.asc"),
+              "surveyed heightfield loads");
+        const auto TurnDirection = [](double weightShift,
+                                      double leftBrake, double rightBrake)
+        {
+            constexpr double Dt = 1.0 / 120.0;
+            ParagliderDynamics dyn(
+                GetWingProfile(WingProfileId::Epic2MLResearch).parameters);
+            FlightState s;
+            ControlInput in;
+            in.weightShift = weightShift;
+            in.leftBrake = leftBrake;
+            in.rightBrake = rightBrake;
+            double heading = 0.0;
+            double previous = 0.0;
+            for (int frame = 0; frame <= 40 * 120; ++frame)
+            {
+                if (frame > 0) dyn.Step(s, in, Atmosphere{}, Dt);
+                const double h = std::atan2(
+                    s.velocityWorldMps.y, s.velocityWorldMps.x);
+                if (frame > 15 * 120)
+                {
+                    double d = h - previous;
+                    if (d > 3.14159265358979) d -= 6.28318530717959;
+                    if (d < -3.14159265358979) d += 6.28318530717959;
+                    heading += d;
+                }
+                previous = h;
+            }
+            return heading;
+        };
+
+        const double leftShift = TurnDirection(-1.0, 0.0, 0.0);
+        const double rightShift = TurnDirection(1.0, 0.0, 0.0);
+        const double leftBrake = TurnDirection(0.0, 0.6, 0.0);
+        const double rightBrake = TurnDirection(0.0, 0.0, 0.6);
+        std::printf("  weightShift -1 (left)  heading %+8.2f rad\n", leftShift);
+        std::printf("  weightShift +1 (right) heading %+8.2f rad\n", rightShift);
+        std::printf("  leftBrake  0.6         heading %+8.2f rad\n", leftBrake);
+        std::printf("  rightBrake 0.6         heading %+8.2f rad\n", rightBrake);
+
+        // Pilot left must turn toward -Y, because +Y is the right wing.
+        Check(leftShift < -1.0, "left weight shift turns toward -Y");
+        Check(rightShift > 1.0, "right weight shift turns toward +Y");
+        Check(leftBrake < -1.0, "left brake turns toward -Y");
+        Check(rightBrake > 1.0, "right brake turns toward +Y");
+        CheckNear(leftShift, -rightShift, 0.05, "weight shift is symmetric");
+        CheckNear(leftBrake, -rightBrake, 0.05, "brake is symmetric");
+
+        // And -Y must be route-left on the ground. Lake Thun is west, which is
+        // route-right of the southbound primary route, so it belongs at +Y.
+        // Its surface is 558 m MSL, i.e. about -7 m in the Lehn datum.
+        const double thunSide = TerrainModel::HeightM(2400.0, 2500.0);
+        const double oppositeSide = TerrainModel::HeightM(2400.0, -2500.0);
+        std::printf("  terrain at y=+2500 (west) %7.1f m MSL,"
+                    "  y=-2500 (east) %7.1f m MSL\n",
+            thunSide + RouteFrame::landingElevationM,
+            oppositeSide + RouteFrame::landingElevationM);
+        Check(thunSide < oppositeSide,
+              "Lake Thun (west) lies at +Y, i.e. route-right");
+        Check(std::fabs(thunSide + 7.0) < 6.0,
+              "y=+2500 sits at the Lake Thun surface");
+    }
 
     // Coverage report for every route endpoint.
     std::printf("\nRoute endpoint coverage\n");

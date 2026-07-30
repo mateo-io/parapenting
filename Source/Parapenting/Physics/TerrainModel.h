@@ -6,8 +6,10 @@
 namespace Parapenting::Physics
 {
 // Lightweight analytic terrain used by the v0 renderer, collision and airflow.
-// Coordinates are metres: +X follows the Amisbuehl-to-Lehn route, +Y is east,
-// and Z is height above the Lehn landing field.
+// Coordinates are metres: +X follows the Amisbuehl-to-Lehn route, +Y is
+// route-right (west for the southbound primary route), and Z is height above
+// the Lehn landing field. See ParagliderCoordinateSystem.h.
+
 // Where a given height sample came from. The surveyed grid covers only part
 // of what the renderer draws, and the transition is a step rather than a
 // blend, so anything that cares whether it is standing on real ground has to

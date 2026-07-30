@@ -23,8 +23,8 @@ struct TerrainRenderLayout
     static constexpr int cellsPerTile = 50;
     static constexpr double xMinM = -1800.0;
     static constexpr double xMaxM = 6100.0;
-    static constexpr double yMinM = -4500.0;
-    static constexpr double yMaxM = 3500.0;
+    static constexpr double yMinM = -3500.0;
+    static constexpr double yMaxM = 4500.0;
 
     static constexpr int TileCount() { return tileCountX * tileCountY; }
     static constexpr int VerticesPerTile()

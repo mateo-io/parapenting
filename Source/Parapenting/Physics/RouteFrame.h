@@ -16,7 +16,7 @@ namespace Parapenting::Physics
 //
 //   origin : Amisbuehl oben launch
 //   +X     : along the Amisbuehl -> Lehn route (bearing ~176.7 deg, ~due south)
-//   +Y     : route-left (bearing ~86.7 deg, ~due east)
+//   +Y     : route-right (bearing ~266.7 deg, ~due west)
 //   Z      : metres relative to the Lehn landing field
 //   CRS    : LV95 / LN02, EPSG:2056
 struct RouteFrame
@@ -74,15 +74,17 @@ struct RouteFrame
         (landingEastingM - launchEastingM) / routeLengthM;
     static inline const double forwardNorth =
         (landingNorthingM - launchNorthingM) / routeLengthM;
-    static inline const double leftEast = -forwardNorth;
-    static inline const double leftNorth = forwardEast;
+    // +Y is route-RIGHT, matching the flight frame's forward/right/up
+    // convention and Unreal's handedness. See ParagliderCoordinateSystem.h.
+    static inline const double rightEast = forwardNorth;
+    static inline const double rightNorth = -forwardEast;
 
     // Surveyed extent of Content/Terrain/interlaken.asc. Samples outside this
     // rectangle fall through to the analytic proxy.
     static constexpr double surveyedXMinM = -1800.0;
     static constexpr double surveyedXMaxM = 6100.0;
-    static constexpr double surveyedYMinM = -4500.0;
-    static constexpr double surveyedYMaxM = 3500.0;
+    static constexpr double surveyedYMinM = -3500.0;
+    static constexpr double surveyedYMaxM = 4500.0;
 
     static constexpr bool IsInsideSurveyedBounds(double xM, double yM)
     {
@@ -92,12 +94,12 @@ struct RouteFrame
 
     static double LocalToEastingM(double xM, double yM)
     {
-        return launchEastingM + xM * forwardEast + yM * leftEast;
+        return launchEastingM + xM * forwardEast + yM * rightEast;
     }
 
     static double LocalToNorthingM(double xM, double yM)
     {
-        return launchNorthingM + xM * forwardNorth + yM * leftNorth;
+        return launchNorthingM + xM * forwardNorth + yM * rightNorth;
     }
 
     // The basis is orthonormal, so the inverse is the transpose.
@@ -109,8 +111,8 @@ struct RouteFrame
 
     static double Lv95ToLocalYM(double eastingM, double northingM)
     {
-        return (eastingM - launchEastingM) * leftEast
-            + (northingM - launchNorthingM) * leftNorth;
+        return (eastingM - launchEastingM) * rightEast
+            + (northingM - launchNorthingM) * rightNorth;
     }
 
     static constexpr double LocalToElevationM(double zM)

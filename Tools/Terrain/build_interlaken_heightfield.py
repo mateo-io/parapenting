@@ -75,24 +75,35 @@ LAUNCH_E, LAUNCH_N = wgs84_to_lv95(LAUNCH_LAT, LAUNCH_LON)
 LANDING_E, LANDING_N = wgs84_to_lv95(LANDING_LAT, LANDING_LON)
 
 X_MIN, X_MAX = -1800.0, 6100.0
-# Y_MAX reaches past the Hoehematte landing field, which sits at local
-# y = 2685 and is the landing for four of the shipped routes. The previous
-# 2500 left it 185 m outside the surveyed grid, so those routes touched down
-# on the analytic proxy. The extra ~800 m of margin covers the landing
-# circuit rather than stopping at the field boundary.
-Y_MIN, Y_MAX = -4500.0, 3500.0
+# +Y is route-RIGHT. Y_MIN reaches past the Hoehematte landing field, which
+# sits at local y = -2685 and is the landing for four of the shipped routes.
+# The margin beyond it covers the landing circuit rather than stopping at the
+# field boundary. Y_MAX covers the Niederhorn side at y = +3323.
+Y_MIN, Y_MAX = -3500.0, 4500.0
 OUTPUT_CELL_M = 20.0
 
 
 def local_to_lv95(x_m: float, y_m: float) -> tuple[float, float]:
+    """Route frame -> LV95.
+
+    +X runs launch -> landing, +Y is route-RIGHT, matching the flight frame's
+    forward/right/up convention and Unreal's handedness. The frame used to be
+    route-left, which mirrored the entire surveyed landscape about the route
+    axis relative to the flight: Lake Thun rendered on the pilot's left when
+    the real lake is west, and pulling the left brake tracked route-right
+    across the ground. Nothing converted between the two, and because the
+    mirroring was uniform it was invisible in play - only the relationship to
+    real geography was wrong, which is what ridge lift, lee rotor, wind
+    bearings and landing circuits are built on.
+    """
     dx = LANDING_E - LAUNCH_E
     dy = LANDING_N - LAUNCH_N
     length = math.hypot(dx, dy)
     forward_e, forward_n = dx / length, dy / length
-    left_e, left_n = -forward_n, forward_e
+    right_e, right_n = forward_n, -forward_e
     return (
-        LAUNCH_E + x_m * forward_e + y_m * left_e,
-        LAUNCH_N + x_m * forward_n + y_m * left_n,
+        LAUNCH_E + x_m * forward_e + y_m * right_e,
+        LAUNCH_N + x_m * forward_n + y_m * right_n,
     )
 
 
@@ -202,8 +213,8 @@ def main() -> None:
     columns = round((X_MAX - X_MIN) / OUTPUT_CELL_M) + 1
     rows = round((Y_MAX - Y_MIN) / OUTPUT_CELL_M) + 1
     grid = np.empty((rows, columns), dtype=np.float32)
-    # ESRI ASCII rows are north/top to south/bottom. Here local +Y is left,
-    # so emit Y_MAX first and let HeightfieldGrid perform the standard flip.
+    # ESRI ASCII rows run top to bottom in descending Y, so emit Y_MAX first
+    # and let HeightfieldGrid perform the standard flip on read.
     for row in range(rows):
         y_m = Y_MAX - row * OUTPUT_CELL_M
         for column in range(columns):

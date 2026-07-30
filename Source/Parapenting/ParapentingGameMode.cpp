@@ -264,9 +264,9 @@ void AParapentingGameMode::BeginPlay()
             {
                 const float X = XIndex * 85.0f
                     + FMath::Sin(XIndex * 7.31f + YIndex) * 24.0f;
-                const float Y = YIndex * 90.0f
-                    + FMath::Sin(YIndex * 3.97f - XIndex) * 29.0f;
-                const float RouteY = 8500.0f - 0.547f * X;
+                const float Y = -(YIndex * 90.0f
+                    + FMath::Sin(YIndex * 3.97f - XIndex) * 29.0f);
+                const float RouteY = -8500.0f + 0.547f * X;
                 if (FMath::Abs(Y - RouteY) < 420.0f) continue;
                 const float Density = FMath::PerlinNoise2D(
                     FVector2D(X * 0.0037f + 12.0f, Y * 0.0037f));
@@ -326,8 +326,8 @@ void AParapentingGameMode::BeginPlay()
         {
             const float X = 2050.0f + (Block % 34) * 105.0f
                 + FMath::Sin(Block * 2.17f) * 28.0f;
-            const float Y = -720.0f + (Block / 34) * 330.0f
-                + FMath::Sin(Block * 4.71f) * 72.0f;
+            const float Y = 720.0f - (Block / 34) * 330.0f
+                - FMath::Sin(Block * 4.71f) * 72.0f;
             const float Ground = static_cast<float>(
                 Parapenting::Physics::TerrainModel::HeightM(X, Y));
             const auto Normal =
@@ -353,9 +353,9 @@ void AParapentingGameMode::BeginPlay()
             const float X = (bBodmi ? 2860.0f : 3650.0f)
                 + (Local % 10) * 72.0f
                 + FMath::Sin(Block * 2.41f) * 18.0f;
-            const float Y = (bBodmi ? 7180.0f : 6070.0f)
-                + (Local / 10) * 88.0f
-                + FMath::Sin(Block * 3.19f) * 24.0f;
+            const float Y = (bBodmi ? -7180.0f : -6070.0f)
+                - (Local / 10) * 88.0f
+                - FMath::Sin(Block * 3.19f) * 24.0f;
             const float Ground = static_cast<float>(
                 Parapenting::Physics::TerrainModel::HeightM(X, Y));
             const auto Normal =
@@ -378,10 +378,11 @@ void AParapentingGameMode::BeginPlay()
 
     if (PlaneMesh && ShapeMaterial)
     {
-        // Lake Thun lies route-right/west of the southbound Amisbuehl line.
-        // Its 558 m MSL surface is approximately -7 m in the Lehn datum.
+        // Lake Thun lies route-right/west of the southbound Amisbuehl line,
+        // which is +Y now that the frame is route-right. Its 558 m MSL
+        // surface is approximately -7 m in the Lehn datum.
         AStaticMeshActor* Lake = World->SpawnActor<AStaticMeshActor>(
-            FVector(70000.0, -145000.0, -680.0), FRotator::ZeroRotator);
+            FVector(70000.0, 145000.0, -680.0), FRotator::ZeroRotator);
         Lake->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
         Lake->GetStaticMeshComponent()->SetWorldScale3D(
             FVector(3100.0f, 1200.0f, 1.0f));
@@ -425,10 +426,10 @@ void AParapentingGameMode::BeginPlay()
         for (int32 Segment = 0; Segment < 52; ++Segment)
         {
             const float X = 1500.0f + Segment * 92.0f;
-            const float RiverY = -610.0f
-                + 125.0f * FMath::Sin(Segment * 0.21f);
-            const float NextY = -610.0f
-                + 125.0f * FMath::Sin((Segment + 1) * 0.21f);
+            const float RiverY = 610.0f
+                - 125.0f * FMath::Sin(Segment * 0.21f);
+            const float NextY = 610.0f
+                - 125.0f * FMath::Sin((Segment + 1) * 0.21f);
             const float RiverYaw = FMath::RadiansToDegrees(
                 FMath::Atan2(NextY - RiverY, 92.0f));
             const float RiverGround = static_cast<float>(
@@ -438,10 +439,10 @@ void AParapentingGameMode::BeginPlay()
                 FVector(X, RiverY, RiverGround + 0.35f) * 100.0f,
                 FVector(96.0f, 13.0f, 0.22f)));
 
-            const float RoadY = 310.0f
-                + 70.0f * FMath::Sin(Segment * 0.17f + 1.4f);
-            const float NextRoadY = 310.0f
-                + 70.0f * FMath::Sin((Segment + 1) * 0.17f + 1.4f);
+            const float RoadY = -310.0f
+                - 70.0f * FMath::Sin(Segment * 0.17f + 1.4f);
+            const float NextRoadY = -310.0f
+                - 70.0f * FMath::Sin((Segment + 1) * 0.17f + 1.4f);
             const float RoadYaw = FMath::RadiansToDegrees(
                 FMath::Atan2(NextRoadY - RoadY, 92.0f));
             const float RoadGround = static_cast<float>(

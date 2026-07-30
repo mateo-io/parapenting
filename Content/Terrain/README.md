@@ -13,7 +13,9 @@ SHA-256 hashes to `interlaken.provenance.json`.
 
 The resulting file is `Content/Terrain/interlaken.asc`.
 The grid must use metres, with local `+X` along the active route, local `+Y`
-to route-left, and elevations relative to the route landing field.
+to route-**right**, and elevations relative to the route landing field. The
+frame is forward/right/up to match the flight frame and Unreal's handedness;
+see `Source/Parapenting/Physics/ParagliderCoordinateSystem.h`.
 
 At startup the same bilinear heightfield is used by the visible procedural
 mesh, ground collision, AGL, slope normals, ridge lift and lee-rotor model.

@@ -21,10 +21,10 @@ double Gaussian(double x, double centre, double width)
     return std::exp(-0.5 * q * q);
 }
 
-// Route-left offset at which the analytic Grindelwald lane takes over from the
-// analytic Interlaken proxy. Shared with ProvenanceAt so the two cannot
-// disagree about where the boundary is.
-constexpr double GrindelwaldLaneYM = 5000.0;
+// Route-left (negative Y) offset at which the analytic Grindelwald lane takes
+// over from the analytic Interlaken proxy. Shared with ProvenanceAt so the
+// two cannot disagree about where the boundary is.
+constexpr double GrindelwaldLaneYM = -5000.0;
 }
 
 bool TerrainModel::LoadHeightfieldAscii(const std::string& filePath)
@@ -47,7 +47,7 @@ TerrainProvenance TerrainModel::ProvenanceAt(double x, double y)
     double ignored = 0.0;
     if (SurveyedTerrain.Sample(x, y, ignored))
         return TerrainProvenance::Surveyed;
-    return y > GrindelwaldLaneYM
+    return y < GrindelwaldLaneYM
         ? TerrainProvenance::AnalyticGrindelwald
         : TerrainProvenance::AnalyticInterlaken;
 }
@@ -65,7 +65,7 @@ double TerrainModel::HeightM(double x, double y)
     // Grindelwald is held in a separate sparse regional lane so its verified
     // route geometry can coexist with the detailed Interlaken heightfield
     // without stretching that mesh over the 20 km geographic separation.
-    if (y > GrindelwaldLaneYM)
+    if (y < GrindelwaldLaneYM)
     {
         constexpr double RouteDxM = 4021.2845;
         constexpr double RouteDyM = -2199.4248;
@@ -75,7 +75,7 @@ double TerrainModel::HeightM(double x, double y)
         constexpr double LeftX = -ForwardY;
         constexpr double LeftY = ForwardX;
         const double dx = x;
-        const double dy = y - 8500.0;
+        const double dy = y + 8500.0;
         const double along = dx * ForwardX + dy * ForwardY;
         const double cross = dx * LeftX + dy * LeftY;
         const double progress = SmoothStep(0.0, FirstToGrundM, along);
@@ -102,12 +102,14 @@ double TerrainModel::HeightM(double x, double y)
     const double sideDistance = std::abs(y);
     const double valleyWall = valleyOpening
         * std::pow(std::max(0.0, sideDistance - 520.0) / 900.0, 1.55) * 430.0;
+    // Y centres negated with the frame flip to route-right +Y: west is now
+    // positive, east negative, so the named ridges stay on their real sides.
     const double westRidge = 150.0 * Gaussian(x, 820.0, 390.0)
-                           * Gaussian(y, -720.0, 330.0);
+                           * Gaussian(y, 720.0, 330.0);
     const double eastRidge = 110.0 * Gaussian(x, 1180.0, 520.0)
-                           * Gaussian(y, 880.0, 420.0);
+                           * Gaussian(y, -880.0, 420.0);
     const double field = -8.0 * Gaussian(x, 2409.9, 380.0)
-                        * Gaussian(y, 42.0, 480.0);
+                        * Gaussian(y, -42.0, 480.0);
     return std::max(-8.0, routeDescent + launchShoulder + valleyWall
                           + westRidge + eastRidge + field);
 }

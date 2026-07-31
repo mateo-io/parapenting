@@ -4,6 +4,7 @@
 #include "HarnessGeometry.h"
 #include "PayloadRigidBody.h"
 #include "ApparentMassTensor.h"
+#include "CanopyPressureSolver.h"
 #include "SectionPolarTable.h"
 #include "SuspensionGraph.h"
 #include "ParagliderDynamics.h"
@@ -22,6 +23,7 @@ const LinePlanSpec& Lines = Epic2MlLinePlan();
 constexpr HarnessGeometry Harness3{};
 constexpr PayloadMassProperties Payload{};
 constexpr AnalyticPolarSpec Polar{};
+constexpr CellPressureSpec Cell{};
 
 using S = CoefficientSource;
 using C = CalibrationStatus;
@@ -285,6 +287,36 @@ const CoefficientRecord Records[] = {
      "against the source paper and it lands well above the 18 kg m^2 estimate "
      "already carried. Disputed deliberately: nothing uses its magnitude until "
      "someone reads Lissaman and Brown against it.", 4},
+    // --- Level 5 cell pressure --------------------------------------------
+    {"inletAngularPositionRad", "rad", Cell.inletAngularPositionRad, 0.0, 0.60,
+     S::Estimated, C::Unvalidated,
+     "Where the leading-edge opening is cut, as an angle below the chord line "
+     "on the nose. Everything about how well the wing pressurises follows "
+     "from this against the stagnation point, so it is the first thing to "
+     "digitise from a real canopy.", 0},
+    {"inletAreaM2", "m^2", Cell.inletAreaM2, 0.002, 0.05, S::Estimated,
+     C::Unvalidated,
+     "Open area of one cell's inlet. Sets how fast a cell fills and, with the "
+     "cell volume, the whole inflation timescale.", 0},
+    {"cellVolumeM3", "m^3", Cell.cellVolumeM3, 0.05, 0.60, S::Estimated,
+     C::Provisional,
+     "Volume of one cell. Level 1 geometry can compute this from the "
+     "inflated section rather than assuming it, and should.", 6},
+    {"crossportAreaM2", "m^2", Cell.crossportAreaM2, 0.0, 0.02, S::Estimated,
+     C::Unvalidated,
+     "Rib crossport area. Far smaller than an inlet, so a cell fed only "
+     "through its ribs fills in tens of seconds rather than seconds - which "
+     "is why blocked inlets across a group matter.", 0},
+    {"fabricPorosityM3PerM2sPerPa", "m^3/(m^2*s*Pa)",
+     Cell.porosityM3PerM2sPerPa, 0.0, 1.0e-4, S::Literature, C::Unvalidated,
+     "Leakage through coated ripstop. Small enough that it is not what "
+     "empties a cell; the inlet running backwards is.", 0},
+    {"collapseRiskPressureCoefficient", "1",
+     Cell.collapseRiskPressureCoefficient, 0.1, 0.8, S::Estimated,
+     C::Unvalidated,
+     "Internal pressure coefficient below which a cell is reported at risk. "
+     "A reporting threshold only - nothing in the model behaves differently "
+     "either side of it, and Level 8 is where collapse itself is decided.", 8},
     {"vsmFilamentCoreFraction", "1", 0.5, 0.05, 2.0, S::Estimated,
      C::Unvalidated,
      "Trailing-filament core radius as a fraction of panel width. Numerical, "

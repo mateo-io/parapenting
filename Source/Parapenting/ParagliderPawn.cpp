@@ -1853,6 +1853,11 @@ void AParagliderPawn::ApplyEquipmentConfiguration()
         Parapenting::Physics::PayloadMassFor(Equipment));
     LineGraph.plan.harness =
         Parapenting::Physics::HarnessGeometryFor(Equipment);
+    // Every pendulum period in the flight model comes from this one length,
+    // and it is measured on the built suspension rather than written down as
+    // a constant beside it.
+    Dynamics.SetSuspensionLengthM(
+        Parapenting::Physics::SuspensionPendulumLengthM(LineGraph));
     SolveSuspensionGraph();
 }
 

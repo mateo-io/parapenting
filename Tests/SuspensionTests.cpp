@@ -114,6 +114,15 @@ int main(int argc, char** argv)
         const double total = TotalLineLengthM(graph);
         Check(total > 190.0 && total < 320.0,
               "manufactured line length is near the published 254 m");
+
+        // The pendulum length the flight model uses is measured here, not
+        // written down twice.
+        const double pendulum = SuspensionPendulumLengthM(graph);
+        std::printf("  pendulum length %.2f m\n", pendulum);
+        Check(pendulum > graph.plan.canopyToRiserM,
+              "the pendulum reaches below the risers to the pilot's CG");
+        Check(pendulum < graph.plan.canopyToRiserM + 1.5,
+              "and not by much - risers and the seat, not another wingspan");
     }
 
     // -- hands-up trim ----------------------------------------------------

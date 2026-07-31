@@ -171,7 +171,6 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // the natural pendulum frequency; brake/zoom displacement shifts its
     // equilibrium aft. This state can overshoot on release instead of
     // teleporting with the rigid system attitude.
-    constexpr double SuspensionLengthM = 7.3;
     const double pitchNaturalFrequency =
         std::sqrt(9.80665 / SuspensionLengthM);
     const double canopyPitchTarget =
@@ -213,22 +212,30 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // of a real weight, and everything downstream reads those forces.
     PayloadInput payloadInput;
     payloadInput.weightShift = controls.weightShift;
+    // The lines carry the payload; the canopy is above them. Mass comes from
+    // the wing parameters, which the equipment setup drives, and its
+    // distribution from PayloadMassProperties.
+    const double payloadMassKg = std::max(
+        25.0, Params.allUpMassKg - Params.canopyMassKg);
     payloadInput.suspendedLoadN =
-        std::max(1.0, Params.allUpMassKg * 9.80665
+        std::max(1.0, payloadMassKg * 9.80665
             * std::max(0.2, state.previousLoadFactor));
-    payloadInput.lateralAccelerationMps2 =
-        state.previousLateralAccelerationMps2;
+    payloadInput.loadFactor = state.previousLoadFactor;
     payloadInput.longitudinalAccelerationMps2 =
         state.previousLongitudinalAccelerationMps2;
+    PayloadMassProperties payloadMass = PayloadMass;
+    // Keep the payload body's total consistent with the configured all-up
+    // mass: the distribution is PayloadMassProperties', the total is the
+    // equipment setup's, and they must not be two different answers.
+    payloadMass.pilotKg += payloadMassKg - payloadMass.TotalKg();
     const PayloadLoads payload = StepPayload(
-        state.payload, PayloadMass, HarnessShape, payloadInput, dt);
+        state.payload, payloadMass, HarnessShape, payloadInput, dt);
     // The payload is a suspended mass, not a pitch animation. Its
     // longitudinal equilibrium follows the previous-step canopy/system
     // acceleration: it swings forward under deceleration and aft under
-    // acceleration. The 7.3 m suspension length sets the pendulum period.
-    constexpr double LongitudinalSuspensionLengthM = 7.3;
+    // acceleration. The suspension length sets the pendulum period.
     const double longitudinalPendulumFrequency =
-        std::sqrt(9.80665 / LongitudinalSuspensionLengthM);
+        std::sqrt(9.80665 / SuspensionLengthM);
     const double harnessPitchTarget = std::clamp(
         std::atan2(
             -state.previousLongitudinalAccelerationMps2, 9.80665),
@@ -502,9 +509,8 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             + suspension.right.totalTensionN)
             / std::max(1.0, suspendedWeightN),
         0.0, 1.0);
-    constexpr double LateralSuspensionLengthM = 7.3;
     const double rollNaturalFrequency =
-        std::sqrt(9.80665 / LateralSuspensionLengthM);
+        std::sqrt(9.80665 / SuspensionLengthM);
     const double attachedSpanTransmission = std::clamp(
         1.0 - 0.92 * std::max(
             canopy.leftStalledFraction,
@@ -529,7 +535,7 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // shift is under a degree of hang angle. The large sustained bank of a
     // real turn is not this; it is the coordinated turn below amplifying it.
     const double lateralPendulumStiffnessNmPerRad = std::max(
-        200.0, suspendedWeightN * LateralSuspensionLengthM);
+        200.0, suspendedWeightN * SuspensionLengthM);
     // Aerodynamic roll moment from the spanwise load split. The half carrying
     // more lift rises, so this is positive - the opposite sense to the
     // payload term, which is the whole point of keeping them apart.
@@ -553,12 +559,13 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
         state.canopyRelativeRollRad
             + state.canopyRelativeRollRateRadps * dt,
         -0.78, 0.78);
-    const double payloadMassKg = std::max(
-        25.0, Params.allUpMassKg - Params.canopyMassKg);
+    // One mass-property calculator, in PayloadRigidBody. The payload's
+    // inertia was separately approximated here as a fraction of its mass; two
+    // descriptions of the same body is the duplication guiding rule 1 forbids.
     const double payloadRollInertia =
-        std::max(8.0, payloadMassKg * 0.18);
+        std::max(1.0, PayloadRollInertiaForMassKgM2(payloadMassKg));
     const double payloadPitchInertia =
-        std::max(10.0, payloadMassKg * 0.24);
+        std::max(1.0, PayloadPitchInertiaForMassKgM2(payloadMassKg));
     // No moment is injected here. The roll moments act on the system in the
     // moment sum below; adding them again to the hang angle counted them
     // twice and pinned the relative roll against its limit, which is what
@@ -610,6 +617,12 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     });
     state.previousLongitudinalAccelerationMps2 =
         state.attitude.InverseRotate(acceleration).x;
+    // Load factor is the specific force - what an accelerometer on the
+    // harness reads, the total acceleration less gravity - in g. The payload
+    // body was reading this and it was never written, so the carabiners sat
+    // at 1 g through a spiral and weight shift never lost any reach.
+    state.previousLoadFactor =
+        Length(acceleration + Vec3{0.0, 0.0, 9.80665}) / 9.80665;
     state.velocityWorldMps += acceleration * dt;
     state.positionWorldM += state.velocityWorldMps * dt;
     const Vec3 velocityBody =
@@ -909,6 +922,12 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     TelemetryState.carabinerLoadAsymmetry = payload.loadAsymmetry;
     TelemetryState.pilotCgOffsetM = payload.effectiveCgOffsetM;
     TelemetryState.payloadRollRad = state.payload.rollRad;
+    TelemetryState.payloadPitchRad = state.payload.pitchRad;
+    TelemetryState.payloadCgOffsetLongitudinalM =
+        payload.cgOffsetLongitudinalM;
+    TelemetryState.suspensionPendulumPeriodS =
+        2.0 * 3.14159265358979323846
+            * std::sqrt(SuspensionLengthM / 9.80665);
     TelemetryState.canopyRelativeRollRateRadps =
         state.canopyRelativeRollRateRadps;
     TelemetryState.suspensionControlTransmission =

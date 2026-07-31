@@ -279,6 +279,15 @@ Vec3 CanopyPointLocalM(
             quarterChord.y, quarterChord.z};
 }
 
+double SuspensionPendulumLengthM(const SuspensionGraph& graph)
+{
+    double meanRiserLengthM = 0.0;
+    for (double length : graph.plan.trimRiserLengthM)
+        meanRiserLengthM += 0.25 * length;
+    return graph.plan.harness.carabinerAboveCgM + meanRiserLengthM
+        + graph.plan.canopyToRiserM;
+}
+
 double TotalLineLengthM(const SuspensionGraph& graph)
 {
     double total = 0.0;

@@ -222,6 +222,14 @@ const CoefficientRecord Records[] = {
     {"pilotKg", "kg", Payload.pilotKg, 45.0, 120.0, S::Published, C::Validated,
      "Pilot mass. Part of the certified weight range, not a handling "
      "parameter.", 0},
+    {"suspensionLengthM", "m", 8.08, 4.0, 12.0, S::Estimated, C::Unvalidated,
+     "Payload CG to canopy: carabiner arm, riser and line run. Sets every "
+     "pendulum period in the model, and is measured on the built suspension "
+     "graph rather than written down beside it.", 7},
+    {"mobilityLossPerG", "1", 0.35, 0.0, 1.0, S::Estimated, C::Unvalidated,
+     "How much of a pilot's weight-shift reach is lost per g. Their own body "
+     "is the mass being moved, so the effort scales with load while the "
+     "strength available does not. No measurement behind the rate.", 9},
     {"payloadRollRadiusOfGyrationM", "m", 0.24, 0.15, 0.40, S::Literature,
      C::Unvalidated,
      "Seated human plus harness in roll. Anthropometric tables put a seated "

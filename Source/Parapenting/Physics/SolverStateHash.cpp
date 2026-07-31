@@ -49,7 +49,7 @@ void SolverStateHash::Mix(const Quaternion& value)
 // the count of values HashFlightState covers. If a field is added without
 // being hashed, replays stop being able to detect divergence in it - silently.
 // This turns that into a build failure.
-constexpr int HashedValueCount = 75;
+constexpr int HashedValueCount = 74;
 static_assert(sizeof(FlightState) == HashedValueCount * sizeof(double),
     "FlightState changed size: add the new field(s) to HashFlightState and "
     "update HashedValueCount.");
@@ -70,7 +70,6 @@ std::uint64_t HashFlightState(const FlightState& state)
     hash.Mix(state.harnessPitchRad);
     hash.Mix(state.harnessPitchRateRadps);
     hash.Mix(state.previousLongitudinalAccelerationMps2);
-    hash.Mix(state.previousLateralAccelerationMps2);
     hash.Mix(state.previousLoadFactor);
     // Level 3 payload body.
     hash.Mix(state.payload.rollRad);

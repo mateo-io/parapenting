@@ -178,7 +178,6 @@ struct FlightState
     double harnessPitchRad = 0.0;
     double harnessPitchRateRadps = 0.0;
     double previousLongitudinalAccelerationMps2 = 0.0;
-    double previousLateralAccelerationMps2 = 0.0;
     double previousLoadFactor = 1.0;
     // Level 3 payload body: the pilot's own pendulum under the carabiners.
     PayloadState payload{};
@@ -288,6 +287,11 @@ struct Telemetry
     double carabinerLoadAsymmetry = 0.0;
     double pilotCgOffsetM = 0.0;
     double payloadRollRad = 0.0;
+    double payloadPitchRad = 0.0;
+    double payloadCgOffsetLongitudinalM = 0.0;
+    // Period of the suspension pendulum, seconds: 2*pi*sqrt(L/g). Every
+    // pendulum in the model is derived from this one length.
+    double suspensionPendulumPeriodS = 0.0;
     double brakeZoomEnergyJ = 0.0;
     double brakeZoomAvailableKineticEnergyJ = 0.0;
     double canopyRelativePitchRad = 0.0;
@@ -354,6 +358,15 @@ public:
         { HarnessShape = geometry; }
     const PayloadMassProperties& GetPayloadMass() const { return PayloadMass; }
     void SetPayloadMass(const PayloadMassProperties& mass) { PayloadMass = mass; }
+    // Distance from the payload CG to the canopy: riser, lines and the
+    // carabiner-to-CG arm. It sets every pendulum period in the model, so it
+    // is one number read from the suspension geometry rather than the three
+    // separate hardcoded 7.3s it replaces. The default is the EPIC 2 ML line
+    // plan on the default harness; the engine layer sets it from the built
+    // suspension graph.
+    double GetSuspensionLengthM() const { return SuspensionLengthM; }
+    void SetSuspensionLengthM(double metres)
+        { SuspensionLengthM = std::clamp(metres, 1.0, 20.0); }
     const Telemetry& LastTelemetry() const { return TelemetryState; }
 
 private:
@@ -361,6 +374,8 @@ private:
     HarnessParameters Harness;
     HarnessGeometry HarnessShape;
     PayloadMassProperties PayloadMass;
+    // 7.3 m canopy-to-riser + 0.50 m riser + 0.28 m carabiner-to-CG.
+    double SuspensionLengthM = 8.08;
     Telemetry TelemetryState;
 };
 }

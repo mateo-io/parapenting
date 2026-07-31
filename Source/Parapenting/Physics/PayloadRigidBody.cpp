@@ -13,14 +13,24 @@ constexpr double RollRadiusOfGyrationM = 0.24;
 constexpr double PitchRadiusOfGyrationM = 0.31;
 }
 
+double PayloadRollInertiaForMassKgM2(double payloadMassKg)
+{
+    return payloadMassKg * RollRadiusOfGyrationM * RollRadiusOfGyrationM;
+}
+
+double PayloadPitchInertiaForMassKgM2(double payloadMassKg)
+{
+    return payloadMassKg * PitchRadiusOfGyrationM * PitchRadiusOfGyrationM;
+}
+
 double PayloadRollInertiaKgM2(const PayloadMassProperties& mass)
 {
-    return mass.TotalKg() * RollRadiusOfGyrationM * RollRadiusOfGyrationM;
+    return PayloadRollInertiaForMassKgM2(mass.TotalKg());
 }
 
 double PayloadPitchInertiaKgM2(const PayloadMassProperties& mass)
 {
-    return mass.TotalKg() * PitchRadiusOfGyrationM * PitchRadiusOfGyrationM;
+    return PayloadPitchInertiaForMassKgM2(mass.TotalKg());
 }
 
 PayloadLoads SettledPayloadLoads(
@@ -33,14 +43,14 @@ PayloadLoads SettledPayloadLoads(
 
     loads.cgOffsetM = WeightShiftCgOffsetM(harness, input.weightShift);
 
-    // In a turn the payload hangs along the apparent vertical, not the true
-    // one, so part of the hip movement is spent catching up with the swing.
-    // This is why weight shift feels progressively less effective the deeper
-    // a spiral gets, and it needs no separate rule to say so.
-    const double apparentTilt = std::atan2(
-        input.lateralAccelerationMps2, std::max(1.0, input.gravityMps2));
-    loads.effectiveCgOffsetM =
-        loads.cgOffsetM - harness.carabinerAboveCgM * std::tan(apparentTilt);
+    // How much of that the pilot can actually achieve under load. Their own
+    // body is what has to be moved, so the effort scales with g while the
+    // strength available does not.
+    constexpr double MobilityLossPerG = 0.35;
+    const double loadFactor = std::max(0.1, input.loadFactor);
+    const double mobility =
+        1.0 / (1.0 + MobilityLossPerG * std::max(0.0, loadFactor - 1.0));
+    loads.effectiveCgOffsetM = loads.cgOffsetM * mobility;
 
     // Statics of a mass hung from two points: take moments about the left
     // carabiner. Nothing is fitted here - the split is the lever arm.

@@ -414,6 +414,14 @@ void AParapentingHUD::DrawHUD()
                  Telemetry.lineLoadTotalN,
                  Telemetry.highLoadDeformation * 100.0),
                  FLinearColor(0.72f, 0.82f, 1.0f), 292.0f, 274.0f);
+        // What the two carabiners are holding. Weight shift is a force at
+        // these points, so it is worth being able to watch it.
+        DrawText(FString::Printf(
+                 TEXT("CARABINER L %4.0f N  R %4.0f N   CG %+.0f mm"),
+                 Telemetry.leftCarabinerLoadN,
+                 Telemetry.rightCarabinerLoadN,
+                 Telemetry.pilotCgOffsetM * 1000.0),
+                 FLinearColor(0.72f, 0.82f, 1.0f), 292.0f, 298.0f);
         DrawText(FString::Printf(
                  TEXT("%s  PILOT %.0f kg  BALLAST %.0f  ALL-UP %.0f kg  %.2f kg/m2"),
                  ANSI_TO_TCHAR(Glider->GetHarnessDisplayName()),

@@ -197,6 +197,12 @@ Quaternion NoseUpAttitude(double radians);
 Vec3 CanopyPointLocalM(
     const SuspensionGraph& graph, double spanFraction, double chordFraction);
 
+// Distance from the payload CG to the canopy: carabiner-to-CG arm, riser and
+// the canopy-to-riser line run. This is the length that sets every pendulum
+// period in the flight model, so it is taken from the built graph rather than
+// written down again as a constant.
+double SuspensionPendulumLengthM(const SuspensionGraph& graph);
+
 // Total manufactured line length, for comparison against the published 254 m.
 double TotalLineLengthM(const SuspensionGraph& graph);
 }

@@ -32,6 +32,9 @@ struct PayloadMassProperties
 // reserve pocket sits near the CG and adds little.
 double PayloadRollInertiaKgM2(const PayloadMassProperties& mass);
 double PayloadPitchInertiaKgM2(const PayloadMassProperties& mass);
+// Same radii, for a caller that already knows the payload mass.
+double PayloadRollInertiaForMassKgM2(double payloadMassKg);
+double PayloadPitchInertiaForMassKgM2(double payloadMassKg);
 
 struct PayloadInput
 {
@@ -41,10 +44,13 @@ struct PayloadInput
     // Total load the lines are carrying, newtons. In steady flight this is the
     // system weight; in a spiral it is several g.
     double suspendedLoadN = 1030.0;
-    // Lateral specific force at the payload, m/s^2, positive toward +Y. In a
-    // turn this tilts the apparent vertical and the payload swings out, which
-    // is why weight shift loses authority as a spiral develops.
-    double lateralAccelerationMps2 = 0.0;
+    // Load factor at the payload, g. Weight shift loses authority as this
+    // rises, because a pilot pressed into the harness at 3 g cannot move
+    // their hips as far - at that load the same shift is most of a bodyweight
+    // lift. It is a mobility limit, not a swing: in a coordinated turn the
+    // harness already hangs along apparent gravity, so there is no apparent
+    // vertical for the pilot to be catching up with.
+    double loadFactor = 1.0;
     double longitudinalAccelerationMps2 = 0.0;
     double gravityMps2 = 9.80665;
 };

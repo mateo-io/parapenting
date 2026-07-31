@@ -86,9 +86,10 @@ bool LoadLinePlanSpec(const std::string& filePath, LinePlanSpec& spec)
         return ReadJsonNumber(text, key, out);
     };
     if (!read("canopyToRiserM", loaded.canopyToRiserM)) return false;
-    if (!read("carabinerSeparationM", loaded.carabinerSeparationM)) return false;
-    if (!read("weightShiftTravelM", loaded.weightShiftTravelM)) return false;
-    if (!read("weightShiftTiltM", loaded.weightShiftTiltM)) return false;
+    if (!read("carabinerSeparationM", loaded.harness.carabinerSeparationM))
+        return false;
+    if (!read("hipTravelM", loaded.harness.hipTravelM)) return false;
+    if (!read("chestStrapM", loaded.harness.chestStrapM)) return false;
     if (!read("brakeSlackM", loaded.brakeSlackM)) return false;
     if (!read("brakeTravelM", loaded.brakeTravelM)) return false;
     if (!read("cascadeSplitFraction", loaded.cascadeSplitFraction)) return false;
@@ -147,7 +148,7 @@ SuspensionGraph BuildSuspensionGraph(
     for (int sideIndex = 0; sideIndex < 2; ++sideIndex)
     {
         const double side = sideIndex == 0 ? -1.0 : 1.0;
-        const double carabinerY = side * 0.5 * plan.carabinerSeparationM;
+        const double carabinerY = side * 0.5 * plan.harness.carabinerSeparationM;
 
         SuspensionNode carabiner;
         carabiner.kind = SuspensionNodeKind::Carabiner;

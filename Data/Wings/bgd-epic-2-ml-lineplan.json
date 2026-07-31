@@ -51,13 +51,13 @@
       "value": 0.42,
       "why": "Carabiner spacing across the harness. Level 3 replaces it with harness geometry."
     },
-    "weightShiftTravelM": {
-      "value": 0.09,
-      "why": "Lateral swing of the carabiner pair at full weight shift. A stand-in for a payload that can actually move; Level 3 deletes it."
+    "hipTravelM": {
+      "value": 0.075,
+      "why": "How far a seated pilot moves their CG sideways at full weight shift. Level 3 replaced the earlier travel and tilt stand-ins with this: the mass moves, the harness rolls under it, and the carabiners take unequal shares. Measure it on a simulator rig to replace it."
     },
-    "weightShiftTiltM": {
-      "value": 0.022,
-      "why": "Vertical offset of each carabiner when the harness rolls under full weight shift, about 6 deg on a 0.42 m carabiner spacing. This tilt is what gives weight shift any effect at all here: with a massless payload anchor, swinging both carabiners sideways only translates the canopy. Level 3 replaces it with a payload CG and a harness geometry class."
+    "chestStrapM": {
+      "value": 0.44,
+      "why": "Chest strap between riser attachment points. Narrower lets the harness roll further for the same hip movement, so it sets weight-shift authority through geometry rather than through a gain."
     },
     "brakeSlackM": {
       "value": 0.12,

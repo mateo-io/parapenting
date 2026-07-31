@@ -386,6 +386,23 @@ private:
     // geometry above so the lines cannot describe a different wing.
     Parapenting::Physics::SuspensionGraph LineGraph;
     Parapenting::Physics::SuspensionSolution LineSolution;
+    // Where the solver puts the cascade junctions, as a shape the render path
+    // can apply to the deformed canopy: how far up the riser-to-attachment run
+    // the junction sits, and how far off that straight line it hangs. Indexed
+    // by LineRow. This replaces the invented sag curve the lines used to be
+    // drawn with - the droop on screen is now the droop the solver found under
+    // line weight and tension.
+    struct SuspensionRenderShape
+    {
+        float splitAlongRun = 0.6f;
+        // Offset of the junction from the straight run, metres, in payload
+        // axes for the RIGHT side; the left side mirrors in Y. Kept as a
+        // vector because a cascade spreads sideways as well as sagging, and a
+        // scalar "sag" would have to invent a direction for it - which is the
+        // habit this is replacing.
+        FVector OffsetFromRunM = FVector::ZeroVector;
+    };
+    SuspensionRenderShape LineShape[Parapenting::Physics::LineRowCount];
     Parapenting::Physics::ParagliderSolverClock SolverClock{
         PhysicsStepSeconds};
     double SimulationTimeSeconds = 0.0;

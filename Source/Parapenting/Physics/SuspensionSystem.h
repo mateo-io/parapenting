@@ -44,9 +44,17 @@ struct SuspensionInput
     double frontalCollapse = 0.0;
     double leftBrake = 0.0;
     double rightBrake = 0.0;
-    double weightShift = 0.0;
+    // Share of the suspended load the carabiners take unequally, from the
+    // payload's CG offset: (right - left) / total. This is a force ratio
+    // measured at the carabiners, not a control input - PayloadRigidBody
+    // computes it from harness geometry and the pilot's hip movement.
+    double carabinerLoadAsymmetry = 0.0;
     double canopyPressure = 1.0;
-    // Positive means the right half carries more aerodynamic load.
+    // Positive means the right half carries more aerodynamic load. Kept
+    // strictly separate from carabinerLoadAsymmetry above: more lift on a half
+    // lifts that tip, more carabiner load pulls it down, and summing the two
+    // into one number is what made brake and weight shift disagree about
+    // which way to bank.
     double spanwiseLoadAsymmetry = 0.0;
 };
 

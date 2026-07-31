@@ -2,10 +2,17 @@ cmake_minimum_required(VERSION 3.20)
 project(ParapentingPhysicsTests LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Every suite here is written with assert(). Release defines NDEBUG, which
+# compiles all of them away and leaves the tests passing by doing nothing -
+# 605 checks in PhysicsTests alone were inert. Keep them live in every build
+# type; these are test binaries, not shipping code.
+add_compile_options(-UNDEBUG)
 
 add_executable(parapenting_physics_tests
     PhysicsTests.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AtmosphereModel.cpp
     ../Source/Parapenting/Physics/DiurnalCycle.cpp
     ../Source/Parapenting/Physics/GroundEffectModel.cpp
@@ -46,6 +53,8 @@ target_compile_options(parapenting_physics_tests PRIVATE -Wall -Wextra -Wpedanti
 add_executable(parapenting_flight_probe
     FlightProbe.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AtmosphereModel.cpp
     ../Source/Parapenting/Physics/DiurnalCycle.cpp
     ../Source/Parapenting/Physics/GroundEffectModel.cpp
@@ -70,6 +79,8 @@ target_compile_options(parapenting_flight_probe PRIVATE -Wall -Wextra -Wpedantic
 add_executable(parapenting_regression_matrix
     RegressionMatrix.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AtmosphereModel.cpp
     ../Source/Parapenting/Physics/DiurnalCycle.cpp
     ../Source/Parapenting/Physics/GroundEffectModel.cpp
@@ -109,8 +120,11 @@ add_executable(parapenting_suspension_tests
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/TensionCableSolver.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AerodynamicPolar.cpp
     ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
     ../Source/Parapenting/Physics/SuspensionSystem.cpp
@@ -124,9 +138,29 @@ target_compile_options(parapenting_suspension_tests PRIVATE
     -Wall -Wextra -Wpedantic
 )
 
+add_executable(parapenting_payload_tests
+    PayloadTests.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
+    ../Source/Parapenting/Physics/EquipmentSetup.cpp
+    ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/AerodynamicPolar.cpp
+    ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
+    ../Source/Parapenting/Physics/WingCatalogue.cpp
+)
+target_include_directories(parapenting_payload_tests PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_payload_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
 add_executable(parapenting_determinism_tests
     DeterminismTests.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/TensionCableSolver.cpp
     ../Source/Parapenting/Physics/ParagliderSolverClock.cpp
     ../Source/Parapenting/Physics/ResearchCoefficientRegistry.cpp
@@ -134,6 +168,8 @@ add_executable(parapenting_determinism_tests
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/SolverStateHash.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AerodynamicPolar.cpp
     ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
     ../Source/Parapenting/Physics/SuspensionSystem.cpp
@@ -153,6 +189,8 @@ add_executable(parapenting_terrain_survey_tests
     ../Source/Parapenting/Physics/HeightfieldGrid.cpp
     ../Source/Parapenting/Physics/RouteCatalogue.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AerodynamicPolar.cpp
     ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
     ../Source/Parapenting/Physics/SuspensionSystem.cpp
@@ -169,6 +207,8 @@ target_compile_options(parapenting_terrain_survey_tests PRIVATE
 add_executable(parapenting_still_air_probe
     StillAirProbe.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
     ../Source/Parapenting/Physics/AerodynamicPolar.cpp
     ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
     ../Source/Parapenting/Physics/SuspensionSystem.cpp

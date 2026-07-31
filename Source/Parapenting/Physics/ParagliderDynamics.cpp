@@ -208,8 +208,20 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     const double groundEffect = landingAero.proximity;
     const double flareBoost = landingAero.flareLiftCoefficient;
 
-    const double harnessRollTarget =
-        controls.weightShift * 0.24 * Harness.weightShiftAuthority;
+    // Level 3: the pilot is a mass on a harness, not a roll animation. Hip
+    // movement offsets the payload CG, the two carabiners take unequal shares
+    // of a real weight, and everything downstream reads those forces.
+    PayloadInput payloadInput;
+    payloadInput.weightShift = controls.weightShift;
+    payloadInput.suspendedLoadN =
+        std::max(1.0, Params.allUpMassKg * 9.80665
+            * std::max(0.2, state.previousLoadFactor));
+    payloadInput.lateralAccelerationMps2 =
+        state.previousLateralAccelerationMps2;
+    payloadInput.longitudinalAccelerationMps2 =
+        state.previousLongitudinalAccelerationMps2;
+    const PayloadLoads payload = StepPayload(
+        state.payload, PayloadMass, HarnessShape, payloadInput, dt);
     // The payload is a suspended mass, not a pitch animation. Its
     // longitudinal equilibrium follows the previous-step canopy/system
     // acceleration: it swings forward under deceleration and aft under
@@ -221,17 +233,18 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
         std::atan2(
             -state.previousLongitudinalAccelerationMps2, 9.80665),
         -0.48, 0.48);
-    const double harnessRollAcceleration =
-        Harness.rollStiffness * (harnessRollTarget - state.harnessRollRad)
-        - Harness.rollDamping * state.harnessRollRateRadps;
+    // The visible harness roll is the payload body's own roll; there is no
+    // second model of it.
+    const double harnessRollAcceleration = 0.0;
     const double harnessPitchAcceleration =
         longitudinalPendulumFrequency * longitudinalPendulumFrequency
             * (harnessPitchTarget - state.harnessPitchRad)
         - 0.62 * 2.0 * longitudinalPendulumFrequency
             * state.harnessPitchRateRadps;
-    state.harnessRollRateRadps += harnessRollAcceleration * dt;
+    (void)harnessRollAcceleration;
+    state.harnessRollRateRadps = state.payload.rollRateRadps;
     state.harnessPitchRateRadps += harnessPitchAcceleration * dt;
-    state.harnessRollRad += state.harnessRollRateRadps * dt;
+    state.harnessRollRad = state.payload.rollRad;
     state.harnessPitchRad += state.harnessPitchRateRadps * dt;
 
     // The pilot pushes a speed system through legs, harness and A/B risers.
@@ -453,7 +466,7 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             state.frontalCollapse,
             controls.leftBrake,
             controls.rightBrake,
-            std::clamp(state.harnessRollRad / 0.24, -1.0, 1.0),
+            payload.loadAsymmetry,
             state.canopyPressure,
             canopy.loadAsymmetry
         });
@@ -498,10 +511,36 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             canopy.rightStalledFraction)
             - 0.82 * state.deepStall,
         0.02, 1.0);
+    // Two channels, opposite senses, and they must stay apart.
+    //
+    //   payload: the carabiner carrying more load pulls that side of the wing
+    //            DOWN. Weight shift right rolls right.
+    //   aero:    the half generating more lift pushes that tip UP. A braked
+    //            half loses lift, so brake right also rolls right - by the
+    //            other route.
+    //
+    // Signs are stated against the bank convention used below, where positive
+    // is right-tip-high. Summed into one number, as they were, whichever
+    // control was not the one the coefficient had been fitted to came out
+    // inverted, and no downstream sign could have rescued both.
+    // Where the canopy hangs relative to the payload is statics: the roll
+    // moment divided by the pendulum stiffness of the suspended load, W times
+    // L. Nothing is fitted, and the answer is properly small - full weight
+    // shift is under a degree of hang angle. The large sustained bank of a
+    // real turn is not this; it is the coordinated turn below amplifying it.
+    const double lateralPendulumStiffnessNmPerRad = std::max(
+        200.0, suspendedWeightN * LateralSuspensionLengthM);
+    // Aerodynamic roll moment from the spanwise load split. The half carrying
+    // more lift rises, so this is positive - the opposite sense to the
+    // payload term, which is the whole point of keeping them apart.
+    const double halfWingLiftArmM = 0.42 * 0.5
+        * std::sqrt(Params.areaM2 * 5.2);
+    const double aeroRollMomentNm = canopy.loadAsymmetry
+        * Length(liftForce) * halfWingLiftArmM * attachedSpanTransmission;
     const double canopyRollTarget = std::clamp(
-        -0.68 * (suspension.lateralLoadImbalance / 0.38)
-            * suspensionControlTransmission
-            * attachedSpanTransmission,
+        (payload.rollMomentNm * suspensionControlTransmission
+             + aeroRollMomentNm)
+            / lateralPendulumStiffnessNmPerRad,
         -0.72, 0.72);
     const double relativeRollAcceleration =
         rollNaturalFrequency * rollNaturalFrequency
@@ -520,8 +559,10 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
         std::max(8.0, payloadMassKg * 0.18);
     const double payloadPitchInertia =
         std::max(10.0, payloadMassKg * 0.24);
-    state.canopyRelativeRollRateRadps +=
-        (suspension.rollMomentNm / payloadRollInertia) * dt;
+    // No moment is injected here. The roll moments act on the system in the
+    // moment sum below; adding them again to the hang angle counted them
+    // twice and pinned the relative roll against its limit, which is what
+    // made the wing tip over a few seconds into a weight-shift turn.
     state.canopyRelativePitchRateRadps +=
         (suspension.pitchMomentNm / payloadPitchInertia) * dt;
     const Vec3 harnessDragForce = dragDirectionWorld
@@ -620,6 +661,8 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // Heading and bank use the same signed turn convention in the simulator:
     // negative is left, positive is right.
     const double coordinatedBankTarget = std::clamp(
+        // The same relation read the other way: a nose-right yaw rate
+        // (positive) belongs with a right-tip-down bank (negative).
         -Params.yawToBankGain * state.angularVelocityBodyRadps.z
                 * activeTurnCommand
                 * brakeRollAuthority
@@ -644,6 +687,11 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             bankAngle)
         : 0.0;
 
+    // A banked wing turns toward its low tip. Measured, not assumed: a
+    // positive rotation about body +X puts the RIGHT tip UP, and a positive
+    // body +Z rate takes the nose RIGHT. So right-tip-up (bankAngle positive)
+    // is a left turn and wants a negative yaw rate. See the note in
+    // ParagliderCoordinateSystem.h, which described both the other way round.
     const double coordinatedYawTarget = std::clamp(
         -9.80665 * std::tan(bankAngle)
             / std::max(7.0, speed),
@@ -656,13 +704,14 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             + 390.0 * (state.rightCravat - state.leftCravat)
             - 95.0 * state.spin * brakeRollAuthority
             + canopy.rollMomentNm * brakeRollAuthority
-            + suspension.rollMomentNm
+            + payload.rollMomentNm
             + bankBarrierMoment
             - Params.rollDamping * state.angularVelocityBodyRadps.x,
         -Params.pitchDamping * state.angularVelocityBodyRadps.y
             - Params.pitchStiffness * alphaFromTrim
             - Params.acceleratorPitchMoment * state.acceleratorTravel
             + suspension.pitchMomentNm
+            + payload.pitchMomentNm
             - 22.0 * state.acceleratorRate
             - 210.0 * state.recoverySurge
             + 85.0 * state.frontalCollapse,
@@ -855,6 +904,11 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
         state.canopyRelativePitchRateRadps;
     TelemetryState.canopyRelativeRollRad =
         state.canopyRelativeRollRad;
+    TelemetryState.leftCarabinerLoadN = payload.leftCarabinerN;
+    TelemetryState.rightCarabinerLoadN = payload.rightCarabinerN;
+    TelemetryState.carabinerLoadAsymmetry = payload.loadAsymmetry;
+    TelemetryState.pilotCgOffsetM = payload.effectiveCgOffsetM;
+    TelemetryState.payloadRollRad = state.payload.rollRad;
     TelemetryState.canopyRelativeRollRateRadps =
         state.canopyRelativeRollRateRadps;
     TelemetryState.suspensionControlTransmission =

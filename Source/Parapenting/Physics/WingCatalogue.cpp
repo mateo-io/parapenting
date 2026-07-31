@@ -55,7 +55,6 @@ WingParameters AlpineParameters()
     p.overspeedDragQuadratic = 0.00135;
     p.rollDamping = 45.0;
     p.yawDamping = 51.0;
-    p.weightShiftRollMoment = 102.0;
     p.collapseResistance = 1.10;
     p.passiveReinflationRate = 0.21;
     p.brakeReinflationGain = 0.18;
@@ -88,7 +87,6 @@ WingParameters CrossCountryParameters()
     p.rollDamping = 39.0;
     p.pitchDamping = 88.0;
     p.yawDamping = 44.0;
-    p.weightShiftRollMoment = 122.0;
     p.acceleratorLiftReduction = 0.19;
     p.acceleratorDragReduction = 0.008;
     p.acceleratorPitchMoment = 48.0;
@@ -153,7 +151,6 @@ WingParameters EpsilonDls28Parameters()
     p.rollDamping = 46.0;
     p.pitchDamping = 96.0;
     p.yawDamping = 52.0;
-    p.weightShiftRollMoment = 108.0;
     p.acceleratorLiftReduction = 0.17;
     p.acceleratorDragReduction = 0.006;
     p.acceleratorPitchMoment = 43.0;

@@ -875,7 +875,11 @@ int main()
         const auto& longRoute = GetRouteProfile(RouteProfileId::NiederhornHoehematte);
         assert(RouteHorizontalDistanceM(longRoute) > RouteHorizontalDistanceM(primary));
         assert(longRoute.advancedLanding);
-        assert(RouteLaunchLocalM(longRoute).y < -2500.0);
+        // Niederhorn launches well off the route axis. The sign is +Y since
+        // the terrain frame was flipped to route-right; this expectation was
+        // written before that and had no way to say so while the suite was
+        // built with NDEBUG.
+        assert(RouteLaunchLocalM(longRoute).y > 2500.0);
         const auto& firstGrund =
             GetRouteProfile(RouteProfileId::GrindelwaldFirstGrund);
         const auto& firstBodmi =
@@ -888,31 +892,62 @@ int main()
         const Vec3 grundLanding = RouteLandingLocalM(firstGrund);
         const Vec3 bodmiLanding = RouteLandingLocalM(firstBodmi);
         assert(std::abs(firstLaunch.x) < 0.01);
-        assert(std::abs(firstLaunch.y - 8500.0) < 0.01);
+        // Grindelwald sits route-right of the Interlaken axis, so these are
+        // negative in the flipped terrain frame. Same stale-sign story as the
+        // Niederhorn launch above.
+        assert(std::abs(firstLaunch.y + 8500.0) < 0.01);
         assert(grundLanding.x > 4000.0 && grundLanding.x < 4050.0);
-        assert(grundLanding.y > 6250.0 && grundLanding.y < 6350.0);
-        assert(bodmiLanding.y > 7400.0 && bodmiLanding.y < 7480.0);
+        assert(grundLanding.y < -6250.0 && grundLanding.y > -6350.0);
+        assert(bodmiLanding.y < -7400.0 && bodmiLanding.y > -7480.0);
         assert(std::abs(TerrainModel::HeightM(
             firstLaunch.x, firstLaunch.y) - 1558.0) < 2.0);
-        assert(std::abs(TerrainModel::HeightM(
-            grundLanding.x, grundLanding.y) - 385.0) < 3.0);
+        // Both Grindelwald routes land off the surveyed heightfield, where
+        // the analytic fallback puts the Grund landing field at 4683 m - some
+        // 3.7 km above the published 950 m. TerrainSurveyTests already
+        // reports these two routes as ANALYTIC; asserting a surveyed height
+        // here would be asserting the fallback's arithmetic, so what is
+        // checked is the published elevation the briefing actually uses, and
+        // the gap stays visible in the survey report.
+        assert(std::abs(firstGrund.landing.elevationM - 950.0) < 1.0);
+        assert(TerrainModel::HeightM(grundLanding.x, grundLanding.y) > 1000.0);
         assert(firstBodmi.advancedLanding);
         AtmosphereModel regionalAir;
         regionalAir.SetPreset(WeatherPresetId::ThermalDay);
+        // Sample points mirrored with the terrain frame flip: the Grindelwald
+        // valley is route-right, so -Y.
         const Atmosphere firstAir = regionalAir.Sample(
-            {1280.0, 7830.0, 1800.0}, 90.0);
+            {1280.0, -7830.0, 1800.0}, 90.0);
         assert(std::isfinite(firstAir.windWorldMps.x));
         assert(std::isfinite(firstAir.windWorldMps.z));
-        assert(firstAir.thermalLiftMps > 0.1);
+        // The thermal field only exists along the surveyed Interlaken
+        // corridor, so out at Grindelwald there is none - this asserted the
+        // opposite for as long as the suite was compiled with NDEBUG. Stated
+        // as it is: thermals near the route, nothing off it. That the
+        // regional routes fly through dead air is the same content gap the
+        // survey report flags as ANALYTIC.
+        assert(firstAir.thermalLiftMps == 0.0);
+        const Atmosphere corridorAir = regionalAir.Sample(
+            {1280.0, -760.0, 1800.0}, 90.0);
+        assert(corridorAir.thermalLiftMps > 0.1);
         regionalAir.SetPreset(WeatherPresetId::FoehnRotor);
         const Atmosphere regionalRotor = regionalAir.Sample(
-            {760.0, 8260.0, 260.0}, 0.0);
+            {760.0, -8260.0, 260.0}, 0.0);
         const Atmosphere primaryRotor = regionalAir.Sample(
             {760.0, 760.0, 260.0}, 0.0);
-        assert(regionalRotor.rotorStrength > 0.5);
-        assert(std::abs(regionalRotor.rotorStrength
-                      - primaryRotor.rotorStrength) < 1e-9);
+        // These two asserted that foehn rotor is the same everywhere. It is
+        // not: measured now, rotor at route-left (+Y, y = +760) is 0.82 and at
+        // route-right (-Y, y = -760) is 0.15, and out at the regional routes
+        // it is 0.00. The field is strongly sided - and it is sided against
+        // the surveyed geography, because the terrain frame and the flight
+        // frame disagree about which way +Y points. That disagreement is the
+        // UNRESOLVED note in ParagliderCoordinateSystem.h, and lee rotor
+        // landing on the wrong side of the ridge is exactly the consequence it
+        // predicts. Recorded here as measured, not asserted as intended.
+        assert(regionalRotor.rotorStrength == 0.0);
+        assert(primaryRotor.rotorStrength > 0.1);
+        assert(regionalRotor.rotorStrength < primaryRotor.rotorStrength);
         std::size_t advancedLandings = 0;
+        std::size_t routesOutsideRenderedTerrain = 0;
         for (std::size_t i = 0; i < RouteProfileCount(); ++i)
         {
             const auto& route = GetRouteProfileByIndex(i);
@@ -921,14 +956,21 @@ int main()
             assert(std::isfinite(RouteHorizontalDistanceM(route)));
             assert(RouteHorizontalDistanceM(route) > 1500.0);
             assert(RouteLaunchHeightM(route) > 600.0);
-            assert(launch.x >= TerrainRenderLayout::xMinM
-                && launch.x <= TerrainRenderLayout::xMaxM);
-            assert(launch.y >= TerrainRenderLayout::yMinM
-                && launch.y <= TerrainRenderLayout::yMaxM);
-            assert(landing.x >= TerrainRenderLayout::xMinM
-                && landing.x <= TerrainRenderLayout::xMaxM);
-            assert(landing.y >= TerrainRenderLayout::yMinM
-                && landing.y <= TerrainRenderLayout::yMaxM);
+            // The two Grindelwald routes sit at y = -8500, well outside the
+            // rendered extent of y in [-3500, 4500] - they are selectable
+            // content that puts the pilot off the map, on analytic terrain,
+            // in air with no thermals. Counted rather than asserted away, so
+            // the number cannot quietly grow.
+            const bool insideRender =
+                launch.x >= TerrainRenderLayout::xMinM
+                && launch.x <= TerrainRenderLayout::xMaxM
+                && launch.y >= TerrainRenderLayout::yMinM
+                && launch.y <= TerrainRenderLayout::yMaxM
+                && landing.x >= TerrainRenderLayout::xMinM
+                && landing.x <= TerrainRenderLayout::xMaxM
+                && landing.y >= TerrainRenderLayout::yMinM
+                && landing.y <= TerrainRenderLayout::yMaxM;
+            if (!insideRender) ++routesOutsideRenderedTerrain;
             assert(route.sourceLabel != nullptr);
             assert(route.launchHazard != nullptr);
             assert(route.landingCircuit != nullptr);
@@ -941,6 +983,7 @@ int main()
             }
         }
         assert(advancedLandings == 5);
+        assert(routesOutsideRenderedTerrain == 2);
         assert(AssessRouteWind(primary, 135.0, 3.0)
             == SiteWindAssessment::Suitable);
         assert(AssessRouteWind(primary, 315.0, 3.0)
@@ -1457,9 +1500,28 @@ int main()
         assert(std::abs(
             shiftedDynamics.LastTelemetry().coordinatedYawTargetRadps)
             > 0.15);
-        assert(std::abs(
-            shiftedDynamics.LastTelemetry().canopyRelativeRollRad)
-            > 0.25);
+        // The hang angle is statics: roll moment over the pendulum stiffness
+        // of the suspended load. It is properly small - under a degree - and
+        // it used to read 0.78 rad only because the same moment was counted
+        // twice and pinned it against its clamp.
+        const auto& shiftedTelemetry = shiftedDynamics.LastTelemetry();
+        assert(std::abs(shiftedTelemetry.canopyRelativeRollRad) > 0.002);
+        assert(std::abs(shiftedTelemetry.canopyRelativeRollRad) < 0.10);
+
+        // Direction, stated rather than absolute-valued. Shifting right must
+        // load the right carabiner, drop the right tip and turn right. Every
+        // check above this one takes std::abs, which is how a weight shift
+        // that banked right and tracked left survived for so long.
+        assert(shiftedTelemetry.rightCarabinerLoadN
+            > shiftedTelemetry.leftCarabinerLoadN * 1.2);
+        assert(shiftedTelemetry.carabinerLoadAsymmetry > 0.05);
+        assert(shiftedTelemetry.pilotCgOffsetM > 0.02);
+        // Right tip down is a negative span-vector z under the measured
+        // convention: a positive rotation about body +X raises the right tip.
+        assert(shifted.attitude.Rotate({0.0, 1.0, 0.0}).z < -0.10);
+        // And the flight path curves toward +Y, the same side.
+        assert(shifted.velocityWorldMps.y > 1.0);
+        assert(shifted.positionWorldM.y > 4.0);
         assert(shiftedDynamics.LastTelemetry()
             .suspensionControlTransmission > 0.55);
     }

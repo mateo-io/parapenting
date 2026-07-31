@@ -93,13 +93,15 @@ SuspensionLoads EvaluateSuspensionLoads(
         * meanChordM * result.totalTensionN * 0.085;
 
     const double pressure = std::clamp(input.canopyPressure, 0.0, 1.08);
-    const double shift = std::clamp(input.weightShift, -1.0, 1.0);
+    // What each carabiner holds is decided by where the payload's mass is,
+    // and by nothing else: it is the statics of a body hung from two points.
+    // Aerodynamic asymmetry biases the line tensions above the risers, which
+    // fillSide handles, but it cannot change which carabiner the pilot is
+    // sitting over.
+    const double lateralImbalance = std::clamp(
+        input.carabinerLoadAsymmetry, -0.72, 0.72);
     const double aeroAsymmetry =
         std::clamp(input.spanwiseLoadAsymmetry, -0.85, 0.85);
-    // Moving the payload changes carabiner reaction before the canopy has
-    // time to settle. Aerodynamic asymmetry then adds to or opposes it.
-    const double lateralImbalance = std::clamp(
-        0.38 * shift + 0.48 * aeroAsymmetry, -0.72, 0.72);
     result.lateralLoadImbalance = lateralImbalance;
     result.left.carabinerLoadFraction = 0.5 * (1.0 - lateralImbalance);
     result.right.carabinerLoadFraction = 0.5 * (1.0 + lateralImbalance);
@@ -110,8 +112,12 @@ SuspensionLoads EvaluateSuspensionLoads(
             leftSide ? input.leftCollapse : input.rightCollapse, 0.0, 0.95);
         const double sideBrake = std::clamp(
             leftSide ? input.leftBrake : input.rightBrake, 0.0, 1.0);
+        // Line tension above the riser follows the carabiner share and the
+        // aerodynamic bias on that half.
+        const double sideAero = 1.0 + 0.48 * (leftSide ? -1.0 : 1.0)
+            * aeroAsymmetry;
         const double sideLoad = result.totalTensionN
-            * side.carabinerLoadFraction * pressure;
+            * side.carabinerLoadFraction * pressure * sideAero;
         std::array<double, 4> shares{
             result.aFraction,
             result.bFraction,

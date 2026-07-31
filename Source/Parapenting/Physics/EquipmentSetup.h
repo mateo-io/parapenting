@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HarnessGeometry.h"
 #include "ParagliderDynamics.h"
 
 #include <array>
@@ -23,7 +24,14 @@ struct HarnessProfile
     double pendulumRollDamping;
     double pendulumPitchStiffness;
     double pendulumPitchDamping;
-    double weightShiftAuthority;
+    // Level 3: the geometry that decides weight-shift authority. There is no
+    // authority multiplier any more - a harness earns its responsiveness by
+    // how far it lets the pilot's mass move.
+    HarnessClass harnessClass;
+    double chestStrapM;
+    double carabinerSeparationM;
+    double carabinerAboveCgM;
+    double hipTravelM;
 };
 
 struct EquipmentSetup
@@ -42,4 +50,6 @@ double WingLoadingKgM2(
 WingParameters ApplyEquipmentSetup(
     const WingParameters& base, const EquipmentSetup& setup, double wingMassKg);
 HarnessParameters HarnessParametersFor(const EquipmentSetup& setup);
+HarnessGeometry HarnessGeometryFor(const EquipmentSetup& setup);
+PayloadMassProperties PayloadMassFor(const EquipmentSetup& setup);
 }

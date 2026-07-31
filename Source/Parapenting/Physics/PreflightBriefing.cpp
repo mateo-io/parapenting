@@ -36,8 +36,11 @@ PreflightBriefing EvaluatePreflightBriefing(
     result.cruiseWindMps = horizontalSpeed(cruiseAir.windWorldMps);
     result.gustSpreadMps = std::max(
         0.0, snapshot.gustSpeedMps - snapshot.windSpeedMps);
-    result.launchDirectionErrorDegrees =
-        RouteWindDirectionErrorDegrees(route, result.windFromDegrees);
+    // Same reason as AssessRouteWind: in a dead calm there is no direction to
+    // be wrong about, so it must not cost the launch any suitability.
+    result.launchDirectionErrorDegrees = result.launchWindMps < 0.5
+        ? 0.0
+        : RouteWindDirectionErrorDegrees(route, result.windFromDegrees);
     result.launchWindAssessment = AssessRouteWind(
         route, result.windFromDegrees, result.launchWindMps);
     result.thermalStrengthMps = parameters.thermalStrengthMps;

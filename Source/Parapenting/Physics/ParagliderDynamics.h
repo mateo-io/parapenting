@@ -1,5 +1,8 @@
 #pragma once
 
+#include "HarnessGeometry.h"
+#include "PayloadRigidBody.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -77,7 +80,6 @@ struct WingParameters
     double yawDamping = 165.0;
     double brakeRollMoment = 230.0;
     double brakeYawMoment = 145.0;
-    double weightShiftRollMoment = 110.0;
     // Coupled canopy/payload approximation. Brake first yaws through drag;
     // the suspended mass then banks the system toward a coordinated turn.
     // These replace the old unbounded direct brake-to-roll torque.
@@ -159,7 +161,6 @@ struct HarnessParameters
     double rollDamping = 3.2;
     double pitchStiffness = 5.8;
     double pitchDamping = 2.8;
-    double weightShiftAuthority = 1.0;
 };
 
 struct FlightState
@@ -177,6 +178,10 @@ struct FlightState
     double harnessPitchRad = 0.0;
     double harnessPitchRateRadps = 0.0;
     double previousLongitudinalAccelerationMps2 = 0.0;
+    double previousLateralAccelerationMps2 = 0.0;
+    double previousLoadFactor = 1.0;
+    // Level 3 payload body: the pilot's own pendulum under the carabiners.
+    PayloadState payload{};
     double previousSymmetricBrake = 0.0;
     double previousLeftBrake = 0.0;
     double previousRightBrake = 0.0;
@@ -276,6 +281,13 @@ struct Telemetry
     double brakeZoomEnergy = 0.0;
     double brakeZoomLiftCoefficient = 0.0;
     double coordinatedYawTargetRadps = 0.0;
+    // Level 3: what the carabiners are actually holding, newtons, and the
+    // payload CG offset producing the split.
+    double leftCarabinerLoadN = 0.0;
+    double rightCarabinerLoadN = 0.0;
+    double carabinerLoadAsymmetry = 0.0;
+    double pilotCgOffsetM = 0.0;
+    double payloadRollRad = 0.0;
     double brakeZoomEnergyJ = 0.0;
     double brakeZoomAvailableKineticEnergyJ = 0.0;
     double canopyRelativePitchRad = 0.0;
@@ -335,11 +347,20 @@ public:
     void SetParameters(const WingParameters& parameters) { Params = parameters; }
     void SetHarnessParameters(const HarnessParameters& parameters)
         { Harness = parameters; }
+    // Level 3: the harness the pilot is sitting in, and what they weigh. Both
+    // feed the carabiner loads rather than any handling gain.
+    const HarnessGeometry& GetHarnessGeometry() const { return HarnessShape; }
+    void SetHarnessGeometry(const HarnessGeometry& geometry)
+        { HarnessShape = geometry; }
+    const PayloadMassProperties& GetPayloadMass() const { return PayloadMass; }
+    void SetPayloadMass(const PayloadMassProperties& mass) { PayloadMass = mass; }
     const Telemetry& LastTelemetry() const { return TelemetryState; }
 
 private:
     WingParameters Params;
     HarnessParameters Harness;
+    HarnessGeometry HarnessShape;
+    PayloadMassProperties PayloadMass;
     Telemetry TelemetryState;
 };
 }

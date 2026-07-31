@@ -910,11 +910,33 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             Arch - Drop);
         CanopyLocal =
             CanopyRelativeTransform.TransformPosition(CanopyLocal);
-        const FVector MidLocal = FMath::Lerp(PilotLocal, CanopyLocal, 0.52f)
-            + FVector(
-                22.0f * LineSlack,
-                Flutter * (0.35f + 1.15f * LineSlack),
-                -115.0f * FMath::Square(LineSlack));
+        // The cascade junction, placed where the solver put it: the fraction
+        // along the riser-to-attachment run and the sag off that line are the
+        // Level 2 solution's, not a drawn curve. Slack still deepens the
+        // droop, because a line that has stopped carrying load hangs under its
+        // own weight and the rigid-canopy solver has no collapse to show it.
+        const int32 ShapeRow = Attachment.group
+                == Parapenting::Physics::SuspensionGroup::BabyA
+            ? static_cast<int32>(Parapenting::Physics::LineRow::ABaby)
+            : (Attachment.group
+                   == Parapenting::Physics::SuspensionGroup::B
+               ? static_cast<int32>(Parapenting::Physics::LineRow::B)
+               : (Attachment.group
+                      == Parapenting::Physics::SuspensionGroup::C
+                  ? static_cast<int32>(Parapenting::Physics::LineRow::C)
+                  : static_cast<int32>(Parapenting::Physics::LineRow::A)));
+        const FVector RunLocal = CanopyLocal - PilotLocal;
+        FVector SolvedOffset =
+            LineShape[ShapeRow].OffsetFromRunM * MetresToCm;
+        if (bLeft) SolvedOffset.Y = -SolvedOffset.Y;
+        const FVector MidLocal =
+            PilotLocal + RunLocal * LineShape[ShapeRow].splitAlongRun
+            + SolvedOffset
+            // A line that has stopped carrying load hangs under its own
+            // weight. The rigid-canopy solver has no collapse to show that
+            // with, so slack still deepens the droop here.
+            + FVector(0.0f, Flutter * (0.35f + 1.15f * LineSlack),
+                      -95.0f * FMath::Square(LineSlack));
         const FColor LineColor = FLinearColor::LerpUsingHSV(
             FLinearColor(0.16f, 0.17f, 0.18f),
             FLinearColor(GroupColor), 1.0f - 0.72f * LineSlack)
@@ -1821,6 +1843,17 @@ void AParagliderPawn::ApplyEquipmentConfiguration()
         Configured, Equipment, WingMass));
     Dynamics.SetHarnessParameters(
         Parapenting::Physics::HarnessParametersFor(Equipment));
+    // Level 3: the harness the pilot is strapped into and what they weigh.
+    // Weight-shift authority now comes from this geometry, so cycling the
+    // harness changes the handling because the mass can move further, not
+    // because an authority multiplier was raised.
+    Dynamics.SetHarnessGeometry(
+        Parapenting::Physics::HarnessGeometryFor(Equipment));
+    Dynamics.SetPayloadMass(
+        Parapenting::Physics::PayloadMassFor(Equipment));
+    LineGraph.plan.harness =
+        Parapenting::Physics::HarnessGeometryFor(Equipment);
+    SolveSuspensionGraph();
 }
 
 void AParagliderPawn::CycleWingSize()
@@ -2568,6 +2601,75 @@ void AParagliderPawn::SolveSuspensionGraph()
     Input.rightBrake = AppliedControls.rightBrake;
     Input.weightShift = AppliedControls.weightShift;
     LineSolution = Parapenting::Physics::SolveSuspension(LineGraph, Input);
+
+    // Reduce the solved network to a shape the line rendering can apply to the
+    // canopy as it is actually drawn - deformed by collapse, cravat and load,
+    // none of which the Level 2 rigid-canopy solver models. The sag is the
+    // solver's; the endpoints stay the render path's, so lines still terminate
+    // on the surface the pilot can see.
+    FVector offsetSum[Parapenting::Physics::LineRowCount]{};
+    double splitSum[Parapenting::Physics::LineRowCount]{};
+    int shapeCount[Parapenting::Physics::LineRowCount]{};
+    for (std::size_t Index = 0; Index < LineGraph.nodes.size(); ++Index)
+    {
+        const auto& Node = LineGraph.nodes[Index];
+        if (Node.kind
+            != Parapenting::Physics::SuspensionNodeKind::CascadeJunction)
+            continue;
+
+        // Find the run this junction sits on: its main line below and the
+        // mean of the uppers above.
+        Parapenting::Physics::Vec3 Lower{};
+        Parapenting::Physics::Vec3 UpperMean{};
+        int Uppers = 0;
+        bool bFoundLower = false;
+        for (const auto& Cable : LineSolution.cables)
+        {
+            if (Cable.nodeB == static_cast<int>(Index))
+            {
+                Lower = LineSolution.nodePositionM[
+                    static_cast<std::size_t>(Cable.nodeA)];
+                bFoundLower = true;
+            }
+            else if (Cable.nodeA == static_cast<int>(Index))
+            {
+                UpperMean += LineSolution.nodePositionM[
+                    static_cast<std::size_t>(Cable.nodeB)];
+                ++Uppers;
+            }
+        }
+        if (!bFoundLower || Uppers == 0) continue;
+        UpperMean = UpperMean / static_cast<double>(Uppers);
+
+        const Parapenting::Physics::Vec3 Run = UpperMean - Lower;
+        const double RunLength = Parapenting::Physics::Length(Run);
+        if (RunLength < 1e-6) continue;
+        const Parapenting::Physics::Vec3 Junction =
+            LineSolution.nodePositionM[Index];
+        const Parapenting::Physics::Vec3 Offset = Junction - Lower;
+        const double Along =
+            Parapenting::Physics::Dot(Offset, Run) / (RunLength * RunLength);
+        const Parapenting::Physics::Vec3 Perpendicular =
+            Offset - Run * Along;
+
+        const auto Row = static_cast<std::size_t>(Node.row);
+        splitSum[Row] += Along;
+        // Mirror the left half onto the right so the two average together
+        // instead of cancelling.
+        offsetSum[Row] += FVector(
+            static_cast<float>(Perpendicular.x),
+            static_cast<float>(Perpendicular.y * (Node.side < 0.0 ? -1.0 : 1.0)),
+            static_cast<float>(Perpendicular.z));
+        ++shapeCount[Row];
+    }
+    for (int Row = 0; Row < Parapenting::Physics::LineRowCount; ++Row)
+    {
+        if (shapeCount[Row] == 0) continue;
+        LineShape[Row].splitAlongRun = static_cast<float>(
+            splitSum[Row] / shapeCount[Row]);
+        LineShape[Row].OffsetFromRunM =
+            offsetSum[Row] / static_cast<float>(shapeCount[Row]);
+    }
 }
 
 void AParagliderPawn::ToggleGeometryVisualization()

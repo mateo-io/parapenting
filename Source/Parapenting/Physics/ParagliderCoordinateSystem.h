@@ -43,11 +43,31 @@ constexpr double UnrealUnitsToMetres = 0.01;
 // ---------------------------------------------------------------------------
 // Rotations
 // ---------------------------------------------------------------------------
-// Right-hand rule about each body axis, so a positive rotation is:
+// MEASURED, not assumed. This section previously stated all three the other
+// way round, and the cost of that was real: the weight-shift model banked the
+// wing one way and flew it the other for as long as it existed, because each
+// author who found a sign wrong fixed it downstream against this description
+// instead of against the wing.
 //
-//   roll  (+X)  right wing down
-//   pitch (+Y)  nose up
-//   yaw   (+Z)  nose left
+// The flight frame is forward/right/up, which is left-handed, while the
+// quaternion algebra in ParagliderDynamics is right-handed. So a positive
+// rotation about each body axis is:
+//
+//   roll  (+X)  right wing UP
+//   pitch (+Y)  nose DOWN
+//   yaw   (+Z)  nose RIGHT
+//
+// Verified by integrating the attitude directly: a body rate of +0.5 rad/s
+// about +Z for one second puts the nose at y = +0.479, and a +0.30 rad
+// rotation about +X puts the span vector at z = +0.30, right tip high. A wing
+// left in that attitude then curves LEFT, which is the correct physics for a
+// right-tip-high bank and confirms the lift coupling.
+//
+// Because of this, code that needs a physical sign should read it off the
+// rotated basis vectors rather than from an Euler-angle formula:
+//
+//   incidence, nose-up positive :  asin(attitude.Rotate({1,0,0}).z)
+//   bank, right tip down positive: asin(-attitude.Rotate({0,1,0}).z)
 //
 // FlightState::angularVelocityBodyRadps carries these in body axes, rad/s.
 enum class BodyAxis

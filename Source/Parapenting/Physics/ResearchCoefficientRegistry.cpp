@@ -1,6 +1,8 @@
 #include "ResearchCoefficientRegistry.h"
 #include "BillowRelaxation.h"
 #include "CanopyGeometry.h"
+#include "HarnessGeometry.h"
+#include "PayloadRigidBody.h"
 #include "SuspensionGraph.h"
 #include "ParagliderDynamics.h"
 
@@ -15,6 +17,8 @@ constexpr WingParameters Wing{};
 constexpr HarnessParameters Harness{};
 const CanopyGeometrySpec Canopy{};
 const LinePlanSpec& Lines = Epic2MlLinePlan();
+constexpr HarnessGeometry Harness3{};
+constexpr PayloadMassProperties Payload{};
 
 using S = CoefficientSource;
 using C = CalibrationStatus;
@@ -100,9 +104,6 @@ const CoefficientRecord Records[] = {
      "Direct control-to-moment. Guiding rule 2 removes this entirely.", 8},
     {"brakeYawMoment", "N*m", Wing.brakeYawMoment, 0.0, 400.0, S::Tuned, C::Provisional,
      "Direct control-to-moment. Guiding rule 2 removes this entirely.", 8},
-    {"weightShiftRollMoment", "N*m", Wing.weightShiftRollMoment, 0.0, 300.0,
-     S::Tuned, C::Provisional,
-     "Direct control-to-moment. Guiding rule 5 removes this entirely.", 3},
     {"coordinatedRollStiffness", "N*m/rad", Wing.coordinatedRollStiffness, 200.0, 1600.0,
      S::Tuned, C::Provisional, "Coupled-turn approximation.", 7},
     {"coordinatedRollDamping", "N*m*s/rad", Wing.coordinatedRollDamping, 40.0, 400.0,
@@ -201,11 +202,30 @@ const CoefficientRecord Records[] = {
     {"brakeSlackM", "m", Lines.brakeSlackM, 0.0, 0.35, S::Estimated, C::Unvalidated,
      "Slack sewn into the brake line at hands-up. Without it the trailing edge "
      "loads at trim.", 0},
-    {"weightShiftTiltM", "m", Lines.weightShiftTiltM, 0.0, 0.06,
-     S::Estimated, C::Provisional,
-     "Carabiner height offset when the harness rolls under full weight shift. "
-     "A stand-in for a payload that can actually move; Level 3 replaces it "
-     "with a payload CG and a harness geometry class.", 3},
+
+    // --- Level 3 payload and harness --------------------------------------
+    {"hipTravelM", "m", Harness3.hipTravelM, 0.03, 0.14, S::Estimated,
+     C::Unvalidated,
+     "How far a seated pilot can move their CG sideways at full weight shift. "
+     "The whole of weight-shift authority now rests on this and the chest "
+     "strap - there is no authority multiplier left to hide behind. Measure "
+     "it on a simulator rig to replace it.", 9},
+    {"chestStrapM", "m", Harness3.chestStrapM, 0.34, 0.56, S::Estimated,
+     C::Unvalidated,
+     "Chest strap setting between riser attachment points. Narrowing it "
+     "increases weight-shift authority through geometry alone.", 9},
+    {"carabinerAboveCgM", "m", Harness3.carabinerAboveCgM, 0.15, 0.45,
+     S::Estimated, C::Unvalidated,
+     "Carabiners above the seated pilot's CG. Sets the payload's own pendulum "
+     "period, which is the settle the pilot feels under them, and converts CG "
+     "offset into harness roll.", 9},
+    {"pilotKg", "kg", Payload.pilotKg, 45.0, 120.0, S::Published, C::Validated,
+     "Pilot mass. Part of the certified weight range, not a handling "
+     "parameter.", 0},
+    {"payloadRollRadiusOfGyrationM", "m", 0.24, 0.15, 0.40, S::Literature,
+     C::Unvalidated,
+     "Seated human plus harness in roll. Anthropometric tables put a seated "
+     "adult near this; it sets how fast the harness settles.", 9},
 };
 constexpr std::size_t RecordCount = std::size(Records);
 }

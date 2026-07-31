@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CanopyGeometry.h"
+#include "HarnessGeometry.h"
 #include "ParagliderDynamics.h"
 
 #include <string>
@@ -115,17 +116,10 @@ struct LinePlanSpec
     double acceleratedRiserLengthM[4]{0.38, 0.38, 0.42, 0.50};
     // Fore-aft separation of the riser maillons on the plate, +X forward.
     double riserForeAftM[4]{0.035, 0.035, 0.0, -0.035};
-    // Carabiner separation across the harness, and how far the pair swings
-    // laterally at full weight shift. Level 3 replaces both with harness
-    // geometry and a real payload CG.
-    double carabinerSeparationM = 0.42;
-    double weightShiftTravelM = 0.09;
-    // Weight shift also rolls the harness, so one carabiner drops and the
-    // other rises. That tilt is the whole mechanism at this level: with a
-    // massless payload, a purely lateral swing of both carabiners translates
-    // the canopy and changes nothing. Level 3 replaces both numbers with a
-    // payload CG and real harness geometry.
-    double weightShiftTiltM = 0.022;
+    // Level 3: the harness itself, which is where carabiner separation and
+    // everything weight shift does now come from. There is no separate travel
+    // or tilt stand-in any more - the pilot's CG moves and the harness rolls.
+    HarnessGeometry harness{};
     // Brake handle position in the payload frame, right side; mirrored.
     Vec3 brakeHandleLocalM{0.10, 0.34, -0.10};
     // Slack sewn into the brake line at hands-up, and handle travel at full

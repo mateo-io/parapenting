@@ -73,8 +73,14 @@ SuspensionSolution SolveSuspension(
     // carabiner pair; neither writes a moment anywhere.
     // ---------------------------------------------------------------------
     const double accelerator = std::clamp(input.accelerator, 0.0, 1.0);
-    const double shift = std::clamp(input.weightShift, -1.0, 1.0);
-    const double shiftY = shift * plan.weightShiftTravelM;
+    // Weight shift is the pilot's mass moving and the harness rolling under
+    // it - the same HarnessGeometry the flight model uses, so there is one
+    // description of weight shift rather than two that can disagree.
+    const double cgOffsetM =
+        WeightShiftCgOffsetM(plan.harness, input.weightShift);
+    const double harnessRollRad =
+        PayloadRollFromCgOffsetRad(plan.harness, cgOffsetM);
+    const double shiftY = cgOffsetM;
 
     std::vector<Vec3> position(nodeCount);
     std::vector<Vec3> velocity(nodeCount, Vec3{});
@@ -95,8 +101,10 @@ SuspensionSolution SolveSuspension(
                     + accelerator * (plan.acceleratedRiserLengthM[riser]
                                      - plan.trimRiserLengthM[riser]);
             }
-            // The harness rolls with the shift: the loaded side drops.
-            anchor.z -= shift * node.side * plan.weightShiftTiltM;
+            // The harness rolls with the shift, so the loaded carabiner drops
+            // and the other rises.
+            anchor.z -= node.side * std::sin(harnessRollRad)
+                * 0.5 * plan.harness.carabinerSeparationM;
             position[i] = anchor;
         }
         else if (node.kind == SuspensionNodeKind::CascadeJunction)

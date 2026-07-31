@@ -35,6 +35,7 @@ run_tests() {
     cmake --build "$BUILD_DIR" -j"$(sysctl -n hw.ncpu)"
     "$BUILD_DIR/parapenting_physics_tests"
     "$BUILD_DIR/parapenting_determinism_tests"
+    "$BUILD_DIR/parapenting_payload_tests"
     (cd "$ROOT" && "$BUILD_DIR/parapenting_geometry_tests" \
         Data/Wings/bgd-epic-2-ml-geometry.json)
     (cd "$ROOT" && "$BUILD_DIR/parapenting_suspension_tests" \

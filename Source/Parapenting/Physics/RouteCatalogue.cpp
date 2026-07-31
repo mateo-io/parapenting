@@ -206,6 +206,11 @@ SiteWindAssessment AssessRouteWind(
 {
     if (windSpeedMps > route.simulatorMaxLaunchWindMps)
         return SiteWindAssessment::TooStrong;
+    // You cannot be cross-wind in still air. Below this the direction is
+    // noise, and judging a launch on it is judging it on nothing.
+    constexpr double DirectionMeaningfulMps = 0.5;
+    if (windSpeedMps < DirectionMeaningfulMps)
+        return SiteWindAssessment::Suitable;
     if (RouteWindDirectionErrorDegrees(route, windFromDegrees)
         > route.preferredWindHalfWidthDegrees)
         return SiteWindAssessment::MarginalDirection;

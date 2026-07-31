@@ -38,6 +38,15 @@ double MeteorologicalDirectionFromWindVector(const Vec3& windWorldMps)
         windWorldMps.x * forwardEast + windWorldMps.y * leftEast;
     const double north =
         windWorldMps.x * forwardNorth + windWorldMps.y * leftNorth;
+    // Still air has no direction. atan2(-0.0, -0.0) is 180 and
+    // atan2(+0.0, +0.0) is 0, so without this the reported wind direction of
+    // a dead calm flips half the compass on the sign of a zero - and anything
+    // reading it, such as the launch cross-wind penalty in the preflight
+    // briefing, flips with it. Report due north and let callers check the
+    // speed.
+    constexpr double CalmThresholdMps = 1.0e-6;
+    if (std::fabs(east) < CalmThresholdMps && std::fabs(north) < CalmThresholdMps)
+        return 0.0;
     double fromDegrees = std::atan2(-east, -north) * RadToDeg;
     if (fromDegrees < 0.0) fromDegrees += 360.0;
     return fromDegrees;

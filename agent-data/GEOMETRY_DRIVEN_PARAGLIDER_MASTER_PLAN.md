@@ -43,6 +43,81 @@ shape of the unreachable work changes how the reachable work is designed. Do
 not treat failure to reach them as project failure. Treat reaching Camp II as
 an outstanding result.
 
+## Build status
+
+Updated at the end of the Level 7 work. The engine as built is documented in
+`docs/PHYSICS_ENGINE.md`; what it cost to build is in
+`docs/PHYSICS_LEARNINGS.md`.
+
+| Level | Status | Evidence |
+|---|---|---|
+| 0 Baseline and determinism | **Done** | state hash identical at 30/60/144/uncapped; registry live |
+| 1 Manufactured geometry | **Done** | unfold residual 2.4e-15; flat span, area, projected span exact |
+| 2 Suspension graph | **Done** | 254.8 m against published 254; rows A 36 / A' 11 / B 37 / C 16 |
+| 3 Payload and harness | **Done** | carabiner split exact to W(1/2 ± e/s); pendulum period 2π√(L/g) |
+| 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
+| 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
+| 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
+| 7 Coupled solver | **Built, trim unstable** | closure exact; decelerates and stalls over ~4 s |
+| 8 Emergent collapse | Not started | — |
+| 9 Calibration | Not started | — |
+| 10 Performance and legacy removal | Not started | — |
+| 11+ | Not started | — |
+
+**Camp I is complete. Camp II is two levels short**, with Level 6 delivered at a
+reduced scope and Level 7 not passing its own gates.
+
+### Carried gaps, by priority
+
+1. **The terrain frame disagrees with the flight frame.** `RouteFrame` and the
+   heightfield define +Y as route-left; the flight frame has +Y as right, and
+   nothing converts. Measured: foehn rotor is 0.82 route-left against 0.15
+   route-right, so lee rotor sits on the wrong side of the ridge relative to the
+   surveyed geography. This blocks the **Level 0** exit gate and is the oldest
+   open defect in the project. Everything from Level 9 onward that depends on
+   real terrain is built on it.
+2. **Level 7 trim is unstable.** First 200 steps clean; then decelerates, α
+   climbs through the section stall to 90 degrees, settles descending vertically.
+   Deceleration leads and stall follows.
+3. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
+   measurement. Every flight number in Level 4 rests on theory. The plan calls
+   for this work to begin during Level 1; it has not begun.
+4. **Both Grindelwald routes are off the surveyed heightfield and off the
+   rendered extent.** Analytic terrain puts the Grund landing at 4683 m against
+   a published 950 m, in air with no thermal field. Selectable content.
+5. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
+   endpoints, no self-collision. Level 8's cravats need the self-collision.
+6. **Deep stall does not converge** in the VSM, and will not: the separated
+   branch has a negative lift slope, which inverts the downwash feedback between
+   sections. Level 11's unsteady wake is the honest treatment. Locked as a
+   known-failure check.
+7. **Apparent-mass rotational terms are disputed** — leading coefficients
+   unverified against the source paper, and 14× the existing estimate in roll.
+   Registered `Disputed`; nothing uses their magnitude.
+8. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
+   is guiding rule 11 working as intended, but it means none of Levels 1-7 has
+   been exercised by a pilot.
+
+### Recommended next steps, in order
+
+1. **Fix Level 7 trim.** Everything above it is blocked and it is a focused
+   debugging problem, not a design one. Instrument the energy balance per
+   subsystem across the first four seconds and find where the energy goes; the
+   two suspects are the held load being stale in body axes while the flight path
+   rotates beneath it, and the starting incidence not being this polar's trim.
+2. **Resolve the terrain/flight frame disagreement.** It is a Level 0 gate, it
+   is cheap relative to what it blocks, and every later level that touches
+   terrain inherits it.
+3. **Start the polar acquisition.** It is a data problem with a long lead time,
+   it can run in parallel with anything, and it is what turns Level 4's numbers
+   from plausible into defensible.
+4. **Then Level 8**, which needs a converged Level 7 and self-collision in
+   Level 6 before collapse can be emergent rather than scripted.
+
+Levels 9 and 10 should not start before the gaps above close: calibrating an
+uncoupled model, or deleting the legacy path while the geometry-driven one
+cannot fly, would both be premature.
+
 ## Guiding rules
 
 1. Geometry is authoritative. Rendering and physics consume the same nodes,
@@ -206,6 +281,9 @@ Inflated canopy geometry ---- billow / ovalization equilibrium
 
 ## Level 0 — Baseline, contracts, and the determinism spine
 
+> **Status: done**, except the terrain/flight frame disagreement noted in
+> the exit gate below, which remains open and is the project's oldest defect.
+
 **Budget: 12 hours** *(was 6 — the engine-integration and dual-model work was
 missing)*
 
@@ -252,6 +330,9 @@ missing)*
 ---
 
 ## Level 1 — Manufactured EPIC 2 geometry
+
+> **Status: done.** Unfold residual 2.4e-15; flat span, flat area and
+> projected span exact by construction; billow emergent from the seam allowance.
 
 **Budget: 24 hours** *(was 10 — the original treated geometry as digitisation;
 it is actually a small CAD problem)*
@@ -332,6 +413,9 @@ is authored as a 3D surface, every later level is decorating a lie.
 
 ## Level 2 — Suspension and cascade graph
 
+> **Status: done.** 90 nodes, 78 cables, 254.8 m manufactured against a
+> published 254. Row shares emergent: A 36%, A' 11%, B 37%, C 16%.
+
 **Budget: 14 hours** *(was 10)*
 
 ### Work
@@ -377,6 +461,9 @@ is authored as a 3D surface, every later level is decorating a lie.
 
 ## Level 3 — Pilot, harness, and payload rigid body
 
+> **Status: done**, except full six-degree-of-freedom payload integration,
+> which is Level 7's two-body coupling rather than this level's.
+
 **Budget: 10 hours** *(was 8)*
 
 ### Work
@@ -411,6 +498,11 @@ is authored as a 3D surface, every later level is decorating a lie.
 ---
 
 ## Level 4 — Aerodynamics: VSM with viscous polars
+
+> **Status: done, with two gaps.** Validated against lifting-line theory
+> (CL_alpha 0.2%, CDi 3.6%) and published glide (9.46 vs 9.5). Section polars
+> are analytic, not measured - the data acquisition this level depends on has
+> not begun. Deep stall does not converge and is locked as a known failure.
 
 **Budget: 28 hours** *(was 12 — this is a solver port plus a data-acquisition
 problem, not one workstream)*
@@ -466,6 +558,10 @@ problem, not one workstream)*
 
 ## Level 5 — Cell openings and pressure model
 
+> **Status: done.** Stagnation point 5.2/9.7/14.3 degrees on bar/trim/brake;
+> inlets recover Cp 0.97 at trim and 0.89 on bar; pressure feeds back into
+> section performance.
+
 **Budget: 16 hours** *(was 10)*
 
 ### Work
@@ -502,6 +598,11 @@ problem, not one workstream)*
 ---
 
 ## Level 6 — Flexible membrane and ribs
+
+> **Status: core done at reduced scope.** Sagitta 26.32 mm against an
+> analytic 25.99, strain 0.060% against 0.064%, bias 8x softer than warp.
+> Delivered as spanwise strips at chord stations, not a full two-dimensional
+> mesh; ribs are fixed endpoints; no self-collision, which Level 8 needs.
 
 **Budget: 40 hours** *(was 14 — this was by a wide margin the most optimistic
 line in the original budget)*
@@ -542,6 +643,11 @@ line in the original budget)*
 ---
 
 ## Level 7 — Coupled solver and convergence
+
+> **Status: built, trim not stable.** The schedule, the staggered coupling
+> and the accounting all work - internal force closure is exact. Hands-off
+> flight decelerates and stalls over about four seconds instead of settling
+> into a glide. Excluded from the test suite until it does.
 
 **Budget: 18 hours** *(was 10)*
 

@@ -8,32 +8,13 @@ namespace Parapenting::Physics
 {
 // Level 6 of the master plan: the skin is fabric, not a surface.
 //
-// ============================ NOT WORKING =============================
-// This does not converge and is not in the test suite. It is committed
-// because the diagnosis is worth more than the code, and the next person
-// should not have to rediscover it.
-//
-// Measured: a strip cut with a 2.6% seam allowance across a 262 mm cell
-// should bulge to a sagitta of about 26 mm - c*sqrt(3*slack/8) for a shallow
-// arc - and stretch by about 0.03%, since the hoop tension p*R is around
-// 9 N/m against a membrane stiffness of 30000 N/m. What it actually does is
-// bulge to 91 mm and report 28% strain, and the answer changes with the
-// iteration count: sagitta 0.62 of cell width at 8 iterations, 0.24 at 64.
-// So the constraints are not holding and the solve has not converged.
-//
-// The compliance arithmetic checks out on paper - alpha = compliance/h^2 is
-// around 0.08 against an inverse-mass sum of 4370, so the constraints should
-// behave as nearly rigid - which points at the iteration scheme rather than
-// the material model: 24 Gauss-Seidel sweeps over a 24-segment chain only
-// just lets information cross it, and the pressure load injects a large
-// displacement each substep for the solve to then remove. Worth trying:
-// far more iterations, a coarser chain, or solving the chain directly rather
-// than by relaxation.
-//
-// The first attempt was worse and is recorded in the note below: a chordwise
-// loop is the wrong object entirely.
-// ======================================================================
-//
+// It is checked against the analytic answer rather than against itself. A
+// chain of cut length L pinned across a gap c under uniform pressure settles
+// as a circular arc: t/sin t = L/c fixes the shape, the sagitta is
+// R(1 - cos t), the hoop tension is p R and the fabric stretches by that over
+// its membrane stiffness. For this wing that is 25.99 mm and 0.064% strain,
+// and the solver gives 26.32 mm and 0.060% - a little deeper because the
+// fabric really does stretch.
 // Everything above this point has treated the canopy as rigid. Level 1 solves
 // the inflated section from the seam allowance, but it solves it once, as a
 // circular arc in equilibrium - it cannot show a section going soft as its
@@ -76,9 +57,11 @@ struct FabricMaterial
     // On the bias the weave can shear, and the fabric is far softer. This is
     // the number that decides how a canopy folds.
     double biasStiffnessNPerM = 4000.0;
-    // Angle of the warp threads relative to the chord, radians. Panels are
-    // usually cut with the warp running spanwise, which puts the chordwise
-    // direction on the weft.
+    // Angle of the warp threads from the chord axis, radians. A panel cut
+    // with the warp running spanwise is at 90 degrees, which is the usual
+    // cut and puts a spanwise strip along the warp. Cut at 45 degrees the
+    // same strip is on the bias and far softer - which is the whole reason
+    // the angle is a parameter rather than an assumption.
     double warpAngleRad = 1.5708;
     // Resistance to bending. Fabric has almost none, which is why a canopy
     // creases rather than curving smoothly when it goes slack.
@@ -101,6 +84,20 @@ struct MembraneSpec
     // makes a fixed count give a stiffness that means something.
     int constraintIterations = 24;
     int substeps = 4;
+    // Fictitious extra node mass, as a multiple of the fabric's own.
+    //
+    // Ripstop is very stiff against very little mass: the constraint
+    // stiffness is 2.7e6 N/m against 0.46 g per node, which puts the fabric's
+    // own elastic waves at 12 kHz. Those are of no interest at flight
+    // timescales, but resolving them is what the solve is spending itself on.
+    // Each substep pushes a node by F h^2 / 2m before the constraints pull it
+    // back, so that push falls with mass exactly as it falls with substep
+    // count - and mass is free where substeps are not.
+    //
+    // This is a solver device, like the Level 2 relaxation masses. It changes
+    // how fast the skin settles, not where it settles, and the shape is
+    // checked against the analytic arc rather than against itself.
+    double solverMassScale = 1.0e4;
 };
 
 struct MembraneNode
@@ -110,6 +107,10 @@ struct MembraneNode
     Vec3 positionM{};
     Vec3 velocityMps{};
     double inverseMassKgInv = 0.0;
+    // The fabric's own mass, before the solver's scaling. Physical forces are
+    // computed from this, never from the scaled mass - a numerical device
+    // that changed how hard gravity pulled would not be a device.
+    double physicalMassKg = 0.0;
     // Fraction across the cell, 0 at one rib and 1 at the other.
     double acrossCell = 0.0;
     // Pinned nodes are the ribs themselves, which hold the profile.
@@ -187,7 +188,12 @@ private:
         double multiplier = 0.0;
     };
 
-    double ComplianceForDirection(const Vec3& direction, double lengthM) const;
+    // Compliance of a spanwise segment, from where the span sits relative to
+    // the weave. The strip runs along the span, so the angle that matters is
+    // between the span and the warp - taking it from the segment's own
+    // direction in the x-z plane, as this once did, gives atan2(0, 0) for
+    // every segment and the weave never enters at all.
+    double ComplianceForSpanwiseSegment(double lengthM) const;
 
     std::vector<MembraneNode> NodeList;
     std::vector<Constraint> Constraints;

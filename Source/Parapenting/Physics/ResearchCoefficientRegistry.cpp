@@ -4,6 +4,7 @@
 #include "HarnessGeometry.h"
 #include "PayloadRigidBody.h"
 #include "ApparentMassTensor.h"
+#include "CanopyMembraneSolver.h"
 #include "CanopyPressureSolver.h"
 #include "SectionPolarTable.h"
 #include "SuspensionGraph.h"
@@ -24,6 +25,7 @@ constexpr HarnessGeometry Harness3{};
 constexpr PayloadMassProperties Payload{};
 constexpr AnalyticPolarSpec Polar{};
 constexpr CellPressureSpec Cell{};
+constexpr MembraneSpec Membrane{};
 
 using S = CoefficientSource;
 using C = CalibrationStatus;
@@ -327,6 +329,25 @@ const CoefficientRecord Records[] = {
      "Internal pressure coefficient below which a cell is reported at risk. "
      "A reporting threshold only - nothing in the model behaves differently "
      "either side of it, and Level 8 is where collapse itself is decided.", 8},
+    // --- Level 6 membrane -------------------------------------------------
+    {"warpStiffnessNPerM", "N/m", Membrane.fabric.warpStiffnessNPerM,
+     5000.0, 100000.0, S::Literature, C::Unvalidated,
+     "Membrane stiffness along the warp threads. With the hoop tension it "
+     "sets how far the skin stretches: 0.06% at flight pressure, which is "
+     "why the inflated shape is essentially the pattern's.", 9},
+    {"biasStiffnessNPerM", "N/m", Membrane.fabric.biasStiffnessNPerM,
+     500.0, 30000.0, S::Literature, C::Unvalidated,
+     "Stiffness on the bias, where the weave shears rather than the threads "
+     "stretching. Eight times softer here, and it is what governs how a "
+     "canopy wrinkles and where it folds.", 9},
+    {"membraneSolverMassScale", "1", Membrane.solverMassScale, 1.0, 1.0e6,
+     S::Estimated, C::Unvalidated,
+     "Fictitious node mass, as a multiple of the fabric's own. Numerical, "
+     "not physical: ripstop is 2.7e6 N/m stiff against 0.46 g a node, which "
+     "puts its elastic waves at 12 kHz, and resolving those is what the "
+     "solve was spending itself on. Physical forces are computed from the "
+     "real mass, and the tests check the shape is unchanged at ten times "
+     "this value.", 12},
     {"vsmFilamentCoreFraction", "1", 0.5, 0.05, 2.0, S::Estimated,
      C::Unvalidated,
      "Trailing-filament core radius as a fraction of panel width. Numerical, "

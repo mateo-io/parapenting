@@ -27,10 +27,15 @@ CanopyMembraneSolver::CanopyMembraneSolver(
     }
 
     const double segment = CellWidth / static_cast<double>(count - 1);
-    const double nodeMass = SpecValue.fabric.arealDensityKgM2 * segment;
+    const double physicalMass = SpecValue.fabric.arealDensityKgM2 * segment;
+    const double solverMass =
+        physicalMass * std::max(1.0, SpecValue.solverMassScale);
     for (MembraneNode& node : NodeList)
+    {
+        node.physicalMassKg = physicalMass;
         node.inverseMassKgInv =
-            node.pinned ? 0.0 : 1.0 / std::max(1e-6, nodeMass);
+            node.pinned ? 0.0 : 1.0 / std::max(1e-12, solverMass);
+    }
 
     // The panel is cut longer than the gap it spans. That extra length is the
     // seam allowance, and it is the only reason the skin has anywhere to bulge
@@ -42,20 +47,18 @@ CanopyMembraneSolver::CanopyMembraneSolver(
         constraint.nodeB = index + 1;
         constraint.restLengthM =
             segment * (1.0 + SpecValue.seamAllowanceFraction);
-        constraint.complianceMPerN = ComplianceForDirection(
-            Vec3{0.0, 1.0, 0.0}, segment);
+        constraint.complianceMPerN = ComplianceForSpanwiseSegment(segment);
         Constraints.push_back(constraint);
     }
 }
 
-double CanopyMembraneSolver::ComplianceForDirection(
-    const Vec3& direction, double lengthM) const
+double CanopyMembraneSolver::ComplianceForSpanwiseSegment(
+    double lengthM) const
 {
-    // Where this segment lies relative to the weave. The warp runs at
-    // warpAngleRad to the chord; a segment along the warp gets the warp
-    // stiffness, one at 45 degrees to both gets the bias.
-    const double segmentAngle = std::atan2(direction.z, direction.x);
-    const double toWarp = segmentAngle - SpecValue.fabric.warpAngleRad;
+    // The strip runs spanwise, which is 90 degrees from the chord axis the
+    // warp angle is measured against.
+    constexpr double SpanFromChordRad = 1.5707963267948966;
+    const double toWarp = SpanFromChordRad - SpecValue.fabric.warpAngleRad;
     // cos^2 picks out the warp, sin^2 the weft, and sin^2(2a) is largest on
     // the bias exactly halfway between them.
     const double alongWarp = std::cos(toWarp) * std::cos(toWarp);
@@ -121,9 +124,14 @@ MembraneResult CanopyMembraneSolver::Step(
             MembraneNode& node = NodeList[index];
             previous[index] = node.positionM;
             if (node.inverseMassKgInv <= 0.0) continue;
-            Vec3 acceleration = forces[index] * node.inverseMassKgInv;
-            acceleration.z -= load.gravityMps2;
-            node.velocityMps += acceleration * h;
+            // Gravity as a force on the real fabric, then accelerated
+            // against the solver mass like every other force. Subtracting g
+            // from the acceleration directly would have applied it to the
+            // scaled mass instead, and a 10^4 solver mass then sags the strip
+            // under 10^4 times its own weight - which is exactly what it did.
+            Vec3 total = forces[index];
+            total.z -= node.physicalMassKg * load.gravityMps2;
+            node.velocityMps += total * node.inverseMassKgInv * h;
             const double damping = std::clamp(
                 1.0 - SpecValue.fabric.dampingPerSecond * h, 0.0, 1.0);
             node.velocityMps = node.velocityMps * damping;
@@ -137,8 +145,17 @@ MembraneResult CanopyMembraneSolver::Step(
         for (int iteration = 0; iteration < SpecValue.constraintIterations;
              ++iteration)
         {
-            for (Constraint& constraint : Constraints)
+            // Alternate the sweep direction. A Gauss-Seidel pass over a chain
+            // carries information one segment per sweep in whichever
+            // direction it runs, so sweeping one way only makes the far end
+            // of the strip lag the near end by as many sweeps as there are
+            // segments. Alternating propagates from both ribs at once.
+            const bool forward = (iteration % 2) == 0;
+            const int count = static_cast<int>(Constraints.size());
+            for (int step = 0; step < count; ++step)
             {
+                Constraint& constraint = Constraints[static_cast<std::size_t>(
+                    forward ? step : count - 1 - step)];
                 MembraneNode& a =
                     NodeList[static_cast<std::size_t>(constraint.nodeA)];
                 MembraneNode& b =

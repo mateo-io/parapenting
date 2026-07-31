@@ -38,6 +38,7 @@ run_tests() {
     "$BUILD_DIR/parapenting_payload_tests"
     "$BUILD_DIR/parapenting_aerodynamics_tests"
     "$BUILD_DIR/parapenting_pressure_tests"
+    "$BUILD_DIR/parapenting_membrane_tests"
     (cd "$ROOT" && "$BUILD_DIR/parapenting_geometry_tests" \
         Data/Wings/bgd-epic-2-ml-geometry.json)
     (cd "$ROOT" && "$BUILD_DIR/parapenting_suspension_tests" \

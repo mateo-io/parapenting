@@ -4,6 +4,7 @@
 #include "GameFramework/Pawn.h"
 #include "Physics/AtmosphereModel.h"
 #include "Physics/ParagliderDynamics.h"
+#include "Physics/CanopyGeometry.h"
 #include "Physics/ParagliderSolverClock.h"
 #include "Physics/WingCatalogue.h"
 #include "Physics/RouteCatalogue.h"
@@ -367,6 +368,9 @@ private:
     double TouchdownHorizontalSpeedMps = 0.0;
     double LandingTargetXM = 2409.9;
     double LandingTargetYM = 0.0;
+    // Authoritative canopy geometry. Physics and rendering both read this
+    // rather than carrying separate span and chord constants.
+    Parapenting::Physics::CanopyGeometry Canopy{};
     Parapenting::Physics::ParagliderSolverClock SolverClock{
         PhysicsStepSeconds};
     double SimulationTimeSeconds = 0.0;

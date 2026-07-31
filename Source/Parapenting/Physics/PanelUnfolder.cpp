@@ -7,6 +7,43 @@ namespace Parapenting::Physics
 {
 namespace
 {
+// Chord-cut billow: the sewn-in extra length is not uniform along the chord.
+// It runs out to zero where the panel meets the leading and trailing edges,
+// which is what keeps those seams flat and is the whole point of the
+// construction - BGD's own chord-cut-billow patterning. Published practice
+// puts the transition at roughly the first 10% of chord and the last 20%.
+// Uniform billow instead forces curvature right into the edge seams and
+// overstates how much of the panel cannot be flattened.
+double BillowAtChordImpl(double chordFraction, double peakBillow)
+{
+    constexpr double LeadingEdgeRunout = 0.10;
+    constexpr double TrailingEdgeRunout = 0.20;
+    const double t = std::clamp(chordFraction, 0.0, 1.0);
+    double taper = 1.0;
+    if (t < LeadingEdgeRunout) taper = t / LeadingEdgeRunout;
+    else if (t > 1.0 - TrailingEdgeRunout)
+        taper = (1.0 - t) / TrailingEdgeRunout;
+    // Smooth the corners so curvature does not step at the runout boundary.
+    taper = taper * taper * (3.0 - 2.0 * taper);
+    return peakBillow * taper;
+}
+
+// Half-angle of the circular arc whose length exceeds its chord by `billow`.
+double HalfAngleForBillow(double billow)
+{
+    if (billow <= 1e-12) return 0.0;
+    const double target = 1.0 / (1.0 + billow);
+    double low = 1e-9;
+    double high = 3.0;
+    for (int i = 0; i < 200; ++i)
+    {
+        const double mid = 0.5 * (low + high);
+        if (std::sin(mid) / mid > target) low = mid;
+        else high = mid;
+    }
+    return 0.5 * (low + high);
+}
+
 double Distance3(const Vec3& a, const Vec3& b)
 {
     return Length(b - a);
@@ -64,6 +101,11 @@ double TriangleArea2(const Vec2& a, const Vec2& b, const Vec2& c)
 }
 }
 
+double ChordCutBillowAt(double chordFraction, double peakBillow)
+{
+    return BillowAtChordImpl(chordFraction, peakBillow);
+}
+
 UnfoldedPanel UnfoldCell(
     const CanopyGeometry& geometry, int cellIndex, bool upper,
     double billowFraction, int chordStations, int spanStations)
@@ -88,20 +130,6 @@ UnfoldedPanel UnfoldCell(
     // sin(t)/t = 1/(1+billow) gives the arc, and the bulge is applied along
     // the local surface normal. With zero billow the arc collapses to the
     // chord and the panel is the taut ruled surface between the ribs.
-    double halfAngle = 0.0;
-    if (billowFraction > 1e-12)
-    {
-        const double target = 1.0 / (1.0 + billowFraction);
-        double low = 1e-9;
-        double high = 3.0;
-        for (int i = 0; i < 200; ++i)
-        {
-            const double mid = 0.5 * (low + high);
-            if (std::sin(mid) / mid > target) low = mid;
-            else high = mid;
-        }
-        halfAngle = 0.5 * (low + high);
-    }
 
     // The panel is a strip between two rib curves, sampled along the chord.
     // Two rows, not a grid: a 2-row strip is a triangle strip, which is a
@@ -132,7 +160,8 @@ UnfoldedPanel UnfoldCell(
         panel.surfaceVertices[static_cast<std::size_t>(j * 2)] = edgeA;
         panel.surfaceVertices[static_cast<std::size_t>(j * 2 + 1)] = edgeB;
         developedWidth[static_cast<std::size_t>(j)] =
-            Distance3(edgeA, edgeB) * (1.0 + billowFraction);
+            Distance3(edgeA, edgeB)
+            * (1.0 + ChordCutBillowAt(chordFraction, billowFraction));
     }
 
     // Unroll the strip. Each vertex is placed from the two endpoints of the
@@ -161,20 +190,83 @@ UnfoldedPanel UnfoldCell(
             developedWidth[static_cast<std::size_t>(j)], alongB, -1.0);
     }
 
-    // Residual. The triangulation uses the diagonal B(j-1)-A(j), so unrolling
-    // preserves it exactly. The other diagonal, A(j-1)-B(j), is where the
-    // non-developability accumulates: the length the flat pattern cannot
-    // reproduce, which in the real sail becomes pucker along the seam.
+    // Residual.
+    //
+    // The comparison has to be made against the surface the fabric actually
+    // takes, not the straight rib-to-rib line. Both corners of a cross
+    // diagonal sit on ribs, where the bulge is zero, but the diagonal itself
+    // passes over the bulge - so measuring it as a straight line in 3D
+    // understates it by roughly the billow allowance and makes intended bulge
+    // look like unrecoverable error. Walking the bulged surface instead
+    // isolates the part that is genuinely non-developable.
+    //
+    // The bulge is the circular arc the sewn-in extra length forms between the
+    // ribs: chord equal to the straight distance, arc length (1 + billow)
+    // times it. Sampling along the diagonal's parameter line and summing
+    // segments approximates the surface path.
+    // Continuous point on the bulged surface. `station` is a fractional chord
+    // index and `v` the spanwise parameter, so a diagonal can be walked
+    // smoothly across the panel. Sampling at rounded integer stations instead
+    // makes the path zigzag between two rungs, which reports a large residual
+    // even on a flat panel.
+    const auto BulgedPoint = [&](double station, double v)
+    {
+        const double clamped = std::clamp(
+            station, 0.0, static_cast<double>(panel.chordStations - 1));
+        const int lower = static_cast<int>(std::floor(clamped));
+        const int upper2 = std::min(lower + 1, panel.chordStations - 1);
+        const double frac = clamped - static_cast<double>(lower);
+
+        const Vec3 a = panel.surfaceVertices[At(lower, 0)]
+            + (panel.surfaceVertices[At(upper2, 0)]
+               - panel.surfaceVertices[At(lower, 0)]) * frac;
+        const Vec3 b = panel.surfaceVertices[At(lower, 1)]
+            + (panel.surfaceVertices[At(upper2, 1)]
+               - panel.surfaceVertices[At(lower, 1)]) * frac;
+        const Vec3 span = b - a;
+        Vec3 point = a + span * v;
+        const double localBillow = ChordCutBillowAt(
+            clamped / static_cast<double>(panel.chordStations - 1),
+            billowFraction);
+        if (localBillow <= 1e-12) return point;
+        const double localHalfAngle = HalfAngleForBillow(localBillow);
+        if (localHalfAngle <= 1e-9) return point;
+
+        const double straight = Length(span);
+        const double radius = straight / (2.0 * std::sin(localHalfAngle));
+        const double angle = (2.0 * v - 1.0) * localHalfAngle;
+        const double sagitta =
+            radius * (std::cos(angle) - std::cos(localHalfAngle));
+        const Vec3 chordwise = Normalized(
+            panel.surfaceVertices[At(upper2, 0)]
+            - panel.surfaceVertices[At(lower, 0)]);
+        Vec3 outward = Normalized(Cross(Normalized(span), chordwise));
+        if (!upper) outward = -outward;
+        return point + outward * sagitta;
+    };
+
     double sumSquares = 0.0;
     int quadCount = 0;
+    constexpr int GeodesicSamples = 96;
     for (int j = 1; j < panel.chordStations; ++j)
     {
-        const double solid = Distance3(panel.surfaceVertices[At(j - 1, 0)],
-                                       panel.surfaceVertices[At(j, 1)]);
+        // Path across the bulged surface from A(j-1) to B(j).
+        double surfacePath = 0.0;
+        Vec3 previous = BulgedPoint(static_cast<double>(j - 1), 0.0);
+        for (int k = 1; k <= GeodesicSamples; ++k)
+        {
+            const double t = static_cast<double>(k)
+                / static_cast<double>(GeodesicSamples);
+            // Interpolate chord station and spanwise parameter together.
+            const Vec3 point =
+                BulgedPoint(static_cast<double>(j - 1) + t, t);
+            surfacePath += Length(point - previous);
+            previous = point;
+        }
         const double flat = Distance2(panel.flatVertices[At(j - 1, 0)],
                                       panel.flatVertices[At(j, 1)]);
-        if (solid < 1e-12) continue;
-        const double fraction = std::fabs(flat - solid) / solid;
+        if (surfacePath < 1e-12) continue;
+        const double fraction = std::fabs(flat - surfacePath) / surfacePath;
         panel.residual.maxFraction =
             std::max(panel.residual.maxFraction, fraction);
         sumSquares += fraction * fraction;

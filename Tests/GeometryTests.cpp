@@ -239,7 +239,10 @@ int main()
         {
             const double straight = Length(panel.surfaceVertices[At(j, 1)]
                 - panel.surfaceVertices[At(j, 0)]);
-            const double developed = straight * (1.0 + billow);
+            const double chordFraction = static_cast<double>(j)
+                / static_cast<double>(panel.chordStations - 1);
+            const double developed = straight
+                * (1.0 + ChordCutBillowAt(chordFraction, billow));
             worstRung = std::max(worstRung,
                 std::fabs(Flat(At(j, 0), At(j, 1)) - developed) / developed);
         }
@@ -248,12 +251,27 @@ int main()
         Check(worstSeam < 1e-12, "chordwise seams are exactly isometric");
         Check(worstRung < 1e-12, "rungs carry exactly the developed width");
 
-        // A developable panel unfolds with no residual at all. Zero billow
-        // leaves the taut ruled surface, and the strip triangulation flattens
-        // it exactly.
+        // Chord-cut billow must run out at both edges, so the leading and
+        // trailing seams are cut flat.
+        Check(ChordCutBillowAt(0.0, billow) == 0.0,
+              "no billow at the leading edge");
+        Check(ChordCutBillowAt(1.0, billow) == 0.0,
+              "no billow at the trailing edge");
+        Check(std::fabs(ChordCutBillowAt(0.5, billow) - billow) < 1e-12,
+              "full billow at mid chord");
+
+        // Zero billow leaves the taut ruled surface between the ribs, which
+        // is very nearly developable but not exactly: adjacent rib sections
+        // differ in chord and sit at different arc angles, so the strip
+        // between them carries a little Gaussian curvature of its own. 0.05%
+        // rms is that, and it is converged - raising the path sampling from
+        // 16 to 96 does not move it. It is the floor the construction cannot
+        // go below, not a discretisation artefact.
         const UnfoldResidual taut = UnfoldSkin(geometry, true, 0.0);
-        std::printf("  residual at zero billow %.3e\n", taut.rmsFraction);
-        Check(taut.rmsFraction < 1e-12, "zero billow unfolds exactly");
+        std::printf("  residual at zero billow %.4f%% rms\n",
+            taut.rmsFraction * 100.0);
+        Check(taut.rmsFraction < 1e-3,
+              "zero billow is near-developable");
 
         // Residual must grow monotonically with sewn-in billow: more fabric
         // between the ribs is more curvature, and more curvature is more of

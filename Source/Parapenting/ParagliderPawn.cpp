@@ -1,6 +1,7 @@
 #include "ParagliderPawn.h"
 #include "ParaglidingAudioComponent.h"
 #include "ParapentingMaterials.h"
+#include "Physics/CanopyGeometry.h"
 #include "Physics/ParagliderSolverClock.h"
 #include "Physics/TerrainModel.h"
 #include "Physics/CameraFeedback.h"
@@ -318,8 +319,13 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     for (int StepIndex = 0; StepIndex < DueSteps; ++StepIndex)
     {
         const double PreviousSimulationTime = SimulationTimeSeconds;
-        const double HalfSpanM = 0.5 * FMath::Sqrt(
-            Dynamics.Parameters().areaM2 * 5.2);
+        // Half-span comes from the canopy geometry, not from a second
+        // hardcoded aspect ratio. sqrt(area * 5.2) gave 5.92 m, which was
+        // approximating the *developed* half-span of 5.90 m - but this samples
+        // the air at the physical wing halves, so it wants the projected
+        // half-span, 4.65 m. The old figure placed the sample points 27%
+        // further out than the tips actually are.
+        const double HalfSpanM = 0.5 * Canopy.ProjectedSpanM();
         const Parapenting::Physics::Atmosphere Atmosphere =
             AirModel.SampleCanopy(
                 State.positionWorldM,

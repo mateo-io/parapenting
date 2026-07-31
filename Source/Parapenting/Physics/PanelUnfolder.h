@@ -70,6 +70,13 @@ struct UnfoldedPanel
     UnfoldResidual residual;
 };
 
+// Chord-cut billow profile: the fraction of extra spanwise length sewn in at
+// a given chord position, given the peak value. It runs out to zero at the
+// leading and trailing edges so those seams stay flat, which is the whole
+// point of chord-cut patterning. Exposed because the render mesh and the
+// inflated-shape relaxation must use the same profile the pattern was cut to.
+double ChordCutBillowAt(double chordFraction, double peakBillow);
+
 // Samples the bulged surface of one cell and unrolls it.
 //
 //   cellIndex     0 .. cellCount-1, left to right

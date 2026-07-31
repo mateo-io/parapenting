@@ -201,6 +201,24 @@ target_compile_options(parapenting_pressure_tests PRIVATE
     -Wall -Wextra -Wpedantic
 )
 
+add_executable(parapenting_membrane_tests
+    MembraneTests.cpp
+    ../Source/Parapenting/Physics/CanopyMembraneSolver.cpp
+    ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
+    ../Source/Parapenting/Physics/AerodynamicPolar.cpp
+    ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
+)
+target_include_directories(parapenting_membrane_tests PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_membrane_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
 add_executable(parapenting_determinism_tests
     DeterminismTests.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp

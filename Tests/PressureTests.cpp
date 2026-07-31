@@ -304,6 +304,83 @@ int main()
               "the angle of attack, not through a shared constant");
     }
 
+    // -- pressure feeds back into section performance ---------------------
+    {
+        // The other half of the coupling: a cell that has lost its pressure
+        // has lost its section, so the wing stops making lift where it is
+        // rather than uniformly.
+        const CanopyGeometry canopy;
+        const VortexStepMethodSolver wing(
+            canopy, SectionPolarTable::Analytic(), Cells);
+        VsmSolveInput flight;
+        flight.airspeedBodyMps = {11.0 * std::cos(0.06), 0.0,
+                                  -11.0 * std::sin(0.06)};
+        const VsmSolution healthy = wing.Solve(flight);
+
+        // Depressurise the outer left third.
+        VsmSolveInput soft = flight;
+        soft.internalPressureCoefficient.assign(Cells, 0.95);
+        for (int cell = 0; cell < Cells / 3; ++cell)
+            soft.internalPressureCoefficient[
+                static_cast<std::size_t>(cell)] = 0.0;
+        const VsmSolution deflated = wing.Solve(soft);
+
+        std::printf("Pressure feedback: CL %.3f healthy, %.3f with the outer "
+                    "third soft; roll %+.0f Nm\n",
+                    healthy.liftCoefficient, deflated.liftCoefficient,
+                    deflated.momentBodyNm.x);
+        Check(deflated.liftCoefficient < healthy.liftCoefficient,
+              "a wing with a depressurised group makes less lift");
+        Check(deflated.totalDragCoefficient > healthy.totalDragCoefficient,
+              "and more drag");
+        Check(std::fabs(deflated.momentBodyNm.x) > 10.0,
+              "and rolls, because the loss is where the soft cells are rather "
+              "than spread over the wing");
+        Check(deflated.sections[2].liftCoefficient
+                  < 0.5 * healthy.sections[2].liftCoefficient,
+              "the soft sections themselves are what lost the lift");
+        Check(std::fabs(deflated.sections[static_cast<std::size_t>(Cells - 3)]
+                            .liftCoefficient
+                        - healthy.sections[static_cast<std::size_t>(Cells - 3)]
+                            .liftCoefficient)
+                  < 0.25,
+              "while the pressurised half is broadly unchanged");
+
+        // Full pressure must be exactly what no pressure model gives.
+        VsmSolveInput full = flight;
+        full.internalPressureCoefficient.assign(Cells, 1.0);
+        const VsmSolution same = wing.Solve(full);
+        Check(std::fabs(same.liftCoefficient - healthy.liftCoefficient) < 1e-9,
+              "and a fully pressurised wing is identical to one with no "
+              "pressure model at all");
+    }
+
+    // -- cell volume comes from the geometry ------------------------------
+    {
+        const CanopyGeometry canopy;
+        const double root = canopy.CellVolumeM3(0.0);
+        const double tip = canopy.CellVolumeM3(0.9);
+        double total = 0.0;
+        for (int cell = 0; cell < Cells; ++cell)
+            total += canopy.CellVolumeM3(
+                -1.0 + 2.0 * (cell + 0.5) / Cells);
+        std::printf("Cell volume from geometry: %.3f m3 root, %.3f tip, "
+                    "%.1f m3 total\n", root, tip, total);
+        Check(root > tip,
+              "a root cell holds more than a tip cell, because it is longer "
+              "and deeper");
+        Check(total > 6.0 && total < 14.0,
+              "and the canopy holds the volume a 27 m2 wing does");
+
+        // It is geometry, so geometry must move it.
+        CanopyGeometrySpec fuller = canopy.Spec();
+        fuller.billowFraction = canopy.Spec().billowFraction * 2.0;
+        const CanopyGeometry billowed(fuller);
+        Check(billowed.CellVolumeM3(0.0) > root,
+              "more seam allowance makes a fatter cell that holds more air - "
+              "the volume follows the pattern rather than a constant");
+    }
+
     if (Failures == 0) std::printf("All pressure checks passed.\n");
     else std::printf("%d pressure check(s) failed.\n", Failures);
     return Failures == 0 ? 0 : 1;

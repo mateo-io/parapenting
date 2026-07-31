@@ -153,6 +153,15 @@ public:
     // Mean rib-to-rib spacing on the developed wing.
     double CellSpacingM() const;
 
+    // Enclosed volume of one cell at a given span station, cubic metres.
+    //
+    // Integrated over the chord from the solved section: at each chord station
+    // the cell's cross-section is the rib profile's thickness plus the bulge
+    // the seam allowance produces on each surface. Level 5 assumed 0.22 m3
+    // for this; taking it from the geometry means a change to the billow or
+    // the planform moves the inflation time with it.
+    double CellVolumeM3(double spanFraction = 0.0) const;
+
     // Interpolated rib station at an arbitrary span fraction.
     RibStation StationAt(double spanFraction) const;
 

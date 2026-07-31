@@ -299,9 +299,19 @@ const CoefficientRecord Records[] = {
      "Open area of one cell's inlet. Sets how fast a cell fills and, with the "
      "cell volume, the whole inflation timescale.", 0},
     {"cellVolumeM3", "m^3", Cell.cellVolumeM3, 0.05, 0.60, S::Estimated,
+     C::Unvalidated,
+     "Default cell volume, used when a caller has no geometry to hand. "
+     "CanopyGeometry::CellVolumeM3 now integrates it from the solved inflated "
+     "section instead: 0.31 m^3 at the root, 0.09 at the tip, 9.9 m^3 for the "
+     "canopy. Change the seam allowance and the inflation time moves with "
+     "it.", 0},
+    {"shapeHoldingPressureCoefficient", "1", 0.55, 0.2, 0.9, S::Estimated,
      C::Provisional,
-     "Volume of one cell. Level 1 geometry can compute this from the "
-     "inflated section rather than assuming it, and should.", 6},
+     "Internal pressure coefficient below which a section is treated as "
+     "having lost its shape entirely. Stands in for the reduced-pressure "
+     "polar family Level 4 owes; a single documented curve rather than a "
+     "per-effect tuning, and it is what makes a soft cell group stop making "
+     "lift where it is.", 9},
     {"crossportAreaM2", "m^2", Cell.crossportAreaM2, 0.0, 0.02, S::Estimated,
      C::Unvalidated,
      "Rib crossport area. Far smaller than an inlet, so a cell fed only "

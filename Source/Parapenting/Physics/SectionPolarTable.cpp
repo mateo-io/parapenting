@@ -206,8 +206,39 @@ SectionPolarSample SectionPolarTable::Sample(
         brakeT);
 }
 
+namespace
+{
+// Below this internal pressure coefficient the section is considered to have
+// lost its shape entirely. A cell at trim runs near 0.95, so the working
+// range is narrow and the loss is steep once it starts.
+constexpr double ShapeHoldingPressureCoefficient = 0.55;
+
+double PressureDeficit(double internalPressureCoefficient)
+{
+    const double held = std::clamp(
+        internalPressureCoefficient / ShapeHoldingPressureCoefficient,
+        0.0, 1.0);
+    return 1.0 - held;
+}
+}
+
+double SectionPolarTable::PressureLiftFactor(
+    double internalPressureCoefficient)
+{
+    const double deficit = PressureDeficit(internalPressureCoefficient);
+    return std::clamp(1.0 - 0.85 * deficit * deficit, 0.0, 1.0);
+}
+
+double SectionPolarTable::PressureDragPenalty(
+    double internalPressureCoefficient)
+{
+    const double deficit = PressureDeficit(internalPressureCoefficient);
+    return 0.45 * deficit * deficit;
+}
+
 SectionPolarSample SectionPolarTable::SampleAtSeparation(
-    double alphaRad, double brake, double separation) const
+    double alphaRad, double brake, double separation,
+    double internalPressureCoefficient) const
 {
     if (Samples.empty()) return {};
     const double blend = std::clamp(separation, 0.0, 1.0);
@@ -253,7 +284,15 @@ SectionPolarSample SectionPolarTable::SampleAtSeparation(
             brakeT);
     };
 
-    return mix(bilinear(Attached), bilinear(Separated), blend);
+    SectionPolarSample sample = mix(
+        bilinear(Attached), bilinear(Separated), blend);
+
+    // A cell that has lost its pressure has lost its section.
+    sample.liftCoefficient *=
+        PressureLiftFactor(internalPressureCoefficient);
+    sample.dragCoefficient +=
+        PressureDragPenalty(internalPressureCoefficient);
+    return sample;
 }
 
 double SectionPolarTable::SeparationEquilibrium(
@@ -273,6 +312,17 @@ double SectionPolarTable::SeparationEquilibrium(
     const double width = std::max(1.0e-3, SpecValue.stallBlendWidthRad);
     const double t = std::clamp((excess - shift) / width, 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
+}
+
+SectionPolarSample SectionPolarTable::SampleAtEquilibrium(
+    double alphaRad, double brake, double internalPressureCoefficient) const
+{
+    SectionPolarSample sample = Sample(alphaRad, brake);
+    sample.liftCoefficient *=
+        PressureLiftFactor(internalPressureCoefficient);
+    sample.dragCoefficient +=
+        PressureDragPenalty(internalPressureCoefficient);
+    return sample;
 }
 
 double SectionPolarTable::LiftCurveSlopePerRad(double) const

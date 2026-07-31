@@ -112,7 +112,28 @@ public:
     // sees is single valued and smooth, and the branch-swapping that stops a
     // deeply braked case ever settling cannot happen.
     SectionPolarSample SampleAtSeparation(
-        double alphaRad, double brake, double separation) const;
+        double alphaRad, double brake, double separation,
+        double internalPressureCoefficient = 1.0) const;
+
+    // The steady sample, with the cell's pressure applied. Uses the table's
+    // own baked-in separation blend so a caller with no pressure model gets
+    // exactly what Sample() has always returned.
+    SectionPolarSample SampleAtEquilibrium(
+        double alphaRad, double brake,
+        double internalPressureCoefficient) const;
+
+    // How much a section loses when its cell is under-pressurised.
+    //
+    // A soft cell does not hold the profile it was cut to: the nose goes
+    // round, the section loses effective camber and picks up form drag, and
+    // at the limit it stops being an aerofoil at all. The plan's proper
+    // answer is a polar family generated at reduced pressure, which is part
+    // of the data acquisition Level 4 still owes. This is the stand-in for
+    // it, and it is deliberately a single documented curve rather than
+    // something tuned per-effect: lift falls and drag rises with the square
+    // of the pressure deficit.
+    static double PressureLiftFactor(double internalPressureCoefficient);
+    static double PressureDragPenalty(double internalPressureCoefficient);
 
     // Where separation settles for this incidence, 0 attached to 1 fully
     // separated. Separating and reattaching follow different curves.

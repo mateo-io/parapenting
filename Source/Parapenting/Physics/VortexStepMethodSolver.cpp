@@ -367,6 +367,10 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             const double brake =
                 input.leftBrake * (1.0 - section.rightSideFraction)
                 + input.rightBrake * section.rightSideFraction;
+            const double cellPressure =
+                input.internalPressureCoefficient.empty() ? 1.0
+                : input.internalPressureCoefficient[
+                      std::min(i, input.internalPressureCoefficient.size() - 1)];
 
             // Solve this section's own circulation implicitly.
             //
@@ -387,8 +391,8 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
                 const double alpha = sectionFlow(i, external, gamma, speed);
                 const SectionPolarSample polar = heldSeparation
                     ? Polars.SampleAtSeparation(
-                          alpha, brake, (*heldSeparation)[i])
-                    : Polars.Sample(alpha, brake);
+                          alpha, brake, (*heldSeparation)[i], cellPressure)
+                    : Polars.SampleAtEquilibrium(alpha, brake, cellPressure);
                 return 0.5 * section.chordM * speed * polar.liftCoefficient
                     - gamma;
             };
@@ -420,8 +424,9 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             double speed = 0.0;
             const double alpha = sectionFlow(i, external, gamma, speed);
             const SectionPolarSample polar = heldSeparation
-                ? Polars.SampleAtSeparation(alpha, brake, (*heldSeparation)[i])
-                : Polars.Sample(alpha, brake);
+                ? Polars.SampleAtSeparation(
+                      alpha, brake, (*heldSeparation)[i], cellPressure)
+                : Polars.SampleAtEquilibrium(alpha, brake, cellPressure);
             solution.sections[i].separation = heldSeparation
                 ? (*heldSeparation)[i]
                 : Polars.SeparationEquilibrium(alpha, brake, 0.0);

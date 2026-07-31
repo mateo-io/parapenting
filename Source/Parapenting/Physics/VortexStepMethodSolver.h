@@ -80,6 +80,12 @@ struct VsmSolveInput
     double airDensityKgM3 = 1.12;
     double leftBrake = 0.0;
     double rightBrake = 0.0;
+    // Internal pressure coefficient per section, from the Level 5 cell
+    // solver. Empty means fully pressurised, which is what a caller with no
+    // pressure model gets. This is the coupling the plan asks for: a
+    // depressurised cell group stops making lift where it is, rather than the
+    // wing losing performance uniformly.
+    std::vector<double> internalPressureCoefficient;
 };
 
 // Per-section separation, carried between solves. This is the attached and

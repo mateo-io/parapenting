@@ -262,6 +262,40 @@ double CanopyGeometry::CellSpacingM() const
         ? DevelopedSpan / static_cast<double>(SpecValue.cellCount) : 0.0;
 }
 
+double CanopyGeometry::CellVolumeM3(double spanFraction) const
+{
+    const double spacing = CellSpacingM();
+    if (spacing <= 0.0) return 0.0;
+    const RibStation station = StationAt(spanFraction);
+
+    // Trapezoid over the chord. The cross-sectional area at a chord station is
+    // the rib-profile thickness times the rib spacing, plus the two bulges the
+    // pressurised skin makes between the ribs. A circular arc of sagitta h
+    // over a chord w encloses about two thirds of w times h.
+    constexpr int Steps = 64;
+    double volume = 0.0;
+    double previousArea = 0.0;
+    for (int step = 0; step <= Steps; ++step)
+    {
+        const double chordFraction =
+            static_cast<double>(step) / static_cast<double>(Steps);
+        const Vec3 upper = SurfacePointM(spanFraction, chordFraction, true);
+        const Vec3 lower = SurfacePointM(spanFraction, chordFraction, false);
+        const double thickness = std::fabs(upper.z - lower.z);
+        const CellInflation section = InflatedSectionAt(chordFraction);
+        const double bulge = section.holdsSection
+            ? 2.0 * (2.0 / 3.0) * spacing * section.sagittaM : 0.0;
+        const double area = thickness * spacing + bulge;
+        if (step > 0)
+        {
+            volume += 0.5 * (area + previousArea)
+                * station.chordM / static_cast<double>(Steps);
+        }
+        previousArea = area;
+    }
+    return volume;
+}
+
 CellInflation CanopyGeometry::InflatedSectionAt(double chordFraction) const
 {
     const double spacing = CellSpacingM();

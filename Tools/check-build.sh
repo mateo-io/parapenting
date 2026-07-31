@@ -35,6 +35,7 @@ run_tests() {
     cmake --build "$BUILD_DIR" -j"$(sysctl -n hw.ncpu)"
     "$BUILD_DIR/parapenting_physics_tests"
     "$BUILD_DIR/parapenting_determinism_tests"
+    "$BUILD_DIR/parapenting_geometry_tests"
     # Run from the project root: the survey test reads the provenance file.
     (cd "$ROOT" && "$BUILD_DIR/parapenting_terrain_survey_tests" \
         Content/Terrain/interlaken.provenance.json)

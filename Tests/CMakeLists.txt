@@ -90,6 +90,17 @@ target_compile_options(parapenting_regression_matrix PRIVATE
     -Wall -Wextra -Wpedantic
 )
 
+add_executable(parapenting_geometry_tests
+    GeometryTests.cpp
+    ../Source/Parapenting/Physics/CanopyGeometry.cpp
+)
+target_include_directories(parapenting_geometry_tests PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_geometry_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
 add_executable(parapenting_determinism_tests
     DeterminismTests.cpp
     ../Source/Parapenting/Physics/ParagliderSolverClock.cpp

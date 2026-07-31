@@ -1,6 +1,7 @@
 #include "ParagliderPawn.h"
 #include "ParaglidingAudioComponent.h"
 #include "ParapentingMaterials.h"
+#include "Physics/ParagliderSolverClock.h"
 #include "Physics/TerrainModel.h"
 #include "Physics/CameraFeedback.h"
 #include "Physics/PilotPose.h"
@@ -234,7 +235,7 @@ void AParagliderPawn::ResetFlight()
     Controls = {};
     ControllerControls = {};
     AppliedControls = {};
-    AccumulatorSeconds = 0.0;
+    SolverClock.Reset();
     SimulationTimeSeconds = 0.0;
     bLanded = false;
     bGroundLaunching = false;
@@ -309,8 +310,12 @@ void AParagliderPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     UpdateBindingCapture();
-    AccumulatorSeconds = FMath::Min(AccumulatorSeconds + DeltaSeconds, 0.25);
-    while (AccumulatorSeconds >= PhysicsStepSeconds)
+    // Fixed-step spine. The clock owns the accumulator so the step count is
+    // derived from total delivered time rather than a residual, and so
+    // simulation time is an exact multiple of the step instead of a running
+    // sum. See ParagliderSolverClock.h.
+    const int DueSteps = SolverClock.BeginFrame(DeltaSeconds);
+    for (int StepIndex = 0; StepIndex < DueSteps; ++StepIndex)
     {
         const double PreviousSimulationTime = SimulationTimeSeconds;
         const double HalfSpanM = 0.5 * FMath::Sqrt(
@@ -369,8 +374,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             State.velocityWorldMps = RolloutState.velocityWorldMps;
             State.canopyPressure = RolloutState.canopyPressure;
             State.angularVelocityBodyRadps = {};
-            SimulationTimeSeconds += PhysicsStepSeconds;
-            AccumulatorSeconds -= PhysicsStepSeconds;
+            SolverClock.EndStep();
+            SimulationTimeSeconds = SolverClock.SimulationTimeSeconds();
             continue;
         }
         if (bGroundLaunching)
@@ -438,8 +443,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 State.canopyPressure = FMath::Max(
                     State.canopyPressure, 0.9);
             }
-            SimulationTimeSeconds += PhysicsStepSeconds;
-            AccumulatorSeconds -= PhysicsStepSeconds;
+            SolverClock.EndStep();
+            SimulationTimeSeconds = SolverClock.SimulationTimeSeconds();
             continue;
         }
         if (bRecordingReplay) ReplayFrames.Add(AppliedControls);
@@ -539,12 +544,12 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         Debrief.Step(DebriefSample, PhysicsStepSeconds);
         Parapenting::Physics::UpdateNavigationProgress(
             NavigationProgress, NavigationRoute, State.positionWorldM);
-        SimulationTimeSeconds += PhysicsStepSeconds;
+        SolverClock.EndStep();
+        SimulationTimeSeconds = SolverClock.SimulationTimeSeconds();
         ApplyIncidentCue(Parapenting::Physics::ScenarioCueCrossed(
             Parapenting::Physics::GetTrainingScenarioByIndex(
                 SelectedScenarioIndex),
             PreviousSimulationTime, SimulationTimeSeconds));
-        AccumulatorSeconds -= PhysicsStepSeconds;
     }
     if (bRecordingTelemetry)
     {

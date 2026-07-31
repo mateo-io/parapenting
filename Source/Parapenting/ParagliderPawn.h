@@ -4,6 +4,7 @@
 #include "GameFramework/Pawn.h"
 #include "Physics/AtmosphereModel.h"
 #include "Physics/ParagliderDynamics.h"
+#include "Physics/ParagliderSolverClock.h"
 #include "Physics/WingCatalogue.h"
 #include "Physics/RouteCatalogue.h"
 #include "Physics/TrainingScenario.h"
@@ -366,7 +367,8 @@ private:
     double TouchdownHorizontalSpeedMps = 0.0;
     double LandingTargetXM = 2409.9;
     double LandingTargetYM = 0.0;
-    double AccumulatorSeconds = 0.0;
+    Parapenting::Physics::ParagliderSolverClock SolverClock{
+        PhysicsStepSeconds};
     double SimulationTimeSeconds = 0.0;
     double TelemetryAccumulatorSeconds = 0.0;
     bool bRecordingTelemetry = false;

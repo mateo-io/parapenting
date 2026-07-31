@@ -1,6 +1,10 @@
 #include "CanopyGeometry.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstddef>
+#include <fstream>
+#include <sstream>
 #include <cmath>
 
 namespace Parapenting::Physics
@@ -284,5 +288,79 @@ Vec3 CanopyGeometry::InflatedSurfacePointM(
 
     // Bulge outward from the skin: up on the upper surface, down on the lower.
     return {base.x, base.y, base.z + (upper ? height : -height)};
+}
+
+namespace
+{
+// Finds "key" and reads the next number after it. Skips the "_comment" and
+// "why" string fields the schema uses for provenance, because those are for
+// humans and must never be parsed as data.
+bool ReadNumber(const std::string& text, const std::string& key, double& out)
+{
+    const std::string quoted = "\"" + key + "\"";
+    const std::size_t at = text.find(quoted);
+    if (at == std::string::npos) return false;
+    std::size_t i = at + quoted.size();
+    // Step over a nested object opening, so {"value": 1.3, "why": "..."} works.
+    while (i < text.size() && (text[i] == ':' || text[i] == ' '
+                               || text[i] == '\n' || text[i] == '\r'
+                               || text[i] == '\t'))
+        ++i;
+    if (i < text.size() && text[i] == '{')
+    {
+        const std::size_t valueAt = text.find("\"value\"", i);
+        if (valueAt == std::string::npos) return false;
+        i = valueAt + 7;
+        while (i < text.size() && (text[i] == ':' || text[i] == ' ')) ++i;
+    }
+    if (i >= text.size()) return false;
+    if (!(std::isdigit(static_cast<unsigned char>(text[i]))
+          || text[i] == '-' || text[i] == '+')) return false;
+    try
+    {
+        std::size_t used = 0;
+        out = std::stod(text.substr(i), &used);
+        return used > 0;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+}
+
+bool LoadCanopyGeometrySpec(
+    const std::string& filePath, CanopyGeometrySpec& spec)
+{
+    std::ifstream file(filePath);
+    if (!file) return false;
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    const std::string text = buffer.str();
+
+    CanopyGeometrySpec loaded;
+    double value = 0.0;
+    if (!ReadNumber(text, "cellCount", value)) return false;
+    loaded.cellCount = static_cast<int>(value);
+    if (!ReadNumber(text, "flatSpanM", loaded.flatSpanM)) return false;
+    if (!ReadNumber(text, "flatAreaM2", loaded.flatAreaM2)) return false;
+    if (!ReadNumber(text, "rootChordM", loaded.rootChordM)) return false;
+    if (!ReadNumber(text, "projectedSpanM", loaded.projectedSpanM)) return false;
+    if (!ReadNumber(text, "projectedAreaM2", loaded.projectedAreaM2))
+        return false;
+    if (!ReadNumber(text, "flatAspectRatio", loaded.flatAspectRatio))
+        return false;
+    if (!ReadNumber(text, "projectedAspectRatio", loaded.projectedAspectRatio))
+        return false;
+    if (!ReadNumber(text, "arcExponent", loaded.arcExponent)) return false;
+    if (!ReadNumber(text, "billowFraction", loaded.billowFraction)) return false;
+    if (!ReadNumber(text, "internalPressurePa", loaded.internalPressurePa))
+        return false;
+    if (!ReadNumber(text, "membraneStiffnessNPerM",
+                    loaded.fabric.membraneStiffnessNPerM))
+        return false;
+
+    spec = loaded;
+    return true;
 }
 }

@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "wing": "BGD EPIC 2",
+  "size": "ML",
+  "certification": "EN/LTF B",
+
+  "published": {
+    "_comment": "Manufacturer specification. These are measurements and must not be tuned. Anything derived from them belongs in CanopyGeometry, not here.",
+    "cellCount": 45,
+    "flatSpanM": 11.8,
+    "flatAreaM2": 27.0,
+    "rootChordM": 2.8,
+    "projectedSpanM": 9.3,
+    "projectedAreaM2": 22.8,
+    "flatAspectRatio": 5.2,
+    "projectedAspectRatio": 3.8,
+    "canopyMassKg": 5.1,
+    "totalLineLengthM": 254.0,
+    "canopyToRiserM": 7.3,
+    "weightRangeKg": [85.0, 110.0],
+    "trimSpeedKmh": 39.0,
+    "topSpeedKmh": 53.0,
+    "minimumSinkMps": 1.0,
+    "bestGlide": 9.5,
+    "mainLinesPerWing": {"A": 3, "B": 4, "C": 3}
+  },
+
+  "assumed": {
+    "_comment": "Not published. Each is an assumption with a stated reason, to be replaced when the rib plan and pattern are digitised.",
+    "arcExponent": {
+      "value": 1.3,
+      "why": "Distribution of arc curvature toward the tips. Only the span ratio is published, which fixes how much span the arc consumes; how that curvature is spread is not. 1.0 is a circular arc giving 64.7 deg at the tip and 2.94 m of arc; 1.9 gives 83.2 deg and 2.49 m. 1.3 sits between with a plausible tip angle."
+    },
+    "billowFraction": {
+      "value": 0.026,
+      "why": "Peak chord-cut seam allowance, tapering to zero at the leading and trailing edges. Sets the inflated section through the membrane relaxation rather than being drawn."
+    },
+    "internalPressurePa": {
+      "value": 65.0,
+      "why": "Cell pressure above ambient, taken as trim dynamic pressure. Level 5 of the master plan solves it from inlet flow instead."
+    },
+    "membraneStiffnessNPerM": {
+      "value": 35000.0,
+      "why": "Coated ripstop membrane stiffness, Young's modulus times thickness. Order-of-magnitude from the cloth literature; drives how far the fabric stretches under hoop tension."
+    }
+  },
+
+  "derived": {
+    "_comment": "Computed by CanopyGeometry from the published figures, recorded here so a change shows up in review. Flat span, flat area and projected span are exact by construction; the rest are checks.",
+    "tipChordM": 0.4450,
+    "tipChordFraction": 0.1589,
+    "tipArcAngleDeg": 73.65,
+    "tipBelowApexM": 2.8931,
+    "cellSpacingM": 0.2622
+  },
+
+  "sources": [
+    "https://www.flybgd.com/en/paragliders/epic-2--paraglider-2021-1782-0.html",
+    "https://paraglidingequipment.com/bgd-epic-2-paraglider/"
+  ],
+  "safety": "Simulator content. Handling and polar are unvalidated; see the coefficient registry."
+}

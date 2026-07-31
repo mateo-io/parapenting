@@ -3,6 +3,7 @@
 #include "BillowRelaxation.h"
 #include "ParagliderDynamics.h"
 
+#include <string>
 #include <vector>
 
 namespace Parapenting::Physics
@@ -86,6 +87,17 @@ struct RibStation
     // Local arc tangent angle from horizontal, radians. Zero at the centre.
     double arcAngleRad = 0.0;
 };
+
+// Reads a wing geometry from Data/Wings/*.json. The Physics layer is
+// engine-independent, so this is a deliberately small key-lookup reader rather
+// than a JSON library: the schema is flat and fully known, and adding a
+// dependency to read six numbers would not be a trade worth making.
+//
+// Returns false and leaves `spec` untouched if the file is missing or a
+// required key is absent - a partially applied spec would be worse than the
+// compiled default, because it would look like it had loaded.
+bool LoadCanopyGeometrySpec(
+    const std::string& filePath, CanopyGeometrySpec& spec);
 
 class CanopyGeometry
 {

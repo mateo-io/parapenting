@@ -3,6 +3,7 @@
 #include "ParapentingMaterials.h"
 #include "Physics/CanopyGeometry.h"
 #include "Physics/ParagliderCoordinateSystem.h"
+#include "Physics/SuspensionSystem.h"
 #include "Physics/ParagliderSolverClock.h"
 #include "Physics/TerrainModel.h"
 #include "Physics/CameraFeedback.h"
@@ -1078,6 +1079,10 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             false, 0.0f, 0, 6.0f);
     }
 
+    if (bGeometryVisualization)
+    {
+        DrawCanopyGeometryDebug();
+    }
     if (bAirflowVisualization)
     {
         // A compact Eulerian probe volume that makes the authored air field
@@ -1599,6 +1604,9 @@ void AParagliderPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
     PlayerInputComponent->BindAction(
         TEXT("ToggleAirflow"), IE_Pressed,
         this, &AParagliderPawn::ToggleAirflowVisualization);
+    PlayerInputComponent->BindAction(
+        TEXT("ToggleGeometry"), IE_Pressed,
+        this, &AParagliderPawn::ToggleGeometryVisualization);
     PlayerInputComponent->BindAction(
         TEXT("CycleCamera"), IE_Pressed, this, &AParagliderPawn::CycleCameraMode);
     PlayerInputComponent->BindAction(
@@ -2323,6 +2331,121 @@ void AParagliderPawn::ToggleGhost()
 {
     if (!GhostFrames.IsEmpty() && !bRecordingReplay)
         bGhostVisible = !bGhostVisible;
+}
+
+void AParagliderPawn::DrawCanopyGeometryDebug()
+{
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    constexpr float MetresToCm = static_cast<float>(
+        Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+    constexpr float SuspensionRiseCm = 730.0f;
+    const FTransform ActorTransform = GetActorTransform();
+    const auto ToWorld = [&](const Parapenting::Physics::Vec3& body)
+    {
+        return ActorTransform.TransformPosition(FVector(
+            static_cast<float>(body.x) * MetresToCm,
+            static_cast<float>(body.y) * MetresToCm,
+            SuspensionRiseCm + static_cast<float>(body.z) * MetresToCm));
+    };
+
+    // Rib stations: the developed wing's skeleton, leading edge to trailing
+    // edge at every rib. This is the shape everything else is derived from.
+    const auto& Ribs = Canopy.Ribs();
+    for (std::size_t Index = 0; Index < Ribs.size(); ++Index)
+    {
+        const double Span = Ribs[Index].spanFraction;
+        const FVector LeadingEdge =
+            ToWorld(Canopy.SurfacePointM(Span, 0.0, true));
+        const FVector TrailingEdge =
+            ToWorld(Canopy.SurfacePointM(Span, 1.0, true));
+        // Centre rib and tips picked out so the arc apex is unmistakable.
+        const bool bLandmark = Index == 0 || Index + 1 == Ribs.size()
+            || std::fabs(Span) < 1.0 / static_cast<double>(Ribs.size());
+        DrawDebugLine(World, LeadingEdge, TrailingEdge,
+            bLandmark ? FColor(255, 220, 60) : FColor(90, 130, 170),
+            false, 0.0f, 0, bLandmark ? 2.2f : 0.8f);
+    }
+
+    // Leading and trailing edges, and the solved cell section at mid-chord.
+    // The section is drawn at its true sagitta, so a seam allowance change is
+    // visible directly rather than only in a number.
+    FVector PreviousLeading = FVector::ZeroVector;
+    FVector PreviousTrailing = FVector::ZeroVector;
+    FVector PreviousCrown = FVector::ZeroVector;
+    for (int32 Step = 0; Step <= 96; ++Step)
+    {
+        const double Span = -1.0 + 2.0 * static_cast<double>(Step) / 96.0;
+        const FVector Leading = ToWorld(Canopy.SurfacePointM(Span, 0.0, true));
+        const FVector Trailing = ToWorld(Canopy.SurfacePointM(Span, 1.0, true));
+        const FVector Crown =
+            ToWorld(Canopy.InflatedSurfacePointM(Span, 0.45, 0.5, true));
+        if (Step > 0)
+        {
+            DrawDebugLine(World, PreviousLeading, Leading,
+                FColor(255, 120, 40), false, 0.0f, 0, 2.0f);
+            DrawDebugLine(World, PreviousTrailing, Trailing,
+                FColor(120, 200, 255), false, 0.0f, 0, 1.6f);
+            DrawDebugLine(World, PreviousCrown, Crown,
+                FColor(160, 255, 160), false, 0.0f, 0, 1.2f);
+        }
+        PreviousLeading = Leading;
+        PreviousTrailing = Trailing;
+        PreviousCrown = Crown;
+    }
+
+    // Attachment nodes, coloured and labelled by row. The exit gate is that
+    // every line ends on the canopy, so drawing the node where the geometry
+    // says it is makes a mismatch immediately visible.
+    const auto& Suspension =
+        Parapenting::Physics::Epic2MlSuspensionGeometry();
+    for (const auto& Attachment : Suspension.attachments)
+    {
+        const FVector Node = ToWorld(Canopy.SurfacePointM(
+            Attachment.spanFraction, Attachment.chordFraction, false));
+        FColor Colour = FColor::White;
+        const TCHAR* Label = TEXT("?");
+        switch (Attachment.group)
+        {
+        case Parapenting::Physics::SuspensionGroup::A:
+            Colour = FColor(255, 70, 60); Label = TEXT("A"); break;
+        case Parapenting::Physics::SuspensionGroup::BabyA:
+            Colour = FColor(255, 150, 60); Label = TEXT("A'"); break;
+        case Parapenting::Physics::SuspensionGroup::B:
+            Colour = FColor(70, 130, 255); Label = TEXT("B"); break;
+        case Parapenting::Physics::SuspensionGroup::C:
+            Colour = FColor(90, 220, 120); Label = TEXT("C"); break;
+        case Parapenting::Physics::SuspensionGroup::Brake:
+            Colour = FColor(230, 230, 90); Label = TEXT("BR"); break;
+        }
+        DrawDebugSphere(World, Node, 9.0f, 8, Colour, false, 0.0f, 0, 1.4f);
+        DrawDebugString(World, Node + FVector(0.0f, 0.0f, 16.0f),
+            FString(Label), nullptr, Colour, 0.0f, true, 1.1f);
+    }
+
+    // Summary, so the derived figures can be read against the published ones
+    // without leaving the cockpit.
+    const auto Section = Canopy.InflatedSectionAt(0.45);
+    DrawDebugString(World,
+        ActorTransform.TransformPosition(
+            FVector(0.0f, 0.0f, SuspensionRiseCm + 340.0f)),
+        FString::Printf(
+            TEXT("flat %.2f m / %.1f m2   proj %.2f m / %.1f m2   AR %.2f\n")
+            TEXT("cells %d   root chord %.2f m   tip %.2f m\n")
+            TEXT("seam %.1f%%   sagitta %.0f mm   hoop %.0f N/m"),
+            Canopy.DevelopedSpanM(), Canopy.DevelopedAreaM2(),
+            Canopy.ProjectedSpanM(), Canopy.ProjectedAreaM2(),
+            Canopy.FlatAspectRatio(), Canopy.Spec().cellCount,
+            Canopy.StationAt(0.0).chordM, Canopy.Ribs().front().chordM,
+            Canopy.Spec().billowFraction * 100.0,
+            Section.sagittaM * 1000.0, Section.hoopTensionNPerM),
+        nullptr, FColor(235, 240, 255), 0.0f, true, 1.0f);
+}
+
+void AParagliderPawn::ToggleGeometryVisualization()
+{
+    bGeometryVisualization = !bGeometryVisualization;
 }
 
 void AParagliderPawn::ToggleAirflowVisualization()

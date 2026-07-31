@@ -64,6 +64,8 @@ public:
     bool IsGhostVisible() const { return bGhostVisible; }
     bool IsAirflowVisualizationEnabled() const
         { return bAirflowVisualization; }
+    bool IsGeometryVisualizationEnabled() const
+        { return bGeometryVisualization; }
     int32 GetReplayFrameCount() const { return ReplayFrames.Num(); }
     int32 GetReplayLibraryCount() const { return ReplayFiles.Num(); }
     int32 GetSelectedReplayNumber() const
@@ -222,6 +224,8 @@ private:
     void NextReplay();
     void ToggleGhost();
     void ToggleAirflowVisualization();
+    void ToggleGeometryVisualization();
+    void DrawCanopyGeometryDebug();
     void CycleCameraMode();
     void CycleAccessibilityProfile();
     void CycleKeyboardLayout();
@@ -386,6 +390,11 @@ private:
     int32 GhostCaptureStep = 0;
     bool bGhostVisible = false;
     bool bAirflowVisualization = false;
+    // Level 1 geometry debug view: rib stations, chord lines,
+    // attachment nodes with their row labels, and the solved cell
+    // section. Two sign errors in the arc were found by comparing
+    // numbers; being able to look at the wing is cheaper.
+    bool bGeometryVisualization = false;
     bool bRecordingReplay = false;
     bool bPlayingReplay = false;
     Parapenting::Physics::WingProfileId ReplayWing =

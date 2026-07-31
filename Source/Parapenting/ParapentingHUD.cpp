@@ -487,6 +487,12 @@ void AParapentingHUD::DrawHUD()
                      FLinearColor(0.4f, 0.95f, 1.0f),
                      Canvas->SizeX * 0.5f - 290.0f, Canvas->SizeY - 48.0f,
                      GEngine->GetSmallFont(), 1.0f);
+        if (Glider->IsGeometryVisualizationEnabled())
+            DrawText(TEXT("GEOMETRY [SHIFT+G]  ORANGE LE  BLUE TE  GREEN CELL CROWN"
+                          "  A/A'/B/C NODES"),
+                     FLinearColor(1.0f, 0.85f, 0.45f),
+                     Canvas->SizeX * 0.5f - 290.0f, Canvas->SizeY - 68.0f,
+                     GEngine->GetSmallFont(), 1.0f);
         const float ChallengeX = Canvas->SizeX - 344.0f;
         DrawRect(FLinearColor(0.01f, 0.025f, 0.045f, 0.82f),
                  ChallengeX, 24.0f, 320.0f, 116.0f);

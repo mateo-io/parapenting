@@ -40,8 +40,10 @@ void CheckWithin(double actual, double expected, double percent,
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    const std::string dataPath = argc > 1
+        ? argv[1] : "Data/Wings/bgd-epic-2-ml-geometry.json";
     const CanopyGeometrySpec spec;
     const CanopyGeometry geometry(spec);
 
@@ -402,6 +404,56 @@ int main()
               "the cell bulges above the rib profile");
         Check(std::fabs(atRib.z - ribProfile.z) < 1e-9,
               "the surface meets the rib exactly");
+    }
+
+    std::printf("\nGeometry data file\n");
+    {
+        // The compiled defaults and the data file must agree. Same contract as
+        // RouteFrame against the terrain provenance: the file is the record,
+        // the struct is what runs, and nothing else stops them drifting.
+        CanopyGeometrySpec loaded;
+        const bool ok = LoadCanopyGeometrySpec(dataPath, loaded);
+        std::printf("  %s: %s\n", dataPath.c_str(),
+            ok ? "loaded" : "NOT FOUND");
+        Check(ok, "geometry data file loads");
+        if (ok)
+        {
+            Check(loaded.cellCount == spec.cellCount, "cell count matches");
+            CheckWithin(loaded.flatSpanM, spec.flatSpanM, 1e-9,
+                        "flat span matches");
+            CheckWithin(loaded.flatAreaM2, spec.flatAreaM2, 1e-9,
+                        "flat area matches");
+            CheckWithin(loaded.rootChordM, spec.rootChordM, 1e-9,
+                        "root chord matches");
+            CheckWithin(loaded.projectedSpanM, spec.projectedSpanM, 1e-9,
+                        "projected span matches");
+            CheckWithin(loaded.projectedAreaM2, spec.projectedAreaM2, 1e-9,
+                        "projected area matches");
+            CheckWithin(loaded.arcExponent, spec.arcExponent, 1e-9,
+                        "arc exponent matches");
+            CheckWithin(loaded.billowFraction, spec.billowFraction, 1e-9,
+                        "billow fraction matches");
+            CheckWithin(loaded.internalPressurePa, spec.internalPressurePa,
+                        1e-9, "internal pressure matches");
+            CheckWithin(loaded.fabric.membraneStiffnessNPerM,
+                        spec.fabric.membraneStiffnessNPerM, 1e-9,
+                        "membrane stiffness matches");
+
+            // A wing built from the file must be the wing built from defaults.
+            const CanopyGeometry fromFile(loaded);
+            CheckWithin(fromFile.DevelopedSpanM(), geometry.DevelopedSpanM(),
+                        1e-9, "file-built geometry is identical");
+            CheckWithin(fromFile.ProjectedAreaM2(), geometry.ProjectedAreaM2(),
+                        1e-9, "file-built projected area is identical");
+        }
+
+        // A missing file must leave the spec untouched rather than half-apply.
+        CanopyGeometrySpec untouched;
+        untouched.flatSpanM = 999.0;
+        Check(!LoadCanopyGeometrySpec("no/such/file.json", untouched),
+              "a missing file reports failure");
+        Check(untouched.flatSpanM == 999.0,
+              "a failed load does not modify the spec");
     }
 
     std::printf("\nSuspension attachments on the canopy\n");

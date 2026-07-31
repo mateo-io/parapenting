@@ -8,6 +8,7 @@
 //     cannot drift trim, sink or glide without the change being visible.
 #include "ParagliderDynamics.h"
 #include "ParagliderSolverClock.h"
+#include "ResearchCoefficientRegistry.h"
 #include "SolverStateHash.h"
 #include "WingCatalogue.h"
 
@@ -314,6 +315,58 @@ int main()
               "trim speed is in the published band");
         Check(glide > 8.5 && glide < 10.5,
               "glide ratio is in the published band");
+    }
+
+    std::printf("\nCoefficient registry\n");
+    {
+        const CoefficientAudit audit = AuditCoefficients();
+        std::printf("  %zu coefficients: %zu tuned, %zu unvalidated,"
+                    " %zu out of range\n",
+            audit.total, audit.tuned, audit.unvalidated, audit.outOfRange);
+
+        Check(audit.total > 0, "registry is populated");
+        // Every registered value must sit inside its own declared range. A
+        // coefficient outside the range it claims is either mis-ranged or
+        // mis-set, and both are worth failing on.
+        Check(audit.outOfRange == 0, "every coefficient is within its range");
+
+        // Ranges must be well formed and units stated.
+        for (std::size_t i = 0; i < CoefficientRecordCount(); ++i)
+        {
+            const CoefficientRecord& record = CoefficientRecords()[i];
+            Check(record.validMin < record.validMax,
+                  std::string(record.name) + " has a well-formed range");
+            Check(record.unit != nullptr && record.unit[0] != '\0',
+                  std::string(record.name) + " states a unit");
+            Check(record.provenance != nullptr && record.provenance[0] != '\0',
+                  std::string(record.name) + " states a provenance");
+            // Anything not externally justified must name the level that
+            // replaces it, so tuned constants cannot quietly become permanent.
+            if (record.source == CoefficientSource::Tuned)
+                Check(record.supersededByLevel > 0,
+                      std::string(record.name)
+                          + " is tuned, so it must name a superseding level");
+        }
+
+        // Registry entries must still match the solver's actual defaults.
+        const WingParameters wing;
+        const auto* area = FindCoefficient("areaM2");
+        Check(area != nullptr && area->value == wing.areaM2,
+              "registry tracks the live areaM2");
+        const auto* trim = FindCoefficient("trimCl");
+        Check(trim != nullptr && trim->value == wing.trimCl,
+              "registry tracks the live trimCl");
+        Check(FindCoefficient("noSuchCoefficient") == nullptr,
+              "unknown names are not found");
+
+        // Recorded as a fact, not a gate: this is how much of the model is
+        // currently resting on numbers with no external justification.
+        std::printf("  %.0f%% of coefficients are tuned,"
+                    " %.0f%% are unvalidated\n",
+            100.0 * static_cast<double>(audit.tuned)
+                / static_cast<double>(audit.total),
+            100.0 * static_cast<double>(audit.unvalidated)
+                / static_cast<double>(audit.total));
     }
 
     if (Failures)

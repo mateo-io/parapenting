@@ -247,4 +247,38 @@ Vec3 CanopyGeometry::SurfacePointM(
         station.positionM.y,
         station.positionM.z + thickness};
 }
+
+double CanopyGeometry::CellSpacingM() const
+{
+    return SpecValue.cellCount > 0
+        ? DevelopedSpan / static_cast<double>(SpecValue.cellCount) : 0.0;
+}
+
+CellInflation CanopyGeometry::InflatedSectionAt(double chordFraction) const
+{
+    const double spacing = CellSpacingM();
+    const double allowance =
+        ChordCutBillowAt(chordFraction, SpecValue.billowFraction);
+    return RelaxCell(spacing, CutWidthForBillow(spacing, allowance),
+                     SpecValue.internalPressurePa, SpecValue.fabric);
+}
+
+Vec3 CanopyGeometry::InflatedSurfacePointM(
+    double spanFraction, double chordFraction, double acrossCell,
+    bool upper) const
+{
+    const Vec3 base = SurfacePointM(spanFraction, chordFraction, upper);
+    const CellInflation section = InflatedSectionAt(chordFraction);
+    if (!section.holdsSection || section.radiusM <= 1e-9) return base;
+
+    // Height of the solved arc above its chord at this position across the
+    // cell. Zero at both ribs, maximum at mid-cell.
+    const double v = std::clamp(acrossCell, 0.0, 1.0);
+    const double angle = (2.0 * v - 1.0) * section.halfAngleRad;
+    const double height = section.radiusM
+        * (std::cos(angle) - std::cos(section.halfAngleRad));
+
+    // Bulge outward from the skin: up on the upper surface, down on the lower.
+    return {base.x, base.y, base.z + (upper ? height : -height)};
+}
 }

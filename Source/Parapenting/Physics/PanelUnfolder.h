@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BillowRelaxation.h"
 #include "CanopyGeometry.h"
 
 #include <vector>
@@ -69,13 +70,6 @@ struct UnfoldedPanel
     int spanStations = 0;
     UnfoldResidual residual;
 };
-
-// Chord-cut billow profile: the fraction of extra spanwise length sewn in at
-// a given chord position, given the peak value. It runs out to zero at the
-// leading and trailing edges so those seams stay flat, which is the whole
-// point of chord-cut patterning. Exposed because the render mesh and the
-// inflated-shape relaxation must use the same profile the pattern was cut to.
-double ChordCutBillowAt(double chordFraction, double peakBillow);
 
 // Samples the bulged surface of one cell and unrolls it.
 //

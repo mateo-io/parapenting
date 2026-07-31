@@ -4,6 +4,7 @@
 // specification, and that the properties claimed to be exact by construction
 // really are exact rather than merely close.
 #include "CanopyGeometry.h"
+#include "BillowRelaxation.h"
 #include "PanelUnfolder.h"
 
 #include <cmath>
@@ -308,6 +309,94 @@ int main()
                 std::fabs(leftRung - rightRung) / leftRung);
         }
         Check(worstMirror < 1e-9, "mirrored cells unfold congruently");
+    }
+
+    std::printf("\nBillow emerges from the pattern\n");
+    {
+        // Level 1's exit gate: changing a seam allowance must change the
+        // inflated cross-section, with no 3D surface edited by hand.
+        const auto SectionFor = [](double allowance, double pressurePa)
+        {
+            CanopyGeometrySpec spec;
+            spec.billowFraction = allowance;
+            spec.internalPressurePa = pressurePa;
+            return CanopyGeometry(spec).InflatedSectionAt(0.45);
+        };
+
+        const CellInflation narrow = SectionFor(0.013, 65.0);
+        const CellInflation nominal = SectionFor(0.026, 65.0);
+        const CellInflation wide = SectionFor(0.050, 65.0);
+        std::printf("  allowance 1.3%%  sagitta %6.2f mm  hoop %5.1f N/m\n",
+            narrow.sagittaM * 1000.0, narrow.hoopTensionNPerM);
+        std::printf("  allowance 2.6%%  sagitta %6.2f mm  hoop %5.1f N/m\n",
+            nominal.sagittaM * 1000.0, nominal.hoopTensionNPerM);
+        std::printf("  allowance 5.0%%  sagitta %6.2f mm  hoop %5.1f N/m\n",
+            wide.sagittaM * 1000.0, wide.hoopTensionNPerM);
+
+        Check(nominal.sagittaM > narrow.sagittaM
+                  && wide.sagittaM > nominal.sagittaM,
+              "more seam allowance gives a deeper section");
+
+        // Hoop tension must FALL as allowance rises. A flatter panel has a
+        // larger radius, and Laplace makes tension proportional to radius, so
+        // cutting a panel flat is what loads it hardest. This is the reason
+        // chord-cut billow exists, and it should come out of the solve rather
+        // than being asserted anywhere.
+        Check(nominal.hoopTensionNPerM < narrow.hoopTensionNPerM
+                  && wide.hoopTensionNPerM < nominal.hoopTensionNPerM,
+              "hoop tension falls as seam allowance rises");
+
+        // Ovalization: the inflated cell is narrower than the panel it was cut
+        // from, by the amount the pattern added.
+        Check(std::fabs(nominal.ovalizationFraction - 0.026 / 1.026) < 1e-6,
+              "ovalization matches the cut allowance");
+
+        // Pressure holds the section. With none, the cell cannot carry hoop
+        // tension and does not hold shape.
+        const CellInflation unpressurised = SectionFor(0.026, 0.0);
+        Check(!unpressurised.holdsSection, "no pressure means no section");
+        Check(nominal.holdsSection, "trim pressure holds the section");
+
+        // Softer cloth stretches further and bulges deeper at the same cut.
+        CanopyGeometrySpec soft;
+        soft.fabric.membraneStiffnessNPerM = 4000.0;
+        const CellInflation softSection =
+            CanopyGeometry(soft).InflatedSectionAt(0.45);
+        Check(softSection.sagittaM > nominal.sagittaM,
+              "softer cloth gives a deeper section at the same cut");
+
+        // A panel cut flat still bulges, because a flat membrane cannot carry
+        // a normal pressure - it stretches until it can. It is the most
+        // heavily loaded case, which is the wrinkle problem in one number.
+        const CellInflation flatCut = SectionFor(0.0, 65.0);
+        Check(flatCut.sagittaM > 0.0, "a flat-cut panel still bulges");
+        Check(flatCut.hoopTensionNPerM > 3.0 * wide.hoopTensionNPerM,
+              "a flat-cut panel is the most heavily loaded");
+        std::printf("  flat cut       sagitta %6.2f mm  hoop %5.1f N/m"
+                    "  strain %.3f%%\n",
+            flatCut.sagittaM * 1000.0, flatCut.hoopTensionNPerM,
+            flatCut.fabricStrain * 100.0);
+
+        // The chord-cut profile must leave the edge seams flat.
+        const CanopyGeometry nominalGeometry{CanopyGeometrySpec{}};
+        Check(nominalGeometry.InflatedSectionAt(0.5).sagittaM
+                  > nominalGeometry.InflatedSectionAt(0.0).sagittaM,
+              "mid chord bulges more than the leading edge");
+        Check(nominalGeometry.InflatedSectionAt(0.5).sagittaM
+                  > nominalGeometry.InflatedSectionAt(1.0).sagittaM,
+              "mid chord bulges more than the trailing edge");
+
+        // And the inflated surface must actually differ from the rib profile.
+        const Vec3 ribProfile =
+            nominalGeometry.SurfacePointM(0.3, 0.45, true);
+        const Vec3 midCell =
+            nominalGeometry.InflatedSurfacePointM(0.3, 0.45, 0.5, true);
+        const Vec3 atRib =
+            nominalGeometry.InflatedSurfacePointM(0.3, 0.45, 0.0, true);
+        Check(midCell.z > ribProfile.z + 1e-4,
+              "the cell bulges above the rib profile");
+        Check(std::fabs(atRib.z - ribProfile.z) < 1e-9,
+              "the surface meets the rib exactly");
     }
 
     if (Failures)

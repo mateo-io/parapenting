@@ -1,4 +1,5 @@
 #include "PanelUnfolder.h"
+#include "BillowRelaxation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,27 +8,6 @@ namespace Parapenting::Physics
 {
 namespace
 {
-// Chord-cut billow: the sewn-in extra length is not uniform along the chord.
-// It runs out to zero where the panel meets the leading and trailing edges,
-// which is what keeps those seams flat and is the whole point of the
-// construction - BGD's own chord-cut-billow patterning. Published practice
-// puts the transition at roughly the first 10% of chord and the last 20%.
-// Uniform billow instead forces curvature right into the edge seams and
-// overstates how much of the panel cannot be flattened.
-double BillowAtChordImpl(double chordFraction, double peakBillow)
-{
-    constexpr double LeadingEdgeRunout = 0.10;
-    constexpr double TrailingEdgeRunout = 0.20;
-    const double t = std::clamp(chordFraction, 0.0, 1.0);
-    double taper = 1.0;
-    if (t < LeadingEdgeRunout) taper = t / LeadingEdgeRunout;
-    else if (t > 1.0 - TrailingEdgeRunout)
-        taper = (1.0 - t) / TrailingEdgeRunout;
-    // Smooth the corners so curvature does not step at the runout boundary.
-    taper = taper * taper * (3.0 - 2.0 * taper);
-    return peakBillow * taper;
-}
-
 // Half-angle of the circular arc whose length exceeds its chord by `billow`.
 double HalfAngleForBillow(double billow)
 {
@@ -99,11 +79,6 @@ double TriangleArea2(const Vec2& a, const Vec2& b, const Vec2& c)
     return 0.5 * std::fabs(
         (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
 }
-}
-
-double ChordCutBillowAt(double chordFraction, double peakBillow)
-{
-    return BillowAtChordImpl(chordFraction, peakBillow);
 }
 
 UnfoldedPanel UnfoldCell(

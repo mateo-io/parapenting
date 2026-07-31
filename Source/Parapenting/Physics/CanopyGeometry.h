@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BillowRelaxation.h"
 #include "ParagliderDynamics.h"
 
 #include <vector>
@@ -58,10 +59,16 @@ struct CanopyGeometrySpec
     // of arc, 1.9 gives 83.2 deg and 2.49 m. 1.3 sits near the middle with a
     // plausible tip angle. Replace when the rib plan is digitised.
     double arcExponent = 1.3;
-    // Extra span-wise length sewn into each panel relative to the straight
-    // rib-to-rib distance. This is what produces cell ovalization; 0 gives a
-    // faceted canopy with no billow at all.
+    // Peak seam allowance sewn into each panel relative to the straight
+    // rib-to-rib distance, tapering to zero at the leading and trailing edges.
+    // This is a manufacturing input, not a shape: the inflated section is
+    // solved from it, so changing it changes the canopy without any surface
+    // being edited by hand.
     double billowFraction = 0.026;
+    // Internal cell pressure above ambient. Trim dynamic pressure for this
+    // wing is about 65 Pa.
+    double internalPressurePa = 65.0;
+    FabricProperties fabric{};
 };
 
 // A rib station on the developed wing.
@@ -108,10 +115,25 @@ public:
     double SolvedTipChordFraction() const { return SolvedTipChord; }
     double RootChordMetres() const { return RootChordM; }
 
-    // Surface point in body axes. spanFraction in [-1, 1], chordFraction in
-    // [0, 1] from leading to trailing edge. upper selects the surface.
+    // Rib-profile surface point in body axes: the section the ribs hold,
+    // with no cell bulge. spanFraction in [-1, 1], chordFraction in [0, 1]
+    // from leading to trailing edge.
     Vec3 SurfacePointM(double spanFraction, double chordFraction,
                        bool upper) const;
+
+    // The inflated section between two ribs, solved from the seam allowance
+    // and internal pressure. Nothing here is authored: the bulge is the
+    // equilibrium of a pressurised membrane whose length is what the pattern
+    // was cut to.
+    CellInflation InflatedSectionAt(double chordFraction) const;
+
+    // Surface point including the solved bulge. `acrossCell` runs 0 to 1 from
+    // one rib to the next.
+    Vec3 InflatedSurfacePointM(double spanFraction, double chordFraction,
+                               double acrossCell, bool upper) const;
+
+    // Mean rib-to-rib spacing on the developed wing.
+    double CellSpacingM() const;
 
     // Interpolated rib station at an arbitrary span fraction.
     RibStation StationAt(double spanFraction) const;

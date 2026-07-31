@@ -1,4 +1,6 @@
 #include "ResearchCoefficientRegistry.h"
+#include "BillowRelaxation.h"
+#include "CanopyGeometry.h"
 #include "ParagliderDynamics.h"
 
 #include <iterator>
@@ -10,6 +12,7 @@ namespace
 {
 constexpr WingParameters Wing{};
 constexpr HarnessParameters Harness{};
+const CanopyGeometrySpec Canopy{};
 
 using S = CoefficientSource;
 using C = CalibrationStatus;
@@ -149,6 +152,32 @@ const CoefficientRecord Records[] = {
     // --- Harness ----------------------------------------------------------
     {"harnessDragAreaM2", "m^2", Harness.dragAreaM2, 0.15, 0.60, S::Literature, C::Unvalidated,
      "Seated pilot plus harness drag area.", 4},
+
+    // --- Level 1 canopy geometry -----------------------------------------
+    {"flatSpanM", "m", Canopy.flatSpanM, 10.0, 13.0, S::Published, C::Validated,
+     "BGD EPIC 2 ML published flat span.", 0},
+    {"flatAreaM2", "m^2", Canopy.flatAreaM2, 20.0, 32.0, S::Published, C::Validated,
+     "BGD EPIC 2 ML published flat area.", 0},
+    {"rootChordM", "m", Canopy.rootChordM, 2.0, 3.5, S::Published, C::Validated,
+     "BGD EPIC 2 ML published root chord. Pins the planform taper.", 0},
+    {"projectedSpanM", "m", Canopy.projectedSpanM, 8.0, 11.0, S::Published, C::Validated,
+     "BGD EPIC 2 ML published projected span. Solves the arc.", 0},
+    {"cellCount", "1", static_cast<double>(Canopy.cellCount), 30.0, 70.0,
+     S::Published, C::Validated, "BGD EPIC 2 ML published cell count.", 0},
+    {"arcExponent", "1", Canopy.arcExponent, 1.0, 3.0, S::Estimated, C::Unvalidated,
+     "Distribution of arc curvature toward the tips. Only the span ratio is "
+     "published; the shape is assumed pending a digitised rib plan.", 1},
+    {"billowFraction", "1", Canopy.billowFraction, 0.0, 0.12, S::Estimated, C::Unvalidated,
+     "Peak chord-cut seam allowance. Sets the inflated section through the "
+     "membrane relaxation rather than being drawn.", 6},
+    {"internalPressurePa", "Pa", Canopy.internalPressurePa, 0.0, 400.0,
+     S::Estimated, C::Provisional,
+     "Cell pressure above ambient, taken as trim dynamic pressure. Level 5 "
+     "solves it from inlet flow instead.", 5},
+    {"membraneStiffnessNPerM", "N/m", Canopy.fabric.membraneStiffnessNPerM,
+     5000.0, 100000.0, S::Literature, C::Unvalidated,
+     "Coated ripstop membrane stiffness, E times thickness. Drives how much "
+     "the cloth stretches under hoop tension.", 6},
 };
 constexpr std::size_t RecordCount = std::size(Records);
 }

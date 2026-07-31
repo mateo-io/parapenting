@@ -93,6 +93,7 @@ target_compile_options(parapenting_regression_matrix PRIVATE
 add_executable(parapenting_geometry_tests
     GeometryTests.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/PanelUnfolder.cpp
 )
 target_include_directories(parapenting_geometry_tests PRIVATE
@@ -106,6 +107,8 @@ add_executable(parapenting_determinism_tests
     DeterminismTests.cpp
     ../Source/Parapenting/Physics/ParagliderSolverClock.cpp
     ../Source/Parapenting/Physics/ResearchCoefficientRegistry.cpp
+    ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/SolverStateHash.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
     ../Source/Parapenting/Physics/AerodynamicPolar.cpp

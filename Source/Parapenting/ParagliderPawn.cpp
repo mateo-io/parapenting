@@ -2843,6 +2843,10 @@ void AParagliderPawn::ApplyKeyboardLayout()
         if (RemappedActions.Contains(Mapping.ActionName)
             && !Mapping.Key.IsGamepadKey())
             Settings->RemoveActionMapping(Mapping, false);
+        if (Mapping.ActionName == TEXT("CenterWeightShift")
+            || (Mapping.ActionName == TEXT("AcceleratorLess")
+                && Mapping.Key == EKeys::S))
+            Settings->RemoveActionMapping(Mapping, false);
     }
 
     const Parapenting::Physics::InputBindingProfile* Profile =
@@ -2876,6 +2880,9 @@ void AParagliderPawn::ApplyKeyboardLayout()
         Settings->AddActionMapping(
             FInputActionKeyMapping(RemappedActions[Index], Keys[Index]),
             false);
+    Settings->AddActionMapping(
+        FInputActionKeyMapping(TEXT("CenterWeightShift"), EKeys::S),
+        false);
     Settings->SaveKeyMappings();
     Settings->ForceRebuildKeymaps();
 }

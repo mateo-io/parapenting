@@ -3,6 +3,7 @@
 #include "CanopyGeometry.h"
 #include "HarnessGeometry.h"
 #include "PayloadRigidBody.h"
+#include "SectionPolarTable.h"
 #include "SuspensionGraph.h"
 #include "ParagliderDynamics.h"
 
@@ -19,6 +20,7 @@ const CanopyGeometrySpec Canopy{};
 const LinePlanSpec& Lines = Epic2MlLinePlan();
 constexpr HarnessGeometry Harness3{};
 constexpr PayloadMassProperties Payload{};
+constexpr AnalyticPolarSpec Polar{};
 
 using S = CoefficientSource;
 using C = CalibrationStatus;
@@ -230,6 +232,33 @@ const CoefficientRecord Records[] = {
      "How much of a pilot's weight-shift reach is lost per g. Their own body "
      "is the mass being moved, so the effort scales with load while the "
      "strength available does not. No measurement behind the rate.", 9},
+    // --- Level 4 section polars -------------------------------------------
+    // Every one of these is theory, not measurement. The whole table is
+    // Provisional: XFOIL runs over the digitised profiles replace it wholesale.
+    {"sectionCamberFraction", "1", Polar.camberFraction, 0.0, 0.08,
+     S::Estimated, C::Provisional,
+     "Section camber. Sets the zero-lift angle through thin-airfoil theory, "
+     "so it sets trim incidence. Assumed from the profile family, not "
+     "digitised.", 9},
+    {"sectionThicknessFraction", "1", Polar.thicknessFraction, 0.05, 0.25,
+     S::Estimated, C::Provisional,
+     "Section thickness. Only enters as the lift-slope correction here.", 9},
+    {"flapChordFraction", "1", Polar.flapChordFraction, 0.5, 0.95,
+     S::Estimated, C::Provisional,
+     "Where the brake starts. Feeds thin-airfoil flap effectiveness, which is "
+     "derived rather than fitted - this fraction is the only assumption in "
+     "the brake model.", 9},
+    {"sectionStallMarginRad", "rad", Polar.stallMarginRad, 0.12, 0.40,
+     S::Estimated, C::Provisional,
+     "Where the section stalls above its zero-lift angle. 14 deg is typical "
+     "for a thick cambered section; nothing here measures it.", 9},
+    {"vsmFilamentCoreFraction", "1", 0.5, 0.05, 2.0, S::Estimated,
+     C::Unvalidated,
+     "Trailing-filament core radius as a fraction of panel width. Numerical, "
+     "not physical: it exists to bound the singularity a control point sees "
+     "from its own trailing legs. Must never be used to shape handling, and "
+     "the panel-convergence test is what keeps it honest.", 11},
+
     {"payloadRollRadiusOfGyrationM", "m", 0.24, 0.15, 0.40, S::Literature,
      C::Unvalidated,
      "Seated human plus harness in roll. Anthropometric tables put a seated "

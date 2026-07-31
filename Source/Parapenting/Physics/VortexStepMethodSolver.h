@@ -56,8 +56,13 @@ struct VsmSection
     double chordM = 0.0;
     double widthM = 0.0;
     double areaM2 = 0.0;
-    // -1 at the left tip to +1 at the right.
+    // -1 at the left tip to +1 at the right, at the section's midpoint.
     double spanFraction = 0.0;
+    // How much of this section lies right of the centreline, 0 to 1. A panel
+    // that straddles the centre is braked partly by each hand. Deciding by
+    // the midpoint's sign instead makes the answer depend on whether the
+    // panel count is odd, and breaks left-right mirror symmetry when it is.
+    double rightSideFraction = 1.0;
 };
 
 struct VsmSolveInput
@@ -103,17 +108,61 @@ struct VsmSolution
     // the largest circulation. Reported so a solve that did not converge says
     // so rather than returning a plausible-looking answer.
     double residual = 0.0;
+    // What the adaptive under-relaxation settled on. Far below the starting
+    // value means the solve was fighting the stall knee.
+    double finalRelaxation = 0.0;
     bool converged = false;
 };
 
 struct VsmSettings
 {
-    int maxIterations = 300;
+    int maxIterations = 4000;
     double convergenceTolerance = 1.0e-6;
+    // Floor for the adaptive under-relaxation. A case that needs less than
+    // this is not converging for a reason worth looking at rather than
+    // damping harder.
+    double minimumRelaxation = 0.002;
     // Under-relaxation. The circulation solve is nonlinear through the polar,
     // and taking the full step oscillates near stall.
-    double relaxation = 0.20;
+    double relaxation = 0.60;
 };
+
+// Everything hanging below the wing. On a paraglider this is not a correction
+// term: lines, risers, harness and pilot are a large fraction of total drag,
+// and a canopy polar alone flies far better than the real thing.
+//
+// The line figures come from the suspension graph, so this is the same 254 m
+// of line the Level 2 solver strings up, not a second description of it.
+struct InstalledDragSpec
+{
+    double lineTotalLengthM = 254.0;
+    double lineMeanDiameterM = 0.00105;
+    // A cylinder in crossflow, in the subcritical range these Reynolds
+    // numbers sit in.
+    double lineDragCoefficient = 1.05;
+    // Manufactured line length is not all normal to the flow: cascades
+    // overlap, upper galleries are inclined, lower lines shield one another.
+    double lineProjectedFraction = 0.35;
+    // Seated pilot plus harness, frontal area.
+    double harnessAreaM2 = 0.32;
+    double harnessDragCoefficient = 1.05;
+    // How far below the canopy the harness drag acts. It is a long lever, so
+    // this drag is also a pitching moment.
+    double harnessBelowCanopyM = 7.8;
+};
+
+struct InstalledDragResult
+{
+    double lineDragN = 0.0;
+    double harnessDragN = 0.0;
+    double totalDragN = 0.0;
+    // About the canopy quarter-chord centre, body axes.
+    Vec3 momentBodyNm{};
+};
+
+InstalledDragResult EvaluateInstalledDrag(
+    const InstalledDragSpec& spec, const Vec3& airspeedBodyMps,
+    double airDensityKgM3);
 
 class VortexStepMethodSolver
 {

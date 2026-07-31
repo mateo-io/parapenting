@@ -252,6 +252,25 @@ const CoefficientRecord Records[] = {
      S::Estimated, C::Provisional,
      "Where the section stalls above its zero-lift angle. 14 deg is typical "
      "for a thick cambered section; nothing here measures it.", 9},
+    {"stallBlendWidthRad", "rad", Polar.stallBlendWidthRad, 0.02, 0.30,
+     S::Estimated, C::Provisional,
+     "Angular width of the stall transition. Zero below stall and one beyond, "
+     "so attached flow carries none of the post-stall branch. Real polars "
+     "make this a measurement rather than a shape.", 9},
+    {"fullBrakeDeflectionRad", "rad", Polar.fullBrakeDeflectionRad, 0.15, 0.80,
+     S::Estimated, C::Provisional,
+     "Trailing edge deflection at full brake. With the derived flap "
+     "effectiveness this is what sets where on the brake travel the wing "
+     "stalls, so it is the calibration hook for stall onset.", 9},
+    {"lineProjectedFraction", "1", 0.35, 0.15, 0.60, S::Estimated,
+     C::Unvalidated,
+     "How much of the manufactured line length is normal to the flow. "
+     "Cascades overlap and lower lines shield one another, so it is well "
+     "under one. Together with harness area this puts whole-aircraft glide at "
+     "9.46 against the published 9.5.", 9},
+    {"harnessAreaM2", "m^2", 0.32, 0.15, 0.60, S::Literature, C::Unvalidated,
+     "Frontal area of a seated pilot and harness. The largest single drag "
+     "contributor on the aircraft, larger than the whole line set.", 9},
     {"vsmFilamentCoreFraction", "1", 0.5, 0.05, 2.0, S::Estimated,
      C::Unvalidated,
      "Trailing-filament core radius as a fraction of panel width. Numerical, "

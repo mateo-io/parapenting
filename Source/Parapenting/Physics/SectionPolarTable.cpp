@@ -34,10 +34,14 @@ double BaseZeroLiftAngle(double camberFraction)
 
 double ThinAirfoilFlapEffectiveness(double flapChordFraction)
 {
-    // theta_f is the angular coordinate of the hinge on the camber line.
+    // The camber line maps to its angular coordinate as x/c = (1 - cos t)/2,
+    // so the hinge sits at t = acos(1 - 2 x/c). Writing that as acos(2 x/c - 1)
+    // reflects it about pi/2 and turns a 22% flap from 57% effective into 95%
+    // effective - which would make brake very nearly as powerful as pitching
+    // the whole wing, and stalls the canopy at half brake.
     const double ratio = std::clamp(flapChordFraction, 0.0, 1.0);
-    const double thetaF = std::acos(std::clamp(2.0 * ratio - 1.0, -1.0, 1.0));
-    return 1.0 - (thetaF - std::sin(thetaF)) / Pi;
+    const double hinge = std::acos(std::clamp(1.0 - 2.0 * ratio, -1.0, 1.0));
+    return 1.0 - (hinge - std::sin(hinge)) / Pi;
 }
 
 SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
@@ -71,7 +75,7 @@ SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
         // A deflected trailing edge stalls earlier: the suction peak it adds
         // is what runs out first.
         const double stallMargin = spec.stallMarginRad
-            * (1.0 - 0.42 * brake);
+            * (1.0 - spec.stallMarginBrakeLoss * brake);
         const double stallAlpha = zeroLift + stallMargin;
         const double stallCl = slope * stallMargin;
         const double stallCd = spec.minimumDragCoefficient
@@ -112,13 +116,18 @@ SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
             const double separatedCd = b1 * sinAlpha * sinAlpha
                 + b2 * cosAlpha;
 
-            // Blend from attached to separated across the stall. A smooth
-            // blend is a modelling choice, not a physical one: real stall
-            // hysteresis is Level 4's attached/separated state machine, and
-            // this table has no memory.
+            // Blend from attached to separated across the stall. Exactly zero
+            // below it, exactly one beyond the blend width, smooth between:
+            // a section below its stall angle must carry none of the
+            // post-stall branch at all. That a smooth blend stands in for
+            // real stall hysteresis remains a modelling choice - this table
+            // has no memory, and the attached/separated state machine is
+            // still owed.
             const double past = std::fabs(alpha - zeroLift) - stallMargin;
-            const double separation = 1.0
-                / (1.0 + std::exp(-spec.stallSharpness * past));
+            const double blendWidth = std::max(1.0e-3,
+                spec.stallBlendWidthRad);
+            const double t = std::clamp(past / blendWidth, 0.0, 1.0);
+            const double separation = t * t * (3.0 - 2.0 * t);
 
             SectionPolarSample sample;
             sample.liftCoefficient =
@@ -198,6 +207,8 @@ double SectionPolarTable::ZeroLiftAngleRad(double brake) const
 double SectionPolarTable::StallAngleRad(double brake) const
 {
     return ZeroLiftAngleRad(brake)
-        + SpecValue.stallMarginRad * (1.0 - 0.42 * std::clamp(brake, 0.0, 1.0));
+        + SpecValue.stallMarginRad
+            * (1.0 - SpecValue.stallMarginBrakeLoss
+                   * std::clamp(brake, 0.0, 1.0));
 }
 }

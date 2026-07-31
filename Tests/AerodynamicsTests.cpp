@@ -103,11 +103,15 @@ int main()
         // Flap effectiveness is derived, so it can be checked against the
         // closed form rather than against a previous run.
         const double tau = ThinAirfoilFlapEffectiveness(0.78);
-        const double thetaF = std::acos(2.0 * 0.78 - 1.0);
+        // x/c = (1 - cos t)/2 on the camber line, so the hinge is at
+        // t = acos(1 - 2 x/c).
+        const double thetaF = std::acos(1.0 - 2.0 * 0.78);
         CheckWithin(tau, 1.0 - (thetaF - std::sin(thetaF)) / Pi, 1e-12,
                     "flap effectiveness matches thin-airfoil theory");
-        Check(tau > 0.0 && tau < 1.0,
-              "a partial-chord flap is less effective than incidence");
+        Check(tau > 0.45 && tau < 0.70,
+              "a 22% flap is a little over half as effective as pitching the "
+              "whole section - the textbook figure, and a check that the "
+              "camber-line mapping is the right way round");
 
         // Brake is camber, so it moves the zero-lift angle and not the slope.
         Check(polar.ZeroLiftAngleRad(1.0) < polar.ZeroLiftAngleRad(0.0),
@@ -260,19 +264,9 @@ int main()
         std::printf("Rectangular wing: AR %.2f, CL %.4f, span efficiency "
                     "%.3f\n", aspectRatio, solution.liftCoefficient,
                     spanEfficiency);
-        std::printf("  KNOWN LIMITATION: a wing with finite tip chord carries "
-                    "circulation right to\n"
-                    "  the tip, so its tip filament is strong and sits half a "
-                    "narrow panel from the\n"
-                    "  control point. The core radius bounds it but does not "
-                    "resolve it, and the tip\n"
-                    "  panels take enough spurious downwash to drag CL down. "
-                    "The ellipse is clean\n"
-                    "  because its chord vanishes at the tip. Fixing this "
-                    "properly needs the tip\n"
-                    "  treatment the VSM literature uses, and until it is done "
-                    "no number from a\n"
-                    "  square-tipped planform should be trusted.\n");
+        Check(spanEfficiency > 0.80 && spanEfficiency < 1.0,
+              "a rectangular wing is less efficient than an ellipse, by about "
+              "the margin the literature reports");
     }
 
     // -- panel count ------------------------------------------------------
@@ -311,55 +305,125 @@ int main()
                     trim.totalDragCoefficient,
                     trim.liftCoefficient / trim.totalDragCoefficient,
                     trim.iterations);
-        std::printf("  KNOWN LIMITATION: this solve reaches the iteration "
-                    "limit rather than the\n"
-                    "  tolerance - residual %.2e after %d iterations. The EPIC "
-                    "2 tip chord is 0.16 of\n"
-                    "  root, not zero, so it has the same tip filament problem "
-                    "as the rectangle above.\n"
-                    "  CL and L/D below are therefore indicative only.\n",
-                    trim.residual, trim.iterations);
+        Check(trim.converged, "the canopy solve converges");
         Check(trim.liftCoefficient > 0.4 && trim.liftCoefficient < 1.2,
               "CL is in the range this wing works in");
         Check(trim.inducedDragCoefficient > 0.0,
               "a lifting wing has induced drag");
 
-        // STOP HERE for this planform.
-        //
-        // The EPIC 2 case does not converge, and the clearest evidence is
-        // that a perfectly symmetric input does not come out symmetric: at
-        // 0.5 brake on both sides the solver reports a roll moment of about
-        // 985 Nm, against 1136 Nm for 0.6 brake on one side alone. A
-        // symmetric wing under symmetric input must roll exactly zero. So
-        // nothing about how this wing rolls, yaws or pitches is measured
-        // here, because none of it would mean anything yet.
-        //
-        // The cause is the tip filament, the same one the rectangular wing
-        // shows above: this planform carries circulation out to a tip chord
-        // 0.16 of root, and the core radius bounds that filament without
-        // resolving it. The ellipse is clean because its chord vanishes.
-        //
-        // These two checks lock the failure in place rather than hiding it.
-        // When the tip treatment lands they will start failing, which is the
-        // signal to delete them and promote the real behavioural checks -
-        // roll damping from the spanwise incidence change, yaw toward the
-        // braked side, and symmetric input producing no roll at all.
+        // Roll damping must emerge. A wing rolling right sees more incidence
+        // on the falling tip and less on the rising one, and the resulting
+        // moment must oppose the roll. There is no damping coefficient in the
+        // solver - this is the integral of the section forces.
+        VsmSolveInput rolling = Inflow(0.06, 11.0);
+        rolling.angularVelocityBodyRadps = {0.5, 0.0, 0.0};
+        const VsmSolution rolled = wing.Solve(rolling);
+        std::printf("  roll rate +0.5 rad/s -> roll moment %+.1f Nm\n",
+                    rolled.momentBodyNm.x);
+        Check(rolled.converged, "the rolling case converges");
+        Check(rolled.momentBodyNm.x < 0.0,
+              "roll damping emerges from the spanwise incidence change");
+
+        // Symmetric input must be exactly symmetric. Not nearly - the wing is
+        // mirror-symmetric and so is the input, so any roll or yaw at all is
+        // the solver inventing one.
         VsmSolveInput symmetric = Inflow(0.06, 11.0);
         symmetric.leftBrake = 0.5;
         symmetric.rightBrake = 0.5;
         const VsmSolution both = wing.Solve(symmetric);
-        VsmSolveInput asymmetricInput = Inflow(0.06, 11.0);
-        asymmetricInput.rightBrake = 0.6;
-        const VsmSolution asymmetric = wing.Solve(asymmetricInput);
-        std::printf("  symmetric brake residue: roll %+.1f Nm against %+.1f Nm "
-                    "for asymmetric brake\n",
-                    both.momentBodyNm.x, asymmetric.momentBodyNm.x);
-        Check(!trim.converged,
-              "KNOWN FAILURE: the canopy solve does not converge. Delete this "
-              "check when it does");
-        Check(std::fabs(both.momentBodyNm.x) > 100.0,
-              "KNOWN FAILURE: a symmetric input rolls the wing. Delete this "
-              "check when it does not");
+        std::printf("  symmetric brake 0.5: roll %+.3f Nm, yaw %+.3f Nm, "
+                    "%d iterations\n",
+                    both.momentBodyNm.x, both.momentBodyNm.z, both.iterations);
+        Check(both.converged, "the symmetric braked case converges");
+        Check(std::fabs(both.momentBodyNm.x) < 1.0e-6,
+              "symmetric brake rolls nothing");
+        Check(std::fabs(both.momentBodyNm.z) < 1.0e-6,
+              "and yaws nothing");
+        Check(both.liftCoefficient > trim.liftCoefficient,
+              "symmetric brake adds camber, so it adds lift before it stalls");
+
+        // Asymmetric brake. The braked half carries more camber and more drag,
+        // so it makes more lift and more drag than the other - both come out
+        // of the section forces, neither is a term.
+        VsmSolveInput braked = Inflow(0.06, 11.0);
+        braked.rightBrake = 0.6;
+        const VsmSolution asymmetric = wing.Solve(braked);
+        std::printf("  right brake 0.6: roll %+.1f Nm, yaw %+.1f Nm\n",
+                    asymmetric.momentBodyNm.x, asymmetric.momentBodyNm.z);
+        Check(asymmetric.converged, "the asymmetric braked case converges");
+        Check(asymmetric.momentBodyNm.z > 1.0,
+              "brake yaws the nose toward the braked side, from that side's "
+              "drag");
+        Check(asymmetric.momentBodyNm.x > 1.0,
+              "and rolls the braked tip up, because below stall more camber "
+              "is more lift. The turn a pilot gets is that yaw plus the "
+              "payload reacting through the lines, which is Level 7's to "
+              "couple");
+
+        // Mirrored input must mirror exactly.
+        VsmSolveInput mirrored = Inflow(0.06, 11.0);
+        mirrored.leftBrake = 0.6;
+        const VsmSolution mirroredSolution = wing.Solve(mirrored);
+        Check(std::fabs(mirroredSolution.momentBodyNm.x
+                        + asymmetric.momentBodyNm.x) < 1.0e-6,
+              "left and right brake mirror exactly in roll");
+        Check(std::fabs(mirroredSolution.momentBodyNm.z
+                        + asymmetric.momentBodyNm.z) < 1.0e-6,
+              "and in yaw");
+
+        // Installed drag. A canopy polar on its own glides far better than
+        // the wing it belongs to, because on a paraglider the lines, risers,
+        // harness and pilot are a large fraction of the total. The published
+        // best glide for this wing is 9.5, and that is a number this can be
+        // held against - the only published performance figure Level 4 can
+        // check itself on before real polars arrive.
+        const InstalledDragSpec installedSpec;
+        const InstalledDragResult installed = EvaluateInstalledDrag(
+            installedSpec, Inflow(0.06, 11.0).airspeedBodyMps, 1.225);
+        const double referenceForce = 0.5 * 1.225 * 11.0 * 11.0
+            * wing.ReferenceAreaM2();
+        const double installedCd = installed.totalDragN / referenceForce;
+        const double totalCd = trim.totalDragCoefficient + installedCd;
+        std::printf("  installed drag: lines %.1f N, harness %.1f N, "
+                    "CD +%.4f\n",
+                    installed.lineDragN, installed.harnessDragN, installedCd);
+        std::printf("  canopy alone L/D %.2f, whole aircraft L/D %.2f "
+                    "(published best glide 9.5)\n",
+                    trim.liftCoefficient / trim.totalDragCoefficient,
+                    trim.liftCoefficient / totalCd);
+        Check(installed.harnessDragN > installed.lineDragN,
+              "the pilot is a bigger hole in the air than the lines");
+        Check(installedCd > 0.4 * trim.totalDragCoefficient,
+              "installed drag is the same order as the whole canopy's - 47% "
+              "of it here, so not a correction term");
+        Check(installed.momentBodyNm.y != 0.0,
+              "harness drag on a 7.8 m arm is a pitching moment too");
+        const double wholeAircraftGlide = trim.liftCoefficient / totalCd;
+        Check(wholeAircraftGlide > 8.0 && wholeAircraftGlide < 11.0,
+              "and with it the glide lands near the published 9.5, from "
+              "geometry and published drag figures rather than from a fitted "
+              "polar");
+
+        // Deep stall is where a steady solve runs out of meaning.
+        VsmSolveInput deep = Inflow(0.06, 11.0);
+        deep.leftBrake = 0.9;
+        deep.rightBrake = 0.9;
+        const VsmSolution stalled = wing.Solve(deep);
+        std::printf("  full brake 0.9: converged %d, residual %.1e, "
+                    "relaxation fell to %.4f\n",
+                    static_cast<int>(stalled.converged), stalled.residual,
+                    stalled.finalRelaxation);
+        std::printf("  KNOWN LIMITATION: deeply stalled cases do not settle. "
+                    "A steady solve has no\n"
+                    "  single answer where the real flow is unsteady and "
+                    "hysteretic: sections sit on\n"
+                    "  the stall knee and swap branches. The attached and "
+                    "separated state machine\n"
+                    "  Level 4 still owes, and the unsteady wake of Level 11, "
+                    "are what this needs.\n");
+        Check(!stalled.converged,
+              "KNOWN FAILURE: deep stall does not converge. Delete this check "
+              "when it does");
     }
 
     if (Failures == 0) std::printf("All aerodynamics checks passed.\n");

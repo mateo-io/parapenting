@@ -52,15 +52,34 @@ struct AnalyticPolarSpec
     // Where the brake starts, as a chord fraction. This is what makes brake a
     // camber change rather than an incidence change.
     double flapChordFraction = 0.78;
-    // Trailing edge deflection at full brake, radians.
-    double fullBrakeDeflectionRad = 0.61;
+    // Trailing edge deflection at full brake, radians. With the flap
+    // effectiveness above this is what decides where the wing stalls on the
+    // brake travel, so it is the natural calibration hook for stall onset and
+    // it is registered as such.
+    double fullBrakeDeflectionRad = 0.42;
     // Profile drag at the zero-lift angle, and the quadratic drag rise.
     double minimumDragCoefficient = 0.0125;
     double dragRiseFactor = 0.016;
     // Where the section stalls, measured from its own zero-lift angle.
     double stallMarginRad = 0.244;   // 14 deg
-    // Sharpness of the stall break. Larger is more abrupt.
-    double stallSharpness = 22.0;
+    // Angular width of the stall transition, past the stall angle. The blend
+    // is exactly zero below stall and exactly one beyond this, so attached
+    // flow is genuinely attached.
+    //
+    // It replaced a logistic blend in the stall margin, which never reached
+    // zero: at trim, a section 7.7 deg below its stall angle still carried a
+    // fifth of the post-stall branch, and that branch has a NEGATIVE lift
+    // slope. Softening the knee mixed in more of it, so the solve became less
+    // stable the gentler the stall was made - the opposite of what a stall
+    // model should do.
+    double stallBlendWidthRad = 0.10;
+    // How much a deflected trailing edge brings the stall forward, as a
+    // fraction of the clean margin at full brake. A flap raises maximum lift
+    // and lowers the angle it happens at; most of that lowering is already
+    // carried by the zero-lift shift, so what is left here is small. It was
+    // 0.42, which double-counted the shift and stalled the wing under any
+    // meaningful brake.
+    double stallMarginBrakeLoss = 0.15;
     // Aspect ratio the post-stall flat-plate drag is built for. Viterna's
     // CDmax depends on it.
     double aspectRatioForPostStall = 5.2;

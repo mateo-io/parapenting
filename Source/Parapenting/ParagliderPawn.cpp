@@ -140,6 +140,9 @@ AParagliderPawn::AParagliderPawn()
 void AParagliderPawn::BeginPlay()
 {
     Super::BeginPlay();
+    LineGraph = Parapenting::Physics::BuildSuspensionGraph(
+        Canopy, Parapenting::Physics::Epic2MlLinePlan());
+    SolveSuspensionGraph();
     FlightAudio->Start();
     LoadPilotProgress();
     ApplyKeyboardLayout();
@@ -1542,6 +1545,9 @@ void AParagliderPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
     PlayerInputComponent->BindAction(
         TEXT("WeightShiftRightStep"), IE_Pressed, this, &AParagliderPawn::StepWeightShiftRight);
     PlayerInputComponent->BindAction(
+        TEXT("CenterWeightShift"), IE_Pressed, this,
+        &AParagliderPawn::CenterWeightShift);
+    PlayerInputComponent->BindAction(
         TEXT("LeftBrakeStep"), IE_Pressed, this, &AParagliderPawn::StepLeftBrake);
     PlayerInputComponent->BindAction(
         TEXT("RightBrakeStep"), IE_Pressed, this, &AParagliderPawn::StepRightBrake);
@@ -1687,6 +1693,12 @@ void AParagliderPawn::StepWeightShiftLeft()
 void AParagliderPawn::StepWeightShiftRight()
 {
     Controls.weightShift = FMath::Clamp(Controls.weightShift + ControlStep, -1.0, 1.0);
+}
+
+void AParagliderPawn::CenterWeightShift()
+{
+    Controls.weightShift = 0.0;
+    ControllerControls.weightShift = 0.0;
 }
 
 void AParagliderPawn::StepLeftBrake()
@@ -2424,6 +2436,102 @@ void AParagliderPawn::DrawCanopyGeometryDebug()
             FString(Label), nullptr, Colour, 0.0f, true, 1.1f);
     }
 
+    // Level 2: the solved suspension network. Node positions are the solver's,
+    // not a drawn curve - the cascade junctions hang where the tensions and
+    // the lines' own weight put them, so the sag on screen is the sag the
+    // solver found.
+    {
+        // The graph is solved in the payload frame, where the canopy body
+        // origin sits at riser length plus canopy-to-riser. Shift it so that
+        // origin lands on the same actor-local height the geometry above is
+        // drawn at, and the attachment nodes coincide by construction.
+        const float PayloadOffsetCm = SuspensionRiseCm
+            - static_cast<float>(LineGraph.canopyDesignOriginM.z) * MetresToCm;
+        const auto ToWorldPayload =
+            [&](const Parapenting::Physics::Vec3& payload)
+        {
+            return ActorTransform.TransformPosition(FVector(
+                static_cast<float>(payload.x) * MetresToCm,
+                static_cast<float>(payload.y) * MetresToCm,
+                PayloadOffsetCm
+                    + static_cast<float>(payload.z) * MetresToCm));
+        };
+        const auto RowColour = [](Parapenting::Physics::LineRow Row)
+        {
+            switch (Row)
+            {
+            case Parapenting::Physics::LineRow::A:
+                return FColor(255, 70, 60);
+            case Parapenting::Physics::LineRow::ABaby:
+                return FColor(255, 150, 60);
+            case Parapenting::Physics::LineRow::B:
+                return FColor(70, 130, 255);
+            case Parapenting::Physics::LineRow::C:
+                return FColor(90, 220, 120);
+            case Parapenting::Physics::LineRow::Brake:
+                return FColor(230, 230, 90);
+            }
+            return FColor::White;
+        };
+
+        for (const auto& Cable : LineSolution.cables)
+        {
+            const FVector Start = ToWorldPayload(
+                LineSolution.nodePositionM[
+                    static_cast<std::size_t>(Cable.nodeA)]);
+            const FVector End = ToWorldPayload(
+                LineSolution.nodePositionM[
+                    static_cast<std::size_t>(Cable.nodeB)]);
+            // Width is tension, colour fades out when the line is slack. A
+            // slack line carries exactly zero, and it should look like it.
+            const float Load01 = FMath::Clamp(
+                FMath::Sqrt(static_cast<float>(Cable.tensionN) / 120.0f),
+                0.0f, 1.0f);
+            const FColor Colour = Cable.slack
+                ? FColor(70, 70, 75) : RowColour(Cable.row);
+            DrawDebugLine(World, Start, End, Colour, false, 0.0f, 0,
+                FMath::Lerp(0.5f, 3.0f, Load01));
+        }
+        for (std::size_t Index = 0; Index < LineGraph.nodes.size(); ++Index)
+        {
+            const auto& Node = LineGraph.nodes[Index];
+            const bool bJunction = Node.kind
+                == Parapenting::Physics::SuspensionNodeKind::CascadeJunction;
+            const bool bCarabiner = Node.kind
+                == Parapenting::Physics::SuspensionNodeKind::Carabiner;
+            if (!bJunction && !bCarabiner) continue;
+            DrawDebugSphere(World,
+                ToWorldPayload(LineSolution.nodePositionM[Index]),
+                bCarabiner ? 6.0f : 3.5f, 8,
+                bCarabiner ? FColor(205, 205, 210) : RowColour(Node.row),
+                false, 0.0f, 0, 1.2f);
+        }
+
+        DrawDebugString(World,
+            ActorTransform.TransformPosition(
+                FVector(0.0f, 0.0f, PayloadOffsetCm - 60.0f)),
+            FString::Printf(
+                TEXT("lines  A %.0f%%  A' %.0f%%  B %.0f%%  C %.0f%%  ")
+                TEXT("brake %.0f%%\n")
+                TEXT("carabiner %.0f / %.0f N   stretch %.1f cm   ")
+                TEXT("incidence %+.2f deg\n")
+                TEXT("slack %d of %d   residual %.3f N / %.3f Nm"),
+                100.0 * LineSolution.rowLoadFraction[0],
+                100.0 * LineSolution.rowLoadFraction[1],
+                100.0 * LineSolution.rowLoadFraction[2],
+                100.0 * LineSolution.rowLoadFraction[3],
+                100.0 * LineSolution.rowLoadFraction[4],
+                LineSolution.leftCarabinerLoadN,
+                LineSolution.rightCarabinerLoadN,
+                100.0 * LineSolution.lineStretchM,
+                FMath::RadiansToDegrees(LineSolution.incidenceChangeRad),
+                LineSolution.slackCableCount,
+                static_cast<int32>(LineSolution.cables.size()),
+                LineSolution.canopyForceResidualN,
+                LineSolution.canopyMomentResidualNm),
+            nullptr, FColor(235, 240, 255), 0.0f, true, 1.0f);
+    }
+
     // Summary, so the derived figures can be read against the published ones
     // without leaving the cockpit.
     const auto Section = Canopy.InflatedSectionAt(0.45);
@@ -2443,9 +2551,31 @@ void AParagliderPawn::DrawCanopyGeometryDebug()
         nullptr, FColor(235, 240, 255), 0.0f, true, 1.0f);
 }
 
+void AParagliderPawn::SolveSuspensionGraph()
+{
+    Parapenting::Physics::SuspensionSolveInput Input;
+    // Steady-flight load: what the lines are actually holding up right now.
+    // Level 4 replaces this with the VSM resultant and Level 7 puts the solve
+    // inside the step; until then the graph is driven by the flight model
+    // rather than driving it.
+    const double LoadFactor =
+        FMath::Max(0.1, Dynamics.LastTelemetry().loadFactor);
+    Input.aeroForceN = {0.0, 0.0,
+        LoadFactor * Dynamics.Parameters().allUpMassKg * 9.80665};
+    Input.canopyWeightN = Dynamics.Parameters().canopyMassKg * 9.80665;
+    Input.accelerator = AppliedControls.accelerator;
+    Input.leftBrake = AppliedControls.leftBrake;
+    Input.rightBrake = AppliedControls.rightBrake;
+    Input.weightShift = AppliedControls.weightShift;
+    LineSolution = Parapenting::Physics::SolveSuspension(LineGraph, Input);
+}
+
 void AParagliderPawn::ToggleGeometryVisualization()
 {
     bGeometryVisualization = !bGeometryVisualization;
+    // Re-solve on the way in, so the view shows the load path for the
+    // controls being held rather than a stale one.
+    if (bGeometryVisualization) SolveSuspensionGraph();
 }
 
 void AParagliderPawn::ToggleAirflowVisualization()

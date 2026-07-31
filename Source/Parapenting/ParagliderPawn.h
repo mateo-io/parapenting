@@ -5,6 +5,7 @@
 #include "Physics/AtmosphereModel.h"
 #include "Physics/ParagliderDynamics.h"
 #include "Physics/CanopyGeometry.h"
+#include "Physics/TensionCableSolver.h"
 #include "Physics/ParagliderSolverClock.h"
 #include "Physics/WingCatalogue.h"
 #include "Physics/RouteCatalogue.h"
@@ -174,6 +175,7 @@ protected:
 private:
     void StepWeightShiftLeft();
     void StepWeightShiftRight();
+    void CenterWeightShift();
     void StepLeftBrake();
     void StepRightBrake();
     void StepBothBrakesMore();
@@ -226,6 +228,10 @@ private:
     void ToggleAirflowVisualization();
     void ToggleGeometryVisualization();
     void DrawCanopyGeometryDebug();
+    // Solves the suspension network for the controls and load in force now.
+    // Called when the debug view is opened rather than every tick: this is a
+    // full cold relaxation, and Level 7 is where the solver joins the step.
+    void SolveSuspensionGraph();
     void CycleCameraMode();
     void CycleAccessibilityProfile();
     void CycleKeyboardLayout();
@@ -375,6 +381,11 @@ private:
     // Authoritative canopy geometry. Physics and rendering both read this
     // rather than carrying separate span and chord constants.
     Parapenting::Physics::CanopyGeometry Canopy{};
+    // Level 2 suspension: carabiners, risers, mains, cascades, upper
+    // galleries, the brake fan and every canopy attachment, built from the
+    // geometry above so the lines cannot describe a different wing.
+    Parapenting::Physics::SuspensionGraph LineGraph;
+    Parapenting::Physics::SuspensionSolution LineSolution;
     Parapenting::Physics::ParagliderSolverClock SolverClock{
         PhysicsStepSeconds};
     double SimulationTimeSeconds = 0.0;

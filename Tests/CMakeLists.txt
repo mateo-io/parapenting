@@ -104,8 +104,30 @@ target_compile_options(parapenting_geometry_tests PRIVATE
     -Wall -Wextra -Wpedantic
 )
 
+add_executable(parapenting_suspension_tests
+    SuspensionTests.cpp
+    ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/BillowRelaxation.cpp
+    ../Source/Parapenting/Physics/SuspensionGraph.cpp
+    ../Source/Parapenting/Physics/TensionCableSolver.cpp
+    ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/AerodynamicPolar.cpp
+    ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
+    ../Source/Parapenting/Physics/WingCatalogue.cpp
+)
+target_include_directories(parapenting_suspension_tests PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_suspension_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)
+
 add_executable(parapenting_determinism_tests
     DeterminismTests.cpp
+    ../Source/Parapenting/Physics/SuspensionGraph.cpp
+    ../Source/Parapenting/Physics/TensionCableSolver.cpp
     ../Source/Parapenting/Physics/ParagliderSolverClock.cpp
     ../Source/Parapenting/Physics/ResearchCoefficientRegistry.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp

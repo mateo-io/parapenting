@@ -290,12 +290,10 @@ Vec3 CanopyGeometry::InflatedSurfacePointM(
     return {base.x, base.y, base.z + (upper ? height : -height)};
 }
 
-namespace
-{
 // Finds "key" and reads the next number after it. Skips the "_comment" and
 // "why" string fields the schema uses for provenance, because those are for
 // humans and must never be parsed as data.
-bool ReadNumber(const std::string& text, const std::string& key, double& out)
+bool ReadJsonNumber(const std::string& text, const std::string& key, double& out)
 {
     const std::string quoted = "\"" + key + "\"";
     const std::size_t at = text.find(quoted);
@@ -326,6 +324,13 @@ bool ReadNumber(const std::string& text, const std::string& key, double& out)
     {
         return false;
     }
+}
+
+namespace
+{
+bool ReadNumber(const std::string& text, const std::string& key, double& out)
+{
+    return ReadJsonNumber(text, key, out);
 }
 }
 

@@ -37,6 +37,8 @@ run_tests() {
     "$BUILD_DIR/parapenting_determinism_tests"
     (cd "$ROOT" && "$BUILD_DIR/parapenting_geometry_tests" \
         Data/Wings/bgd-epic-2-ml-geometry.json)
+    (cd "$ROOT" && "$BUILD_DIR/parapenting_suspension_tests" \
+        Data/Wings/bgd-epic-2-ml-lineplan.json)
     # Run from the project root: the survey test reads the provenance file.
     (cd "$ROOT" && "$BUILD_DIR/parapenting_terrain_survey_tests" \
         Content/Terrain/interlaken.provenance.json)

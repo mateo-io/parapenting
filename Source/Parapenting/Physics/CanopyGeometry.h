@@ -99,6 +99,12 @@ struct RibStation
 bool LoadCanopyGeometrySpec(
     const std::string& filePath, CanopyGeometrySpec& spec);
 
+// Finds "key" and reads the next number after it, stepping over a nested
+// {"value": x, "why": "..."} wrapper. Shared with the line-plan reader, which
+// uses the same three-way published/assumed/derived schema.
+bool ReadJsonNumber(
+    const std::string& text, const std::string& key, double& out);
+
 class CanopyGeometry
 {
 public:

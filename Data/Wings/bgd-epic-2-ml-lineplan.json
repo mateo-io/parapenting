@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "wing": "BGD EPIC 2",
+  "size": "ML",
+  "lineLayout": "3-liner, A / A' / B / C risers, upper D cascading into C",
+
+  "published": {
+    "_comment": "Manufacturer specification. Measurements, not tuning. The main-line counts fix the cascade topology in SuspensionGraph.cpp; total line length is a check on the derived rest lengths, not an input.",
+    "canopyToRiserM": 7.3,
+    "totalLineLengthM": 254.0,
+    "mainLinesPerWing": {"A": 3, "ABaby": 1, "B": 4, "C": 3},
+    "trimRiserLengthM": [0.50, 0.50, 0.50, 0.50],
+    "acceleratedRiserLengthM": [0.38, 0.38, 0.42, 0.50]
+  },
+
+  "assumed": {
+    "_comment": "Not published. Each carries the reason it exists and what would replace it. Rest lengths are not listed here: they are measured from the Level 1 geometry at the design pose, so the wing hangs where its own shape puts it.",
+    "designIncidenceRad": {
+      "value": 0.0873,
+      "why": "Root chord incidence in the harness frame at the unloaded design pose, 5 deg nose-up. Sets where the rest lengths are cut, so it fixes hands-up trim incidence. Replace with the manufacturer's rigging angle, or by fitting Level 4 trim speed."
+    },
+    "cascadeSplitFraction": {
+      "value": 0.62,
+      "why": "How far up the riser-to-canopy run each cascade junction sits. Governs how much of the load path is main line versus upper gallery, and therefore total stretch. Digitising the line plan replaces it."
+    },
+    "brakeCascadeSplitFraction": {
+      "value": 0.55,
+      "why": "Same, for the brake fan, which cascades lower so the fan can spread along the trailing edge."
+    },
+    "mainLineDiameterM": {
+      "value": 0.00125,
+      "why": "Sheathed main line. Sets axial stiffness and drag area."
+    },
+    "upperLineDiameterM": {
+      "value": 0.00070,
+      "why": "Unsheathed upper gallery, the usual construction on a wing of this class."
+    },
+    "brakeLineDiameterM": {
+      "value": 0.00090,
+      "why": "Brake lines run heavier than uppers because they are handled."
+    },
+    "lineModulusPa": {
+      "value": 55.0e9,
+      "why": "Effective axial modulus of sheathed Dyneema-class line. UHMWPE fibre is near 100 GPa; a sheathed, spliced, bedded-in line behaves considerably softer. Order-of-magnitude from the cordage literature; a pull test on a real line replaces it."
+    },
+    "lineDensityKgM3": {
+      "value": 970.0,
+      "why": "UHMWPE bulk density. Only sets line weight, which is what makes the cascade junctions droop."
+    },
+    "carabinerSeparationM": {
+      "value": 0.42,
+      "why": "Carabiner spacing across the harness. Level 3 replaces it with harness geometry."
+    },
+    "weightShiftTravelM": {
+      "value": 0.09,
+      "why": "Lateral swing of the carabiner pair at full weight shift. A stand-in for a payload that can actually move; Level 3 deletes it."
+    },
+    "weightShiftTiltM": {
+      "value": 0.022,
+      "why": "Vertical offset of each carabiner when the harness rolls under full weight shift, about 6 deg on a 0.42 m carabiner spacing. This tilt is what gives weight shift any effect at all here: with a massless payload anchor, swinging both carabiners sideways only translates the canopy. Level 3 replaces it with a payload CG and a harness geometry class."
+    },
+    "brakeSlackM": {
+      "value": 0.12,
+      "why": "Slack sewn into the brake line at hands-up. Without it the brake line would load at trim, which is the failure the exit gate checks for."
+    },
+    "brakeTravelM": {
+      "value": 0.62,
+      "why": "Brake handle travel at full input, applied as a rest-length change rather than a moment (guiding rule 4)."
+    }
+  },
+
+  "derived": {
+    "_comment": "Computed by BuildSuspensionGraph from the geometry and the design pose, recorded so a change shows up in review. See SuspensionTests for the checks.",
+    "manufacturedLineLengthM": 254.8,
+    "cableCount": 78,
+    "nodeCount": 90,
+    "trimRowLoadFraction": {"A": 0.36, "ABaby": 0.11, "B": 0.37, "C": 0.16},
+    "trimLineStretchM": 0.005,
+    "trimIncidenceChangeRad": -0.0042
+  },
+
+  "sources": [
+    "https://www.flybgd.com/en/paragliders/epic-2--paraglider-2021-1782-0.html"
+  ],
+  "safety": "Simulator content. Line lengths and stiffness are unvalidated research estimates and must not be used for rigging, repair or airworthiness."
+}

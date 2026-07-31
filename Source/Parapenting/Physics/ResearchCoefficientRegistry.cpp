@@ -1,6 +1,7 @@
 #include "ResearchCoefficientRegistry.h"
 #include "BillowRelaxation.h"
 #include "CanopyGeometry.h"
+#include "SuspensionGraph.h"
 #include "ParagliderDynamics.h"
 
 #include <iterator>
@@ -13,6 +14,7 @@ namespace
 constexpr WingParameters Wing{};
 constexpr HarnessParameters Harness{};
 const CanopyGeometrySpec Canopy{};
+const LinePlanSpec& Lines = Epic2MlLinePlan();
 
 using S = CoefficientSource;
 using C = CalibrationStatus;
@@ -178,6 +180,32 @@ const CoefficientRecord Records[] = {
      5000.0, 100000.0, S::Literature, C::Unvalidated,
      "Coated ripstop membrane stiffness, E times thickness. Drives how much "
      "the cloth stretches under hoop tension.", 6},
+
+    // --- Level 2 suspension graph -----------------------------------------
+    {"lineModulusPa", "Pa", Lines.lineModulusPa, 20.0e9, 120.0e9,
+     S::Literature, C::Unvalidated,
+     "Effective axial modulus of sheathed Dyneema-class line. UHMWPE fibre is "
+     "near 100 GPa; sheathed, spliced and bedded-in line behaves softer. Sets "
+     "line stretch and therefore the trim shift under load. A pull test on a "
+     "real line replaces it.", 9},
+    {"designIncidenceRad", "rad", Lines.designIncidenceRad, 0.0, 0.20,
+     S::Estimated, C::Unvalidated,
+     "Root chord incidence at the unloaded design pose, where the line rest "
+     "lengths are cut. Fixes hands-up trim incidence, so Level 4 will want it "
+     "fitted to trim speed rather than assumed.", 4},
+    {"cascadeSplitFraction", "1", Lines.cascadeSplitFraction, 0.3, 0.9,
+     S::Estimated, C::Unvalidated,
+     "Height of the cascade junctions along the riser-to-canopy run. Sets how "
+     "much of the load path is main line rather than upper gallery, and so how "
+     "much the suspension stretches. A digitised line plan replaces it.", 0},
+    {"brakeSlackM", "m", Lines.brakeSlackM, 0.0, 0.35, S::Estimated, C::Unvalidated,
+     "Slack sewn into the brake line at hands-up. Without it the trailing edge "
+     "loads at trim.", 0},
+    {"weightShiftTiltM", "m", Lines.weightShiftTiltM, 0.0, 0.06,
+     S::Estimated, C::Provisional,
+     "Carabiner height offset when the harness rolls under full weight shift. "
+     "A stand-in for a payload that can actually move; Level 3 replaces it "
+     "with a payload CG and a harness geometry class.", 3},
 };
 constexpr std::size_t RecordCount = std::size(Records);
 }

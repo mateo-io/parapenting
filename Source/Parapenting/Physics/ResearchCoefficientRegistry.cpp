@@ -3,6 +3,7 @@
 #include "CanopyGeometry.h"
 #include "HarnessGeometry.h"
 #include "PayloadRigidBody.h"
+#include "ApparentMassTensor.h"
 #include "SectionPolarTable.h"
 #include "SuspensionGraph.h"
 #include "ParagliderDynamics.h"
@@ -271,6 +272,19 @@ const CoefficientRecord Records[] = {
     {"harnessAreaM2", "m^2", 0.32, 0.15, 0.60, S::Literature, C::Unvalidated,
      "Frontal area of a seated pilot and harness. The largest single drag "
      "contributor on the aircraft, larger than the whole line set.", 9},
+    {"apparentMassNormalKg", "kg", 33.6, 10.0, 60.0, S::Literature,
+     C::Unvalidated,
+     "Air accelerated with the canopy normal to the wing, from the ellipsoid "
+     "idealisation on the projected geometry. A third of the aircraft's mass, "
+     "which is why it cannot be left out. Agrees to within a tenth with the "
+     "independent estimate already in WingParameters.", 6},
+    {"apparentRollInertiaKgM2", "kg*m^2", 254.0, 5.0, 400.0, S::Literature,
+     C::Disputed,
+     "Air rotated with the canopy in roll. Dimensionally consistent and scales "
+     "correctly with span, but the leading coefficient could not be checked "
+     "against the source paper and it lands well above the 18 kg m^2 estimate "
+     "already carried. Disputed deliberately: nothing uses its magnitude until "
+     "someone reads Lissaman and Brown against it.", 4},
     {"vsmFilamentCoreFraction", "1", 0.5, 0.05, 2.0, S::Estimated,
      C::Unvalidated,
      "Trailing-filament core radius as a fraction of panel width. Numerical, "

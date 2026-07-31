@@ -161,6 +161,7 @@ add_executable(parapenting_aerodynamics_tests
     AerodynamicsTests.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
+    ../Source/Parapenting/Physics/ApparentMassTensor.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp

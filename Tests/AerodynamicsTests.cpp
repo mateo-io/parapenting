@@ -14,6 +14,7 @@
 // have is any claim about the EPIC 2, because the polars are analytic.
 #include "CanopyGeometry.h"
 #include "SectionPolarTable.h"
+#include "ApparentMassTensor.h"
 #include "VortexStepMethodSolver.h"
 
 #include <cmath>
@@ -491,6 +492,74 @@ int main()
         Check(!stalled.converged,
               "KNOWN FAILURE: deep stall does not converge. Delete this check "
               "when it does");
+    }
+
+    // -- apparent mass ----------------------------------------------------
+    {
+        const CanopyGeometry canopy;
+        const ApparentMassTensor apparent = CanopyApparentMass(canopy);
+        std::printf("Apparent mass (Lissaman & Brown): "
+                    "%.1f / %.1f / %.1f kg,  %.1f / %.1f / %.1f kg m2\n",
+                    apparent.massKg.x, apparent.massKg.y, apparent.massKg.z,
+                    apparent.inertiaKgM2.x, apparent.inertiaKgM2.y,
+                    apparent.inertiaKgM2.z);
+
+        // The ordering is the physics: a wing accelerating broadside carries
+        // far more air than one accelerating edgewise or along its chord.
+        Check(apparent.massKg.z > apparent.massKg.y,
+              "normal apparent mass is the largest - a wing pushed broadside "
+              "drags a cylinder of air with it");
+        Check(apparent.massKg.y > apparent.massKg.x,
+              "and chordwise is the smallest, a thin plate edge-on");
+        Check(apparent.massKg.x > 0.0 && apparent.inertiaKgM2.x > 0.0,
+              "every term is positive");
+
+        // Scale. This is why the plan calls apparent mass not optional: on a
+        // wing loaded at 4 kg per square metre the air it accelerates is a
+        // large fraction of the aircraft, not a correction to it.
+        constexpr double AllUpMassKg = 100.0;
+        const double normalFraction = apparent.massKg.z / AllUpMassKg;
+        std::printf("  normal apparent mass is %.0f%% of a 100 kg all-up "
+                    "aircraft\n", 100.0 * normalFraction);
+        Check(normalFraction > 0.15 && normalFraction < 1.2,
+              "normal apparent mass is a large fraction of the aircraft, "
+              "which is the reason it cannot be left out");
+
+        // It comes from geometry, so it must move with geometry.
+        const ApparentMassTensor denser =
+            CanopyApparentMass(canopy, 0.155, 2.0 * 1.225);
+        CheckWithin(denser.massKg.z, 2.0 * apparent.massKg.z, 1e-9,
+                    "apparent mass is proportional to air density");
+        const ApparentMassTensor bigger =
+            LissamanBrownApparentMass(2.0 * canopy.ProjectedSpanM(),
+                canopy.ProjectedAreaM2() / canopy.ProjectedSpanM(), 0.155);
+        Check(bigger.massKg.z > apparent.massKg.z,
+              "and a wing of twice the span carries more air");
+        Check(bigger.inertiaKgM2.x > 4.0 * apparent.inertiaKgM2.x,
+              "roll apparent inertia grows fast with span - it is the term "
+              "that slows a big wing into a turn");
+
+        // Cross-check against the estimate the flight model already carried,
+        // arrived at independently. The linear terms agree; the rotational
+        // ones do not, and that disagreement is recorded rather than split
+        // down the middle.
+        const WingParameters wing;
+        std::printf("  normal apparent mass %.1f kg against the model's "
+                    "existing estimate of %.1f kg\n",
+                    apparent.massKg.z, wing.apparentMassKg.z);
+        CheckWithin(apparent.massKg.z, wing.apparentMassKg.z, 15.0,
+                    "normal apparent mass agrees with the independent "
+                    "estimate already in the model");
+        std::printf("  KNOWN DISAGREEMENT: roll apparent inertia is %.0f "
+                    "kg m2 here against %.0f in\n"
+                    "  WingParameters. The rotational coefficients could not "
+                    "be checked against the\n"
+                    "  source paper, so they are registered Disputed and "
+                    "nothing uses their magnitude.\n",
+                    apparent.inertiaKgM2.x, wing.apparentRotationalInertiaKgM2.x);
+        Check(apparent.inertiaKgM2.x > wing.apparentRotationalInertiaKgM2.x,
+              "KNOWN DISAGREEMENT: the roll term is the one to check against "
+              "the paper. Delete this when it has been");
     }
 
     if (Failures == 0) std::printf("All aerodynamics checks passed.\n");

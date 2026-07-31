@@ -4,6 +4,7 @@
 // specification, and that the properties claimed to be exact by construction
 // really are exact rather than merely close.
 #include "CanopyGeometry.h"
+#include "PanelUnfolder.h"
 
 #include <cmath>
 #include <cstdio>
@@ -204,6 +205,92 @@ int main()
         0.5 * geometry.ProjectedSpanM());
     std::printf("  geometry half-span (developed):          %.4f m\n",
         0.5 * geometry.DevelopedSpanM());
+
+    std::printf("\nIsometric panel unfold\n");
+    {
+        // The construction guarantee: no edge of the flat pattern is ever
+        // stretched. Chordwise seams carry their true 3D length; the rungs
+        // carry the developed width, which is the straight rib-to-rib distance
+        // times (1 + billow) - the length a sailmaker actually cuts.
+        const double billow = geometry.Spec().billowFraction;
+        const UnfoldedPanel panel = UnfoldCell(geometry, 20, true, billow);
+        const auto At = [&](int j, int i)
+        { return static_cast<std::size_t>(j * 2 + i); };
+        const auto Flat = [&](std::size_t a, std::size_t b)
+        {
+            return std::hypot(
+                panel.flatVertices[a].x - panel.flatVertices[b].x,
+                panel.flatVertices[a].y - panel.flatVertices[b].y);
+        };
+
+        double worstSeam = 0.0;
+        for (int j = 1; j < panel.chordStations; ++j)
+        {
+            for (int i = 0; i < 2; ++i)
+            {
+                const double solid = Length(panel.surfaceVertices[At(j, i)]
+                    - panel.surfaceVertices[At(j - 1, i)]);
+                worstSeam = std::max(worstSeam,
+                    std::fabs(Flat(At(j, i), At(j - 1, i)) - solid) / solid);
+            }
+        }
+        double worstRung = 0.0;
+        for (int j = 0; j < panel.chordStations; ++j)
+        {
+            const double straight = Length(panel.surfaceVertices[At(j, 1)]
+                - panel.surfaceVertices[At(j, 0)]);
+            const double developed = straight * (1.0 + billow);
+            worstRung = std::max(worstRung,
+                std::fabs(Flat(At(j, 0), At(j, 1)) - developed) / developed);
+        }
+        std::printf("  worst seam edge error  %.3e\n", worstSeam);
+        std::printf("  worst rung edge error  %.3e\n", worstRung);
+        Check(worstSeam < 1e-12, "chordwise seams are exactly isometric");
+        Check(worstRung < 1e-12, "rungs carry exactly the developed width");
+
+        // A developable panel unfolds with no residual at all. Zero billow
+        // leaves the taut ruled surface, and the strip triangulation flattens
+        // it exactly.
+        const UnfoldResidual taut = UnfoldSkin(geometry, true, 0.0);
+        std::printf("  residual at zero billow %.3e\n", taut.rmsFraction);
+        Check(taut.rmsFraction < 1e-12, "zero billow unfolds exactly");
+
+        // Residual must grow monotonically with sewn-in billow: more fabric
+        // between the ribs is more curvature, and more curvature is more of
+        // the shape that no flat pattern can hold.
+        double previous = -1.0;
+        std::printf("  %10s %12s %12s\n", "billow", "rms", "max");
+        for (double sewn : {0.0, 0.013, 0.026, 0.05, 0.08})
+        {
+            const UnfoldResidual r = UnfoldSkin(geometry, true, sewn);
+            std::printf("  %9.1f%% %11.4f%% %11.4f%%\n",
+                sewn * 100.0, r.rmsFraction * 100.0, r.maxFraction * 100.0);
+            Check(r.rmsFraction >= previous,
+                  "residual grows with billow");
+            previous = r.rmsFraction;
+        }
+
+        // Left and right must unfold to congruent panels.
+        const int cells = static_cast<int>(geometry.Ribs().size()) - 1;
+        const UnfoldedPanel left = UnfoldCell(geometry, 3, true, billow);
+        const UnfoldedPanel right =
+            UnfoldCell(geometry, cells - 4, true, billow);
+        double worstMirror = 0.0;
+        for (int j = 0; j < left.chordStations; ++j)
+        {
+            const double a = Flat(At(j, 0), At(j, 1));
+            (void)a;
+            const double leftRung = std::hypot(
+                left.flatVertices[At(j, 0)].x - left.flatVertices[At(j, 1)].x,
+                left.flatVertices[At(j, 0)].y - left.flatVertices[At(j, 1)].y);
+            const double rightRung = std::hypot(
+                right.flatVertices[At(j, 0)].x - right.flatVertices[At(j, 1)].x,
+                right.flatVertices[At(j, 0)].y - right.flatVertices[At(j, 1)].y);
+            worstMirror = std::max(worstMirror,
+                std::fabs(leftRung - rightRung) / leftRung);
+        }
+        Check(worstMirror < 1e-9, "mirrored cells unfold congruently");
+    }
 
     if (Failures)
     {

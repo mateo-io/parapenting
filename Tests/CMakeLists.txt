@@ -93,6 +93,7 @@ target_compile_options(parapenting_regression_matrix PRIVATE
 add_executable(parapenting_geometry_tests
     GeometryTests.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/PanelUnfolder.cpp
 )
 target_include_directories(parapenting_geometry_tests PRIVATE
     ../Source/Parapenting/Physics

@@ -96,6 +96,12 @@ struct VsmSolveInput
 struct VsmSeparationState
 {
     std::vector<double> sectionSeparation;
+    // Circulation carried between solves. A cold nonlinear solve takes about
+    // ninety iterations; continued from the last one it takes a handful,
+    // because the wing's loading changes far more slowly than the solver
+    // converges. This is what makes running the VSM inside a flight loop
+    // affordable at all.
+    std::vector<double> circulation;
     bool initialised = false;
 };
 
@@ -232,7 +238,8 @@ private:
     void BuildInfluenceMatrix(double coreFraction);
     VsmSolution SolveHeld(
         const VsmSolveInput& input, const VsmSettings& settings,
-        const std::vector<double>* heldSeparation) const;
+        const std::vector<double>* heldSeparation,
+        std::vector<double>* warmCirculation) const;
 
     std::vector<VsmSection> SectionList;
     SectionPolarTable Polars;

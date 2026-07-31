@@ -273,8 +273,8 @@ VsmSolution VortexStepMethodSolver::SolveUnsteady(
         state.initialised = true;
     }
 
-    const VsmSolution solution = SolveHeld(input, settings,
-                                           &state.sectionSeparation);
+    const VsmSolution solution = SolveHeld(
+        input, settings, &state.sectionSeparation, &state.circulation);
 
     // Advance the state with the incidence this solve found. Separation
     // spreads faster than it clears.
@@ -299,12 +299,13 @@ VsmSolution VortexStepMethodSolver::SolveUnsteady(
 VsmSolution VortexStepMethodSolver::Solve(
     const VsmSolveInput& input, const VsmSettings& settings) const
 {
-    return SolveHeld(input, settings, nullptr);
+    return SolveHeld(input, settings, nullptr, nullptr);
 }
 
 VsmSolution VortexStepMethodSolver::SolveHeld(
     const VsmSolveInput& input, const VsmSettings& settings,
-    const std::vector<double>* heldSeparation) const
+    const std::vector<double>* heldSeparation,
+    std::vector<double>* warmCirculation) const
 {
     const std::size_t count = SectionList.size();
     VsmSolution solution;
@@ -313,6 +314,8 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
 
     std::vector<double> circulation(count, 0.0);
     std::vector<double> nextCirculation(count, 0.0);
+    if (warmCirculation && warmCirculation->size() == count)
+        circulation = *warmCirculation;
 
     const double dynamicPressureScale = 0.5 * input.airDensityKgM3;
     // The air's velocity relative to the wing. Converted here, once.
@@ -471,6 +474,7 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
         previousResidual = solution.residual;
     }
     solution.finalRelaxation = relaxation;
+    if (warmCirculation) *warmCirculation = circulation;
 
     // Forces. Each section's lift acts perpendicular to its own local flow and
     // its drag along it, so induced drag appears as the tilt of the local lift

@@ -126,7 +126,23 @@ struct SuspensionSolution
     Vec3 endpointForceSumN{};
 };
 
+// Warm-start state, so the network can be carried between steps instead of
+// relaxed from its design pose every time. A cold solve takes 12000
+// iterations; continued from where it was last step it takes a few dozen,
+// which is what makes running it inside a 120 Hz loop possible at all.
+struct SuspensionWarmStart
+{
+    std::vector<Vec3> junctionPositionM;
+    std::vector<Vec3> junctionVelocityMps;
+    Vec3 canopyOriginM{};
+    Quaternion canopyAttitude{};
+    Vec3 canopyVelocityMps{};
+    Vec3 canopyAngularVelocityRadps{};
+    bool initialised = false;
+};
+
 SuspensionSolution SolveSuspension(
     const SuspensionGraph& graph, const SuspensionSolveInput& input,
-    const SuspensionSolverSettings& settings = {});
+    const SuspensionSolverSettings& settings = {},
+    SuspensionWarmStart* warmStart = nullptr);
 }

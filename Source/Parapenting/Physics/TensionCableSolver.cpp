@@ -57,7 +57,8 @@ bool AnchoredToPayload(SuspensionNodeKind kind)
 
 SuspensionSolution SolveSuspension(
     const SuspensionGraph& graph, const SuspensionSolveInput& input,
-    const SuspensionSolverSettings& settings)
+    const SuspensionSolverSettings& settings,
+    SuspensionWarmStart* warmStart)
 {
     const std::size_t nodeCount = graph.nodes.size();
     const std::size_t cableCount = graph.elements.size();
@@ -158,6 +159,22 @@ SuspensionSolution SolveSuspension(
     Quaternion canopyAttitude = NoseUpAttitude(graph.designIncidenceRad);
     Vec3 canopyVelocity{};
     Vec3 canopyAngularVelocity{};
+
+    // Continue from last step where there is a last step to continue from.
+    if (warmStart && warmStart->initialised
+        && warmStart->junctionPositionM.size() == nodeCount)
+    {
+        for (std::size_t i = 0; i < nodeCount; ++i)
+        {
+            if (!isFree[i]) continue;
+            position[i] = warmStart->junctionPositionM[i];
+            velocity[i] = warmStart->junctionVelocityMps[i];
+        }
+        canopyOrigin = warmStart->canopyOriginM;
+        canopyAttitude = warmStart->canopyAttitude;
+        canopyVelocity = warmStart->canopyVelocityMps;
+        canopyAngularVelocity = warmStart->canopyAngularVelocityRadps;
+    }
 
     const double dt = settings.timeStepS;
     const double retention = std::clamp(settings.velocityRetention, 0.0, 1.0);
@@ -264,6 +281,17 @@ SuspensionSolution SolveSuspension(
             position[i] =
                 canopyOrigin + canopyAttitude.Rotate(node.canopyLocalM);
     }
+    if (warmStart)
+    {
+        warmStart->junctionPositionM = position;
+        warmStart->junctionVelocityMps = velocity;
+        warmStart->canopyOriginM = canopyOrigin;
+        warmStart->canopyAttitude = canopyAttitude;
+        warmStart->canopyVelocityMps = canopyVelocity;
+        warmStart->canopyAngularVelocityRadps = canopyAngularVelocity;
+        warmStart->initialised = true;
+    }
+
     solution.nodePositionM = position;
     solution.canopyOriginM = canopyOrigin;
     solution.canopyAttitude = canopyAttitude;

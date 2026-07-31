@@ -5,6 +5,7 @@
 // really are exact rather than merely close.
 #include "CanopyGeometry.h"
 #include "BillowRelaxation.h"
+#include "SuspensionSystem.h"
 #include "PanelUnfolder.h"
 
 #include <cmath>
@@ -97,9 +98,9 @@ int main()
         geometry.TipArcAngleRad() * 180.0 / 3.14159265358979);
     std::printf("  solved tip chord    %8.4f m (%.3f of root)\n",
         geometry.Ribs().front().chordM, geometry.SolvedTipChordFraction());
-    std::printf("  arc height          %8.4f m\n",
-        geometry.Ribs().front().positionM.z
-            - geometry.StationAt(0.0).positionM.z);
+    std::printf("  tip hangs below apex %7.4f m\n",
+        geometry.StationAt(0.0).positionM.z
+            - geometry.Ribs().front().positionM.z);
     std::printf("  cells / ribs        %8d / %zu\n",
         spec.cellCount, geometry.Ribs().size());
 
@@ -128,6 +129,9 @@ int main()
                   "span position is mirrored at " + std::to_string(fraction));
             Check(std::fabs(left.positionM.z - right.positionM.z) < 1e-9,
                   "arc height is symmetric at " + std::to_string(fraction));
+            Check(right.positionM.z < 1e-9,
+                  "tips hang below the centre at "
+                      + std::to_string(fraction));
         }
 
         // Chord must fall monotonically from root to tip.
@@ -140,13 +144,14 @@ int main()
             previous = chord;
         }
 
-        // Arc must rise monotonically from centre to tip.
+        // The canopy is a dome over the pilot, so height falls monotonically
+        // from the centre out to each tip.
         double previousZ = geometry.StationAt(0.0).positionM.z;
         for (int i = 1; i <= 20; ++i)
         {
             const double z =
                 geometry.StationAt(static_cast<double>(i) / 20.0).positionM.z;
-            Check(z >= previousZ - 1e-12, "arc rises monotonically");
+            Check(z <= previousZ + 1e-12, "arc falls toward the tips");
             previousZ = z;
         }
 
@@ -164,16 +169,16 @@ int main()
         std::printf("  centre cell straddles the axis; interpolated z = %.6f m\n",
             centre.positionM.z);
 
-        // The arc minimum is at the centre, not off to one side.
-        double lowest = centre.positionM.z;
-        double lowestAt = 0.0;
+        // The apex is at the centre, not off to one side.
+        double highest = centre.positionM.z;
+        double highestAt = 0.0;
         for (int i = -40; i <= 40; ++i)
         {
             const double fraction = static_cast<double>(i) / 40.0;
             const double z = geometry.StationAt(fraction).positionM.z;
-            if (z < lowest) { lowest = z; lowestAt = fraction; }
+            if (z > highest) { highest = z; highestAt = fraction; }
         }
-        Check(std::fabs(lowestAt) < 0.03, "the arc minimum is at the centre");
+        Check(std::fabs(highestAt) < 0.03, "the arc apex is at the centre");
     }
 
     std::printf("\nSurface\n");
@@ -397,6 +402,99 @@ int main()
               "the cell bulges above the rib profile");
         Check(std::fabs(atRib.z - ribProfile.z) < 1e-9,
               "the surface meets the rib exactly");
+    }
+
+    std::printf("\nSuspension attachments on the canopy\n");
+    {
+        // Level 1 exit gate: every line must terminate on an actual point of
+        // the rendered canopy. Both the mesh and the line endpoints now read
+        // their span, chord and arch from this geometry, so the test is that
+        // every attachment resolves to a station the surface actually has.
+        // The populated EPIC 2 ML plan, not the struct's zeroed default.
+        const SuspensionGeometry& suspension = Epic2MlSuspensionGeometry();
+        int left = 0;
+        int right = 0;
+        int groupCount[5] = {0, 0, 0, 0, 0};
+        for (const SuspensionAttachment& attachment : suspension.attachments)
+        {
+            Check(attachment.spanFraction >= -1.0
+                      && attachment.spanFraction <= 1.0,
+                  "attachment span fraction is on the wing");
+            Check(attachment.chordFraction >= 0.0
+                      && attachment.chordFraction <= 1.0,
+                  "attachment chord fraction is on the section");
+
+            // Resolving through the geometry must land on the lower surface,
+            // below the rib profile and inside the span.
+            const Vec3 point = geometry.SurfacePointM(
+                attachment.spanFraction, attachment.chordFraction, false);
+            const RibStation station =
+                geometry.StationAt(attachment.spanFraction);
+            Check(std::fabs(point.y) <= 0.5 * geometry.ProjectedSpanM() + 1e-9,
+                  "attachment is inside the projected span");
+            Check(point.z <= station.positionM.z + 1e-9,
+                  "attachment is on the lower surface");
+
+            if (attachment.spanFraction < 0.0) ++left;
+            else if (attachment.spanFraction > 0.0) ++right;
+            ++groupCount[static_cast<int>(attachment.group)];
+        }
+        std::printf("  %d attachments: %d left, %d right\n",
+            static_cast<int>(suspension.attachments.size()), left, right);
+        std::printf("  A %d  A' %d  B %d  C %d  brake %d  (per wing: "
+                    "%d/%d/%d)\n",
+            groupCount[0], groupCount[1], groupCount[2], groupCount[3],
+            groupCount[4], groupCount[0] / 2 + groupCount[1] / 2,
+            groupCount[2] / 2, groupCount[3] / 2);
+        Check(left == right, "attachments are balanced left and right");
+
+        // Observation, not a gate. BGD publish the main-line plan as 3/4/3
+        // (A/B/C) per wing; this table gives 4/3/3 counting A' with A. Those
+        // are not the same quantity - published mains are the lower lines at
+        // the riser, and each cascades into several canopy attachments - so
+        // the counts need not match. But having more A attachments than B is
+        // the reverse of the usual arrangement, and it is worth resolving
+        // against a digitised line plan rather than leaving it to coincidence.
+        std::printf("  published main lines 3/4/3 (A/B/C) per wing;"
+                    " attachments here are 4/3/3\n");
+
+        // Mirror symmetry, which is the geometry half of the Level 0 gate
+        // applied to the suspension.
+        for (const SuspensionAttachment& attachment : suspension.attachments)
+        {
+            if (attachment.spanFraction >= 0.0) continue;
+            bool mirrored = false;
+            for (const SuspensionAttachment& other : suspension.attachments)
+            {
+                if (other.group == attachment.group
+                    && std::fabs(other.spanFraction + attachment.spanFraction)
+                           < 1e-9
+                    && std::fabs(other.chordFraction - attachment.chordFraction)
+                           < 1e-9)
+                    mirrored = true;
+            }
+            Check(mirrored, "every left attachment has a right mirror");
+        }
+
+        // Row ordering along the chord: A ahead of B ahead of C.
+        double lastA = 0.0;
+        double firstC = 1.0;
+        double firstB = 1.0;
+        double lastB = 0.0;
+        for (const SuspensionAttachment& attachment : suspension.attachments)
+        {
+            if (attachment.group == SuspensionGroup::A)
+                lastA = std::max(lastA, attachment.chordFraction);
+            if (attachment.group == SuspensionGroup::B)
+            {
+                firstB = std::min(firstB, attachment.chordFraction);
+                lastB = std::max(lastB, attachment.chordFraction);
+            }
+            if (attachment.group == SuspensionGroup::C)
+                firstC = std::min(firstC, attachment.chordFraction);
+        }
+        Check(lastA < firstB, "the A row sits ahead of the B row");
+        Check(lastB < firstC, "the B row sits ahead of the C row");
     }
 
     if (Failures)

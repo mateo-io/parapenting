@@ -95,6 +95,7 @@ add_executable(parapenting_geometry_tests
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/PanelUnfolder.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
 )
 target_include_directories(parapenting_geometry_tests PRIVATE
     ../Source/Parapenting/Physics

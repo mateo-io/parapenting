@@ -2,6 +2,7 @@
 #include "ParaglidingAudioComponent.h"
 #include "ParapentingMaterials.h"
 #include "Physics/CanopyGeometry.h"
+#include "Physics/ParagliderCoordinateSystem.h"
 #include "Physics/ParagliderSolverClock.h"
 #include "Physics/TerrainModel.h"
 #include "Physics/CameraFeedback.h"
@@ -834,12 +835,23 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             SuspensionPressure
                 * (1.0f - 0.78f * Collapse - 0.9f * Cravat),
             0.0f, 1.0f);
-        const float ContractedSpan = Span01 * 465.0f
+        // Same canopy geometry the mesh is built from, so a line endpoint is
+        // by construction a point on the rendered surface. These formulas were
+        // previously duplicated here with their own copies of the half span,
+        // arch and chord constants, which meant lines terminated wherever
+        // those constants happened to agree with the mesh's.
+        constexpr float MetresToCm = static_cast<float>(
+            Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+        constexpr float SuspensionRiseCm = 730.0f;
+        const Parapenting::Physics::RibStation AttachStation =
+            Canopy.StationAt(Span01);
+        const float ContractedSpan =
+            static_cast<float>(AttachStation.positionM.y) * MetresToCm
             * (1.0f - 0.28f * Collapse - 0.38f * Cravat)
             * static_cast<float>(SuspensionLoadPose.spanScale);
-        const float Arch = 650.0f
-            - (150.0f
-                + static_cast<float>(SuspensionLoadPose.extraArchDropCm))
+        const float Arch = SuspensionRiseCm
+            + static_cast<float>(AttachStation.positionM.z) * MetresToCm
+            - static_cast<float>(SuspensionLoadPose.extraArchDropCm)
                 * FMath::Pow(AbsSpan, 1.65f)
             + static_cast<float>(SuspensionLoadPose.lineStretchCm);
         const float Drop = 255.0f * Collapse + 330.0f * Cravat;
@@ -882,9 +894,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             RiserForeAft,
             CarabinerY,
             static_cast<float>(Telemetry.carabinerVerticalCm));
-        const float LocalChord = 280.0f * FMath::Sqrt(FMath::Max(
-            0.16f, 1.0f - 0.72f * AbsSpan * AbsSpan));
-        const float LoadedChord = LocalChord
+        const float LoadedChord =
+            static_cast<float>(AttachStation.chordM) * MetresToCm
             * static_cast<float>(SuspensionLoadPose.chordScale);
         FVector CanopyLocal(
             (0.48f - Chord01) * LoadedChord
@@ -952,16 +963,21 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 bGroundLaunching ? 0.0
                 : (bLeft ? Telemetry.leftCravat
                          : Telemetry.rightCravat)) * TipBlend;
-            const float LocalChord = 280.0f * FMath::Sqrt(FMath::Max(
-                0.16f, 1.0f - 0.72f * AbsSpan * AbsSpan));
-            const float LoadedChord = LocalChord
+            constexpr float MetresToCm = static_cast<float>(
+                Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+            constexpr float SuspensionRiseCm = 730.0f;
+            const Parapenting::Physics::RibStation BrakeStation =
+                Canopy.StationAt(Span01);
+            const float LoadedChord =
+                static_cast<float>(BrakeStation.chordM) * MetresToCm
                 * static_cast<float>(SuspensionLoadPose.chordScale);
-            const float ContractedSpan = Span01 * 465.0f
+            const float ContractedSpan =
+                static_cast<float>(BrakeStation.positionM.y) * MetresToCm
                 * (1.0f - 0.28f * Collapse - 0.38f * Cravat)
                 * static_cast<float>(SuspensionLoadPose.spanScale);
-            const float Arch = 650.0f
-                - (150.0f + static_cast<float>(
-                    SuspensionLoadPose.extraArchDropCm))
+            const float Arch = SuspensionRiseCm
+                + static_cast<float>(BrakeStation.positionM.z) * MetresToCm
+                - static_cast<float>(SuspensionLoadPose.extraArchDropCm)
                     * FMath::Pow(AbsSpan, 1.65f)
                 + static_cast<float>(SuspensionLoadPose.lineStretchCm);
             const float CollapseDrop =
@@ -1250,14 +1266,21 @@ void AParagliderPawn::BuildCanopyMesh()
             const float Chord01 =
                 static_cast<float>(C) / (ChordCount - 1);
             const float AbsSpan = FMath::Abs(Span01);
-            const float LocalChord = 280.0f
-                * FMath::Sqrt(FMath::Max(
-                    0.16f, 1.0f - 0.72f * AbsSpan * AbsSpan));
+            constexpr float MetresToCm = static_cast<float>(
+                Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+            constexpr float SuspensionRiseCm = 730.0f;
+            const Parapenting::Physics::RibStation RestStation =
+                Canopy.StationAt(Span01);
+            const float LocalChord =
+                static_cast<float>(RestStation.chordM) * MetresToCm;
             Vertices[Index] = FVector(
                 (0.48f - Chord01) * LocalChord,
-                Span01 * 465.0f,
-                650.0f - 150.0f * FMath::Pow(AbsSpan, 1.65f)
-                    + FMath::Sin(Chord01 * PI) * 42.0f);
+                static_cast<float>(RestStation.positionM.y) * MetresToCm,
+                SuspensionRiseCm
+                    + static_cast<float>(RestStation.positionM.z) * MetresToCm
+                    + static_cast<float>(
+                        Canopy.InflatedSectionAt(Chord01).sagittaM)
+                        * MetresToCm);
             const float Thickness =
                 FMath::Sin(Chord01 * PI) * (38.0f - 12.0f * AbsSpan);
             Vertices[Index + SurfaceVertexCount] =
@@ -1327,8 +1350,16 @@ void AParagliderPawn::UpdateCanopyMesh()
     constexpr int32 SpanCount = 21;
     constexpr int32 ChordCount = 9;
     constexpr int32 SurfaceVertexCount = SpanCount * ChordCount;
-    constexpr float HalfSpanCm = 465.0f;
-    constexpr float RootChordCm = 280.0f;
+    // Base shape comes from the canopy geometry, which is derived from the
+    // published EPIC 2 ML specification. The constants that used to live here
+    // - half span 465 cm, root chord 280 cm, arch 650 cm dropping 150 cm at
+    // the tips - were a second, unrelated description of the same wing.
+    // Deformation below (collapse, cravat, load pose, brake, rotor) still
+    // scales this base; only the undeformed shape moved.
+    constexpr float MetresToCm =
+        static_cast<float>(Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+    // Height of the canopy above the harness, from the suspension geometry.
+    constexpr float SuspensionRiseCm = 730.0f;
     const auto& T = Dynamics.LastTelemetry();
     const double VisualCanopyPressure = bLanded
         ? State.canopyPressure
@@ -1357,15 +1388,21 @@ void AParagliderPawn::UpdateCanopyMesh()
         const float Cravat = static_cast<float>(
             bGroundLaunching ? 0.0
             : (Span01 < 0.0f ? T.leftCravat : T.rightCravat)) * TipBlend;
-        const float ContractedSpan = Span01 * HalfSpanCm
+        const Parapenting::Physics::RibStation Station =
+            Canopy.StationAt(Span01);
+        const float ContractedSpan =
+            static_cast<float>(Station.positionM.y) * MetresToCm
             * (1.0f - 0.28f * Collapse - 0.38f * Cravat)
             * static_cast<float>(LoadPose.spanScale);
-        const float LocalChord = RootChordCm
-            * FMath::Sqrt(FMath::Max(0.16f, 1.0f - 0.72f * AbsSpan * AbsSpan));
-        const float LoadedChord = LocalChord
+        const float LoadedChord =
+            static_cast<float>(Station.chordM) * MetresToCm
             * static_cast<float>(LoadPose.chordScale);
-        const float Arch = 650.0f
-            - (150.0f + static_cast<float>(LoadPose.extraArchDropCm))
+        // Station z is measured from the centre-cell apex and is negative
+        // outboard, so the tips hang below the middle without a separate
+        // droop term.
+        const float Arch = SuspensionRiseCm
+            + static_cast<float>(Station.positionM.z) * MetresToCm
+            - static_cast<float>(LoadPose.extraArchDropCm)
                 * FMath::Pow(AbsSpan, 1.65f)
             + static_cast<float>(LoadPose.lineStretchCm);
         const float CollapseDrop = 255.0f * Collapse + 330.0f * Cravat;
@@ -1379,8 +1416,13 @@ void AParagliderPawn::UpdateCanopyMesh()
             const float Frontal = static_cast<float>(T.frontalCollapse)
                 * (bGroundLaunching ? 0.0f : 1.0f)
                 * (1.0f - FMath::SmoothStep(0.0f, 0.45f, Chord01));
-            const float Camber = FMath::Sin(Chord01 * PI)
-                * 42.0f * static_cast<float>(VisualCanopyPressure)
+            // Cell bulge, solved from the seam allowance and cell pressure
+            // rather than a fixed amplitude. Scaled by the live canopy
+            // pressure so a deflating cell loses its section.
+            const float Camber = static_cast<float>(
+                    Canopy.InflatedSectionAt(Chord01).sagittaM)
+                * MetresToCm
+                * static_cast<float>(VisualCanopyPressure)
                 * static_cast<float>(LoadPose.camberScale)
                 * (1.0f - 0.65f * Collapse) * (1.0f - 0.75f * Frontal);
             const float Brake = Span01 < 0.0f

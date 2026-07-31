@@ -138,13 +138,17 @@ CanopyGeometry::CanopyGeometry(const CanopyGeometrySpec& spec)
             + (static_cast<double>(i) + 0.5) * ds;
         const double angle = ArcAngleAt(
             s / developedHalfSpan, TipArcAngle, SpecValue.arcExponent);
-        // Tips rise toward the pilot. The vertical rate must change sign at
-        // the centre rib: walking left-to-right, height falls until the centre
-        // and rises after it. Accumulating -|sin| unconditionally instead
-        // produces a monotonic ramp across the whole span - one tip high, the
-        // other low - which is an asymmetric wing, not an arc.
+        // The canopy arches over the pilot: seen from behind it is a dome,
+        // centre highest and tips hanging lower. In body axes with +Z up that
+        // means height must FALL toward both tips.
+        //
+        // The vertical rate also has to change sign at the centre rib -
+        // walking left to right, height rises until the centre and falls after
+        // it. Accumulating one sign unconditionally gives a monotonic ramp
+        // across the whole span, one tip high and the other low, which is an
+        // asymmetric wing rather than an arc.
         y += std::cos(angle) * ds;
-        z += std::copysign(std::fabs(std::sin(angle)), s) * ds;
+        z -= std::copysign(std::fabs(std::sin(angle)), s) * ds;
         path[static_cast<std::size_t>(i) + 1] =
             {0.0, -0.5 * SpecValue.flatSpanM + y, z};
     }

@@ -54,6 +54,9 @@ SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
     table.AlphaMinRad = AlphaMin;
     table.AlphaMaxRad = AlphaMax;
     table.Samples.resize(AlphaSamples * BrakeSamples);
+    table.Attached.resize(AlphaSamples * BrakeSamples);
+    table.Separated.resize(AlphaSamples * BrakeSamples);
+    table.SeparationCurve.resize(AlphaSamples * BrakeSamples);
 
     const double slope = LiftSlope(spec.thicknessFraction);
     const double flapEffectiveness =
@@ -135,6 +138,13 @@ SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
             sample.dragCoefficient = std::max(
                 spec.minimumDragCoefficient,
                 attachedCd * (1.0 - separation) + separatedCd * separation);
+            SectionPolarSample attachedBranch;
+            attachedBranch.liftCoefficient = attachedCl;
+            attachedBranch.dragCoefficient = attachedCd;
+            SectionPolarSample separatedBranch;
+            separatedBranch.liftCoefficient = separatedCl;
+            separatedBranch.dragCoefficient = std::max(
+                spec.minimumDragCoefficient, separatedCd);
             // Quarter-chord moment of a cambered section, plus the flap
             // increment. Thin-airfoil theory puts the flap contribution well
             // aft, which is why brake pitches the section nose-down.
@@ -142,7 +152,13 @@ SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
                 -0.25 * Pi * spec.camberFraction
                 - 0.60 * flapEffectiveness * deflection;
 
-            table.Samples[brakeIndex * AlphaSamples + alphaIndex] = sample;
+            const std::size_t at = brakeIndex * AlphaSamples + alphaIndex;
+            attachedBranch.momentCoefficient = sample.momentCoefficient;
+            separatedBranch.momentCoefficient = sample.momentCoefficient;
+            table.Samples[at] = sample;
+            table.Attached[at] = attachedBranch;
+            table.Separated[at] = separatedBranch;
+            table.SeparationCurve[at] = separation;
         }
     }
     return table;
@@ -188,6 +204,75 @@ SectionPolarSample SectionPolarTable::Sample(
         blend(at(brakeLow, alphaLow), at(brakeLow, alphaHigh), alphaT),
         blend(at(brakeHigh, alphaLow), at(brakeHigh, alphaHigh), alphaT),
         brakeT);
+}
+
+SectionPolarSample SectionPolarTable::SampleAtSeparation(
+    double alphaRad, double brake, double separation) const
+{
+    if (Samples.empty()) return {};
+    const double blend = std::clamp(separation, 0.0, 1.0);
+
+    const double clampedAlpha = std::clamp(alphaRad, AlphaMinRad, AlphaMaxRad);
+    const double alphaPosition =
+        (clampedAlpha - AlphaMinRad) / (AlphaMaxRad - AlphaMinRad)
+            * static_cast<double>(AlphaCount - 1);
+    const auto alphaLow = static_cast<std::size_t>(alphaPosition);
+    const std::size_t alphaHigh = std::min(alphaLow + 1, AlphaCount - 1);
+    const double alphaT = alphaPosition - static_cast<double>(alphaLow);
+
+    const double brakePosition = std::clamp(brake, 0.0, 1.0)
+        * static_cast<double>(BrakeCount - 1);
+    const auto brakeLow = static_cast<std::size_t>(brakePosition);
+    const std::size_t brakeHigh = std::min(brakeLow + 1, BrakeCount - 1);
+    const double brakeT = brakePosition - static_cast<double>(brakeLow);
+
+    const auto pick = [&](const std::vector<SectionPolarSample>& table,
+                          std::size_t brakeIndex, std::size_t alphaIndex)
+    {
+        return table[brakeIndex * AlphaCount + alphaIndex];
+    };
+    const auto mix = [](const SectionPolarSample& a,
+                        const SectionPolarSample& b, double t)
+    {
+        SectionPolarSample result;
+        result.liftCoefficient = a.liftCoefficient
+            + (b.liftCoefficient - a.liftCoefficient) * t;
+        result.dragCoefficient = a.dragCoefficient
+            + (b.dragCoefficient - a.dragCoefficient) * t;
+        result.momentCoefficient = a.momentCoefficient
+            + (b.momentCoefficient - a.momentCoefficient) * t;
+        return result;
+    };
+    const auto bilinear = [&](const std::vector<SectionPolarSample>& table)
+    {
+        return mix(
+            mix(pick(table, brakeLow, alphaLow),
+                pick(table, brakeLow, alphaHigh), alphaT),
+            mix(pick(table, brakeHigh, alphaLow),
+                pick(table, brakeHigh, alphaHigh), alphaT),
+            brakeT);
+    };
+
+    return mix(bilinear(Attached), bilinear(Separated), blend);
+}
+
+double SectionPolarTable::SeparationEquilibrium(
+    double alphaRad, double brake, double currentSeparation) const
+{
+    const double stall = StallAngleRad(brake);
+    const double zeroLift = ZeroLiftAngleRad(brake);
+    const double margin = stall - zeroLift;
+    const double excess = std::fabs(alphaRad - zeroLift) - margin;
+
+    // Reattachment happens lower than separation did. Which curve applies
+    // depends on which way the section is already going, and that is the
+    // whole of the hysteresis: a stalled section stays stalled through the
+    // band, an attached one stays attached.
+    const double shift = currentSeparation > 0.5
+        ? -SpecValue.reattachmentHysteresisRad : 0.0;
+    const double width = std::max(1.0e-3, SpecValue.stallBlendWidthRad);
+    const double t = std::clamp((excess - shift) / width, 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
 }
 
 double SectionPolarTable::LiftCurveSlopePerRad(double) const

@@ -257,8 +257,54 @@ void VortexStepMethodSolver::BuildInfluenceMatrix(double coreFraction)
     }
 }
 
+VsmSolution VortexStepMethodSolver::SolveUnsteady(
+    const VsmSolveInput& input, VsmSeparationState& state,
+    double deltaSeconds, const VsmSettings& settings) const
+{
+    if (!state.initialised
+        || state.sectionSeparation.size() != SectionList.size())
+    {
+        // Start from equilibrium so the first call is a steady answer rather
+        // than a section-by-section transient from nowhere.
+        const VsmSolution seed = Solve(input, settings);
+        state.sectionSeparation.resize(SectionList.size());
+        for (std::size_t i = 0; i < SectionList.size(); ++i)
+            state.sectionSeparation[i] = seed.sections[i].separation;
+        state.initialised = true;
+    }
+
+    const VsmSolution solution = SolveHeld(input, settings,
+                                           &state.sectionSeparation);
+
+    // Advance the state with the incidence this solve found. Separation
+    // spreads faster than it clears.
+    for (std::size_t i = 0; i < SectionList.size(); ++i)
+    {
+        const double brake =
+            input.leftBrake * (1.0 - SectionList[i].rightSideFraction)
+            + input.rightBrake * SectionList[i].rightSideFraction;
+        const double target = Polars.SeparationEquilibrium(
+            solution.sections[i].angleOfAttackRad, brake,
+            state.sectionSeparation[i]);
+        const double rate = target > state.sectionSeparation[i]
+            ? settings.separationOnsetRatePerS
+            : settings.reattachmentRatePerS;
+        const double step = std::clamp(rate * deltaSeconds, 0.0, 1.0);
+        state.sectionSeparation[i] +=
+            (target - state.sectionSeparation[i]) * step;
+    }
+    return solution;
+}
+
 VsmSolution VortexStepMethodSolver::Solve(
     const VsmSolveInput& input, const VsmSettings& settings) const
+{
+    return SolveHeld(input, settings, nullptr);
+}
+
+VsmSolution VortexStepMethodSolver::SolveHeld(
+    const VsmSolveInput& input, const VsmSettings& settings,
+    const std::vector<double>* heldSeparation) const
 {
     const std::size_t count = SectionList.size();
     VsmSolution solution;
@@ -339,7 +385,10 @@ VsmSolution VortexStepMethodSolver::Solve(
             {
                 double speed = 0.0;
                 const double alpha = sectionFlow(i, external, gamma, speed);
-                const SectionPolarSample polar = Polars.Sample(alpha, brake);
+                const SectionPolarSample polar = heldSeparation
+                    ? Polars.SampleAtSeparation(
+                          alpha, brake, (*heldSeparation)[i])
+                    : Polars.Sample(alpha, brake);
                 return 0.5 * section.chordM * speed * polar.liftCoefficient
                     - gamma;
             };
@@ -370,7 +419,12 @@ VsmSolution VortexStepMethodSolver::Solve(
 
             double speed = 0.0;
             const double alpha = sectionFlow(i, external, gamma, speed);
-            const SectionPolarSample polar = Polars.Sample(alpha, brake);
+            const SectionPolarSample polar = heldSeparation
+                ? Polars.SampleAtSeparation(alpha, brake, (*heldSeparation)[i])
+                : Polars.Sample(alpha, brake);
+            solution.sections[i].separation = heldSeparation
+                ? (*heldSeparation)[i]
+                : Polars.SeparationEquilibrium(alpha, brake, 0.0);
             solution.sections[i].angleOfAttackRad = alpha;
             solution.sections[i].liftCoefficient = polar.liftCoefficient;
             solution.sections[i].dragCoefficient = polar.dragCoefficient;

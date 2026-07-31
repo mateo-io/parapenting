@@ -82,6 +82,17 @@ struct VsmSolveInput
     double rightBrake = 0.0;
 };
 
+// Per-section separation, carried between solves. This is the attached and
+// separated state the plan asks for, and it does two jobs at once: it gives
+// stall the memory it physically has, and it makes the solve well posed at
+// high brake, because the lift curve the solver sees during one solve is
+// single valued instead of switching branches under it.
+struct VsmSeparationState
+{
+    std::vector<double> sectionSeparation;
+    bool initialised = false;
+};
+
 struct VsmSectionResult
 {
     double circulation = 0.0;
@@ -90,6 +101,8 @@ struct VsmSectionResult
     double dragCoefficient = 0.0;
     // Downwash angle induced at this section by the whole wing.
     double inducedAngleRad = 0.0;
+    // 0 attached, 1 fully separated.
+    double separation = 0.0;
     Vec3 forceBodyN{};
 };
 
@@ -116,12 +129,20 @@ struct VsmSolution
 
 struct VsmSettings
 {
-    int maxIterations = 4000;
+    // Well-posed cases converge in about 90 iterations, so this is generous.
+    // A case that wants thousands is not converging, and letting it run does
+    // not change that - it only makes finding out expensive.
+    int maxIterations = 600;
     double convergenceTolerance = 1.0e-6;
     // Floor for the adaptive under-relaxation. A case that needs less than
     // this is not converging for a reason worth looking at rather than
     // damping harder.
     double minimumRelaxation = 0.002;
+    // How fast separation spreads and how fast it clears, per second. Stall
+    // arrives quickly and leaves slowly, which is what makes a paraglider
+    // stall easier to enter than to exit.
+    double separationOnsetRatePerS = 12.0;
+    double reattachmentRatePerS = 4.0;
     // Under-relaxation. The circulation solve is nonlinear through the polar,
     // and taking the full step oscillates near stall.
     double relaxation = 0.60;
@@ -185,6 +206,13 @@ public:
     VsmSolution Solve(
         const VsmSolveInput& input, const VsmSettings& settings = {}) const;
 
+    // Steps the separation state forward by `deltaSeconds` and solves with it
+    // held. Passing an uninitialised state starts it at the equilibrium for
+    // the incidence found, so the first call is not a transient.
+    VsmSolution SolveUnsteady(
+        const VsmSolveInput& input, VsmSeparationState& state,
+        double deltaSeconds, const VsmSettings& settings = {}) const;
+
     const std::vector<VsmSection>& Sections() const { return SectionList; }
     double ReferenceAreaM2() const { return ReferenceArea; }
     double ReferenceSpanM() const { return ReferenceSpan; }
@@ -196,6 +224,9 @@ public:
 private:
     VortexStepMethodSolver() = default;
     void BuildInfluenceMatrix(double coreFraction);
+    VsmSolution SolveHeld(
+        const VsmSolveInput& input, const VsmSettings& settings,
+        const std::vector<double>* heldSeparation) const;
 
     std::vector<VsmSection> SectionList;
     SectionPolarTable Polars;

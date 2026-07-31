@@ -404,6 +404,68 @@ int main()
               "geometry and published drag figures rather than from a fitted "
               "polar");
 
+        // Separation with memory. The plan asks for attached and separated
+        // states, and they do two jobs: stall gets the hysteresis it
+        // physically has, and the solve gets a lift curve that stays put
+        // under it instead of switching branches mid-iteration.
+        {
+            const SectionPolarTable polar = SectionPolarTable::Analytic();
+            // The same incidence, approached from attached and from stalled,
+            // must not give the same answer. That is the whole point.
+            const double justBelowStall = polar.StallAngleRad(0.0) - 0.04;
+            const double fromAttached =
+                polar.SeparationEquilibrium(justBelowStall, 0.0, 0.0);
+            const double fromStalled =
+                polar.SeparationEquilibrium(justBelowStall, 0.0, 1.0);
+            std::printf("  hysteresis at %.1f deg: separation %.2f coming up, "
+                        "%.2f coming back down\n",
+                        justBelowStall * 180.0 / Pi, fromAttached, fromStalled);
+            Check(fromAttached < 0.05,
+                  "below the stall angle, a section that was flying is still "
+                  "flying");
+            Check(fromStalled > fromAttached + 0.4,
+                  "but one that has stalled is still largely stalled at the "
+                  "same incidence - it has to be brought further down before "
+                  "it reattaches");
+
+            // Ramping brake up and back down must trace a loop, not a line.
+            // A ramp is many solves, so cap the work per step: what is being
+            // checked is where the separation state goes, not the last digit
+            // of each circulation solve.
+            VsmSettings ramping;
+            ramping.maxIterations = 150;
+            VsmSeparationState state;
+            const auto rampTo = [&](double brake)
+            {
+                VsmSolveInput input = Inflow(0.06, 11.0);
+                input.leftBrake = brake;
+                input.rightBrake = brake;
+                double lift = 0.0;
+                for (int step = 0; step < 20; ++step)
+                    lift = wing.SolveUnsteady(input, state, 1.0 / 60.0,
+                                              ramping).liftCoefficient;
+                return lift;
+            };
+            double climbing = 0.0;
+            for (int step = 0; step <= 6; ++step)
+                climbing = rampTo(0.1 * step);
+            // Past the stall break. Where it falls depends on the assumed
+            // full-brake deflection, so what is checked is that a break
+            // exists and that it is not recovered on the way back.
+            rampTo(0.75);
+            const double atPeakBrake = rampTo(0.95);
+            double descending = 0.0;
+            for (int step = 8; step >= 6; --step)
+                descending = rampTo(0.1 * step);
+            std::printf("  brake 0.6: CL %.3f on the way up, %.3f on the way "
+                        "back down\n", climbing, descending);
+            Check(atPeakBrake < climbing,
+                  "the wing stalls: past a point more brake is less lift");
+            Check(descending < climbing,
+                  "and coming back down it does not recover the lift it had "
+                  "at the same brake going up");
+        }
+
         // Deep stall is where a steady solve runs out of meaning.
         VsmSolveInput deep = Inflow(0.06, 11.0);
         deep.leftBrake = 0.9;
@@ -413,14 +475,19 @@ int main()
                     "relaxation fell to %.4f\n",
                     static_cast<int>(stalled.converged), stalled.residual,
                     stalled.finalRelaxation);
-        std::printf("  KNOWN LIMITATION: deeply stalled cases do not settle. "
-                    "A steady solve has no\n"
-                    "  single answer where the real flow is unsteady and "
-                    "hysteretic: sections sit on\n"
-                    "  the stall knee and swap branches. The attached and "
-                    "separated state machine\n"
-                    "  Level 4 still owes, and the unsteady wake of Level 11, "
-                    "are what this needs.\n");
+        std::printf("  KNOWN LIMITATION: deeply stalled cases still do not "
+                    "settle, and now for a\n"
+                    "  better reason than branch-swapping - holding the "
+                    "separation state fixed removed\n"
+                    "  that. What is left is physical: the separated branch "
+                    "has a NEGATIVE lift slope,\n"
+                    "  which inverts the sign of the downwash feedback "
+                    "between sections, and a wing\n"
+                    "  in deep stall genuinely has no stable steady state. "
+                    "The unsteady wake of\n"
+                    "  Level 11 is the honest treatment. Until then nothing "
+                    "past the stall break\n"
+                    "  should be read as a flight number.\n");
         Check(!stalled.converged,
               "KNOWN FAILURE: deep stall does not converge. Delete this check "
               "when it does");

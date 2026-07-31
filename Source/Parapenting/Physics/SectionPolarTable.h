@@ -83,6 +83,11 @@ struct AnalyticPolarSpec
     // Aspect ratio the post-stall flat-plate drag is built for. Viterna's
     // CDmax depends on it.
     double aspectRatioForPostStall = 5.2;
+    // How far below the stall angle the flow reattaches, radians. Separation
+    // and reattachment do not happen at the same incidence - a stalled
+    // section has to be brought well back down before it flies again, which
+    // is why a paraglider recovers from a stall later than it entered one.
+    double reattachmentHysteresisRad = 0.09;
 };
 
 // A table over angle of attack and brake deflection. Reynolds number is a
@@ -96,8 +101,23 @@ public:
 
     static SectionPolarTable Analytic(const AnalyticPolarSpec& spec = {});
 
-    // alphaRad is measured from the chord line, brake runs 0 to 1.
+    // alphaRad is measured from the chord line, brake runs 0 to 1. Samples
+    // the section at its equilibrium separation, which is what a steady solve
+    // with no memory wants.
     SectionPolarSample Sample(double alphaRad, double brake) const;
+
+    // Samples with the separation held at a given value instead. This is what
+    // makes the solve well posed near stall: with separation an input rather
+    // than an instantaneous function of incidence, the lift curve the solver
+    // sees is single valued and smooth, and the branch-swapping that stops a
+    // deeply braked case ever settling cannot happen.
+    SectionPolarSample SampleAtSeparation(
+        double alphaRad, double brake, double separation) const;
+
+    // Where separation settles for this incidence, 0 attached to 1 fully
+    // separated. Separating and reattaching follow different curves.
+    double SeparationEquilibrium(
+        double alphaRad, double brake, double currentSeparation) const;
 
     // Lift-curve slope per radian in the linear range, and the zero-lift
     // angle, both at the given brake setting. Reported rather than assumed so
@@ -118,6 +138,11 @@ private:
     double AlphaMinRad = 0.0;
     double AlphaMaxRad = 0.0;
     std::vector<SectionPolarSample> Samples;
+    // The two branches, kept apart so a caller can blend them by a separation
+    // state that has memory rather than by incidence alone.
+    std::vector<SectionPolarSample> Attached;
+    std::vector<SectionPolarSample> Separated;
+    std::vector<double> SeparationCurve;
 };
 
 // Thin-airfoil flap effectiveness for a trailing edge hinged at

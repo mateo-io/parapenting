@@ -11,6 +11,31 @@ CanopyCollapseSolver::CanopyCollapseSolver(
     std::vector<double> spanFractions, const CollapseSpec& spec)
     : SpanFractions(std::move(spanFractions)), SpecValue(spec)
 {
+    // How much of each section lies right of the centreline. A section
+    // straddling the centre belongs partly to each half, and with an odd
+    // section count there is always one - its midpoint lands within a
+    // rounding error of zero, on whichever side the arithmetic happens to put
+    // it. Deciding by that sign gave the two halves of a perfectly symmetric
+    // frontal different numbers in the third decimal place, on a wing whose
+    // sections agreed to 1e-15, and the flight model turned on the
+    // difference. The section's extent is the midpoints to its neighbours,
+    // which is the same weighting the aerodynamics uses for brake.
+    const std::size_t count = SpanFractions.size();
+    RightShare.assign(count, 1.0);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const double here = SpanFractions[i];
+        const double left = i > 0
+            ? 0.5 * (SpanFractions[i - 1] + here) : here;
+        const double right = i + 1 < count
+            ? 0.5 * (here + SpanFractions[i + 1]) : here;
+        const double lower = std::min(left, right);
+        const double upper = std::max(left, right);
+        const double width = upper - lower;
+        RightShare[i] = width > 1.0e-12
+            ? std::clamp((upper - 0.0) / width, 0.0, 1.0)
+            : (here >= 0.0 ? 1.0 : 0.0);
+    }
 }
 
 double CanopyCollapseSolver::ExternalNoseCp(
@@ -115,7 +140,14 @@ CollapseResult CanopyCollapseSolver::Step(
         const double spread = std::clamp(
             neighbourPull[i] * SpecValue.spanwisePropagationPerSecond * dt,
             0.0, neighbourPull[i]);
-        const double combined = std::max(own, spread);
+        // A cravat is fabric that is physically inside the wing, held there by
+        // a line through it. That section cannot reopen past it however good
+        // its pressure balance gets - which is the whole difference between a
+        // cravat and a collapse, and the reason one ends in a spiral and the
+        // other ends in a surge and level flight. Read from the state at the
+        // start of the step, like the neighbour pull.
+        const double heldByCravat = section.cravat;
+        const double combined = std::max(std::max(own, spread), heldByCravat);
         result.sections[i].propagated = spread > own && spread > 1.0e-6;
 
         if (combined > section.collapse)
@@ -164,6 +196,16 @@ CollapseResult CanopyCollapseSolver::Step(
         const bool trapped =
             input[i].loadFraction >= SpecValue.cravatTrappingLoadFraction;
 
+        // How hard the pilot is pulling the fabric back off the line on this
+        // side. Needed by both halves below, because they are the same
+        // motion seen twice: brake walking fabric out is also fabric not
+        // going further in.
+        const double brakeHelp =
+            input[i].brake >= SpecValue.cravatClearingBrake
+                ? (input[i].brake - SpecValue.cravatClearingBrake)
+                    / std::max(1.0e-6, 1.0 - SpecValue.cravatClearingBrake)
+                : 0.0;
+
         // Catching. A cravat LATCHES: once the fabric is round the line and
         // the line is loaded, it stays there even as the rest of the section
         // reopens and the fold shallows. Getting this wrong makes the cravat a
@@ -176,8 +218,16 @@ CollapseResult CanopyCollapseSolver::Step(
                 input[i].lineGapM), 0.0, 1.0);
             if (depth > section.cravat)
             {
+                // Deep brake on this side stops the fabric taking any more of
+                // the line. Without this the catch runs at six per second
+                // against a clearance of a third of one, so a pilot pulling
+                // the fabric out is outrun by the fold going back in and the
+                // cravat can never be cleared while the section stays folded -
+                // which is not what a stabilo-and-brake clearance does.
                 const double rate = std::clamp(
-                    SpecValue.cravatCatchRatePerSecond * dt, 0.0, 1.0);
+                    SpecValue.cravatCatchRatePerSecond * dt
+                        * std::max(0.0, 1.0 - brakeHelp),
+                    0.0, 1.0);
                 section.cravat += (depth - section.cravat) * rate;
             }
         }
@@ -189,11 +239,6 @@ CollapseResult CanopyCollapseSolver::Step(
         // the fabric back off, or the line going slack enough to let go.
         if (section.cravat > 0.0)
         {
-            const double brakeHelp =
-                input[i].brake >= SpecValue.cravatClearingBrake
-                    ? (input[i].brake - SpecValue.cravatClearingBrake)
-                        / std::max(1.0e-6, 1.0 - SpecValue.cravatClearingBrake)
-                    : 0.0;
             const double slackHelp = trapped ? 0.0 : 1.0;
             const double rate = std::clamp(
                 SpecValue.cravatClearRatePerSecond * dt
@@ -213,18 +258,14 @@ CollapseResult CanopyCollapseSolver::Step(
         const double collapse = state.sections[i].collapse;
         const double span = SpanFractions[i];
         const double cravat = state.sections[i].cravat;
-        if (span < 0.0)
-        {
-            result.leftCollapse += collapse;
-            result.leftCravat += cravat;
-            leftWeight += 1.0;
-        }
-        else
-        {
-            result.rightCollapse += collapse;
-            result.rightCravat += cravat;
-            rightWeight += 1.0;
-        }
+        const double rightShare = RightShare[i];
+        const double leftShare = 1.0 - rightShare;
+        result.leftCollapse += collapse * leftShare;
+        result.leftCravat += cravat * leftShare;
+        leftWeight += leftShare;
+        result.rightCollapse += collapse * rightShare;
+        result.rightCravat += cravat * rightShare;
+        rightWeight += rightShare;
         if (cravat > 0.5) ++result.cravattedSectionCount;
         if (collapse > result.worstCollapse)
         {

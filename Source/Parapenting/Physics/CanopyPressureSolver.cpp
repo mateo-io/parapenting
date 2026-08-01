@@ -82,6 +82,16 @@ CellPressureResult CanopyPressureSolver::Step(
     const double dt = std::max(0.0, deltaSeconds);
     std::vector<double> updated = state.gaugePressurePa;
     std::vector<double> filled = state.filledFraction;
+    // Crossport flow is read from the pressures at the START of the step, not
+    // from the ones this loop is writing. Reading `updated` made the sweep
+    // Gauss-Seidel: every cell saw its left neighbour already advanced and its
+    // right neighbour not, so air crossed the span more easily in one
+    // direction than the other. On a symmetric frontal - the same air over
+    // both halves of a wing whose sections agree to 1e-15 - that put a 0.1
+    // difference in cell pressure between mirror cells within a second, and
+    // the wing turned. The ribs are a symmetric object; the sweep over them
+    // has to be too.
+    const std::vector<double>& crossportSource = state.gaugePressurePa;
 
     const auto sampleAt = [&](const std::vector<double>& values,
                               std::size_t index, double fallback)
@@ -134,7 +144,7 @@ CellPressureResult CanopyPressureSolver::Step(
                 || neighbourIndex >= static_cast<std::ptrdiff_t>(cells))
                 continue;
             const double neighbour =
-                updated[static_cast<std::size_t>(neighbourIndex)];
+                crossportSource[static_cast<std::size_t>(neighbourIndex)];
             crossFlow += SpecValue.dischargeCoefficient
                 * SpecValue.crossportAreaM2
                 * OrificeFlowSpeed(neighbour - internal);

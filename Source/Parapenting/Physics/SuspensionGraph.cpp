@@ -294,4 +294,23 @@ double TotalLineLengthM(const SuspensionGraph& graph)
     for (const CableElement& cable : graph.elements) total += cable.restLengthM;
     return total;
 }
+
+double LineFoldGapM(const SuspensionGraph& graph, double spanFraction)
+{
+    // The station itself, on the quarter chord where the A lines land.
+    const double stationY =
+        std::fabs(CanopyPointLocalM(graph, spanFraction, 0.25).y);
+    double smallest = 1.0e9;
+    for (const SuspensionNode& node : graph.nodes)
+    {
+        if (node.kind != SuspensionNodeKind::CanopyAttachment) continue;
+        // Only lines on the same half wing, and only ones outboard of the
+        // station: a fold swings outboard, so an inboard line is not in its
+        // way. Sign of the span fraction is the half wing.
+        if (node.spanFraction * spanFraction < 0.0) continue;
+        const double gap = std::fabs(node.canopyLocalM.y) - stationY;
+        if (gap > 0.0 && gap < smallest) smallest = gap;
+    }
+    return smallest;
+}
 }

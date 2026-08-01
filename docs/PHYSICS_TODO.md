@@ -5,8 +5,8 @@ like. The specification and per-level detail live in
 `agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md`; what is built lives in
 `docs/PHYSICS_ENGINE.md`; what it cost is in `docs/PHYSICS_LEARNINGS.md`.
 
-Status as of the Grindelwald region landing. Levels 0-7 are done, all ten test
-suites green, and nothing geometry-driven flies the wing yet.
+Status as of Level 8. Levels 0-8 are done, all eleven test suites green, and
+nothing geometry-driven flies the wing yet.
 
 ## Blocked on things this environment does not have
 
@@ -34,26 +34,68 @@ estimate by a factor of fourteen in roll.
 - Nothing currently uses their magnitude, so this is not urgent — but it will be
   the moment rotational dynamics are calibrated.
 
-## Level 8 — emergent collapse (next)
+## Level 8 — emergent collapse (built)
 
-**3. Level 6 is one-dimensional.** Spanwise strips at chord stations, ribs as
-fixed endpoints, **no self-collision**.
+**3. The reopening surge.** A section recovers its lift smoothly as the fold
+clears. A real wing dives forward as the nose catches air and then pitches
+back.
 
-- This is the gate on Level 8: a cravat is fabric touching fabric, and a
-  membrane that cannot collide with itself cannot produce one.
-- Needs: self-collision in `CanopyMembraneSolver`, and probably a move from
-  strips to a 2-D mesh.
-- Done when: a cravat forms and clears from membrane mechanics, with no
-  scripted folding anywhere (guiding rule 6).
+- Blocked by: nothing. It needs the collapsed section's *shape* rather than
+  only its state, which means reading the membrane's fold geometry back into
+  the aerodynamics instead of only its depth.
+- Done when: a recovered collapse produces a pitch excursion and a speed
+  overshoot, and the energy accounting still closes across it.
 
-**4. Collapse must stay emergent.** The legacy model has stateful scripted
-collapses. Level 8's version must arise from local unloading, pressure loss and
-membrane deformation, and the two must run side by side until the new one is
-better (guiding rule 11).
+**4. A cravat has never formed in the coupled solve.** It forms in
+`collapse_tests`, from the built graph's real 0.178 m tip line gap against a
+fold deep enough to reach past it, and it latches and clears the way one does.
+In flight the strip's fold depth stays short of that gap, so the contact test
+correctly returns nothing.
+
+- Whether that is the wing or the one-dimensional strip understating how far
+  skin hangs is not known. The 2-D mesh is what would answer it.
+- Not a defect as it stands: the criterion is contact, and there is no contact.
+
+**5. The collapse debug view is blocked on the integration debt** (item 7), and
+on nothing else. The pawn draws collapse from the legacy telemetry because that
+is what flies. Every quantity the view would draw already exists in
+`SectionCollapseDiagnostics`: margin, external Cp, fold, whether it propagated
+from a neighbour, fold reach past the line, cravat.
+
+### What Level 8 closed
+
+- Collapse from a pressure balance across the nose - Level 5's cell pressure
+  against the same rounded-nose distribution read at the fold station - eroded
+  by local unloading and skin slack. No threshold on a control input anywhere.
+- Cravats as a contact test between Level 6's fold depth and the real line gap
+  off the built suspension graph. A cravat latches and holds its section
+  folded, which is why it ends in a spiral where a collapse ends in a surge.
+- Wired into the coupled solve: a fold takes its cell's pressure out on the way
+  to the aerodynamics, and the section polars do the rest. No collapse-to-yaw
+  term exists.
+- Incident benchmarks in `coupled_tests`, driven only by air arriving at part
+  of the wing. Still air and a braked turn fold nothing; 4 m/s down over the
+  left half folds it to 0.70 against 0.08 on the right, turns the wing toward
+  the folded half, hands the line network a 0.68 load imbalance and recovers
+  fully; the same air over the whole span folds both halves to 0.712 and does
+  not turn it; brake inside the sewn-in slack does nothing to a fold and brake
+  past it holds one in. The numerical safety envelope engages in none of them.
+- Self-collision: built, measured to be incapable of firing on a 1-D strip
+  (zero segment crossings with the ribs drawn to a tenth of their spacing), and
+  removed. It is the 2-D mesh that would need it, and cravats do not.
+- Three defects in the levels below, found by the exit gates: crossport flow
+  that depended on which end of the wing the loop started at, brake reaching
+  the trailing edge through slack line, and a load reference that read every
+  healthy tip as half unloaded. `PHYSICS_ENGINE.md` §Level 8 has all three.
+
+**Past about 5 m/s of gust the wing does not come back.** It pitches into full
+separation and descends vertically at 7.5 m/s. That is the deep-stall attractor
+below, not this level - a collapse is what puts the wing there and not what
+keeps it there.
 
 ## Deliberate limitations, not bugs
 
-**5. Deep stall does not converge in the VSM solved cold**, and will not. The
+**6. Deep stall does not converge in the VSM solved cold**, and will not. The
 separated branch has a negative lift slope, which inverts the downwash feedback
 between sections; a wing in deep stall has no stable steady state to find.
 
@@ -66,7 +108,7 @@ between sections; a wing in deep stall has no stable steady state to find.
 
 ## Integration debt
 
-**6. Nothing geometry-driven flies the wing.** `ParagliderDynamics` — one
+**7. Nothing geometry-driven flies the wing.** `ParagliderDynamics` — one
 six-degree-of-freedom body with a fitted polar — is still what the game flies.
 Levels 1-7 are exercised only by their own suites and the debug views.
 
@@ -76,14 +118,14 @@ Levels 1-7 are exercised only by their own suites and the debug views.
 - Level 10 removes the legacy path. It must not start before Level 9 calibration,
   and Level 9 must not start before real section polars (item 1).
 
-**7. Coefficient registry: 89 coefficients, 25 tuned, 78 unvalidated.** 28%
+**8. Coefficient registry: 89 coefficients, 25 tuned, 78 unvalidated.** 28%
 tuned, down from 39% — the geometry-driven levels replaced fitted numbers with
 measured or derived ones. The remaining tuned coefficients are concentrated in
-the legacy model, and item 6 is what retires them.
+the legacy model, and item 7 is what retires them.
 
 ## Data gaps
 
-**8. Grindelwald First's anchor is 50 m above its surveyed ground.** Published
+**9. Grindelwald First's anchor is 50 m above its surveyed ground.** Published
 2123 m is the top station; its WGS84 pair is on the launch slope below, which
 swissALTI3D puts at 2073 m. Every other site agrees within 12 m.
 
@@ -139,6 +181,11 @@ change stacks on top of an unverified one.
 
 ## Closed recently, for orientation
 
+- **Level 8 emergent collapse.** A pressure balance across the nose, cravats as
+  a contact test, wired into the coupled solve and gated by incident
+  benchmarks that only ever do one thing to the wing: put air at part of it.
+  Three defects fixed in the levels below, all found by the gates rather than
+  by inspection.
 - **Level 7 coupled solver.** Trim on the published wing, turns emerge and
   mirror to 2e-8 rad, suite green and running with the other nine. Four defects
   fixed: explicit damping integration at 11x its stability limit, a damping

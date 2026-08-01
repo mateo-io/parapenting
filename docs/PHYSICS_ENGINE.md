@@ -18,7 +18,7 @@ wing in the game. It is a single six-degree-of-freedom body with a fitted
 polar, now driven by a real payload body and real carabiner loads (Level 3) but
 still using tuned coefficients for most of its handling.
 
-**The geometry-driven stack** (Levels 1-7) is built, tested and not yet wired
+**The geometry-driven stack** (Levels 1-8) is built, tested and not yet wired
 into flight. It is exercised by its own suites and by the debug views.
 
 ```
@@ -37,6 +37,9 @@ CanopyGeometry ──┬─→ SuspensionGraph ──→ TensionCableSolver
 
            HarnessGeometry → PayloadRigidBody   (Level 3)
            ApparentMassTensor                   (Level 4)
+
+                 └─→ CanopyCollapseSolver ←─── pressure, incidence, load,
+                        (Level 8)                skin slack, line geometry
 
            CoupledParagliderSolver              (Level 7, complete)
 ```
@@ -162,7 +165,15 @@ Bias-cut fabric stretches 8× more than warp-cut (0.49% against 0.060%), which
 is what decides how a canopy folds.
 
 **Scope:** strips at chord stations rather than a full 2-D mesh, ribs as fixed
-endpoints, no self-collision.
+endpoints.
+
+**Self-collision was built and then removed**, and the reason is a result
+rather than a decision: a one-dimensional strip cannot self-intersect. The
+strip was collapsed with the ribs drawn from full spacing down to a tenth of
+it, and the segment-crossing count was zero at every step while the fold
+deepened from 31 mm to 121 mm. Crumpling needs loads that reverse along the
+skin, which needs the 2-D mesh this level does not have. Level 8's cravats do
+not need it either, because a cravat is fabric caught on a *line*.
 
 ## Level 7 — coupled solver
 
@@ -241,9 +252,93 @@ turn rate reproduced at once in an unoptimized build, having hidden at -O2:
    a turn rate of 100 rad/s, and then infinity. The gate now bounds the moment
    at twice `q·S·b`, on the accepted solve and on both probes.
 
+## Level 8 — emergent collapse
+
+`CanopyCollapseSolver`, and its integration into the coupled solve. **Built.**
+
+The criterion is a pressure balance across the nose skin, which is what a
+leading edge physically is:
+
+```
+margin = Cp_internal - Cp_external(fold station)
+```
+
+Both sides were already solved. The internal side is Level 5's cell pressure.
+The external side is the same rounded-nose distribution Level 5 feeds the
+inlets with, `Cp = 1 - 4 sin^2 t`, read where the nose skin is rather than
+where the opening is. Local unloading (Level 2/4) and skin slack (Level 6)
+erode the margin. Nothing in it is a threshold on a control input.
+
+The behaviours fall out rather than being written in:
+
+| | mechanism |
+|---|---|
+| bar is collapse-prone | incidence drops, so the inlets recover less *and* the shoulder loses the suction holding the skin out — both sides of the balance move the wrong way for the same reason |
+| brake does not fold a wing | it raises incidence, which deepens that suction and feeds the inlets. Brake stalls a wing; it does not fold one |
+| a tip goes first | smallest cells, least air, furthest from the crossports feeding them |
+| turbulence folds by unloading | a section carrying no load has slack A lines and nothing holding its nose forward |
+
+**Cravats** are a contact test, not a risk model: Level 6's fold depth against
+the real gap to the nearest line, measured off the built suspension graph
+(`LineFoldGapM`). Three things must be true at once and in order — folded, the
+fold reaches past the line, and the line then reloads and traps it — which is
+why a cravat is rarer than a collapse. It latches: a cravat holds its section
+folded because the fabric is physically inside the wing, which is why one ends
+in a spiral where a collapse ends in a surge.
+
+**In the coupled solve** the fold takes its cell's pressure out on the way to
+the aerodynamics, and the section polars turn that into lost lift and a drag
+penalty where the fold is. There is no collapse-to-yaw term anywhere; the turn
+comes from where the remaining lift is. The half that folded stops carrying its
+share, and the imbalance is handed to the line network.
+
+Measured, hands-off, with 4 m/s of descending air over the left half for one
+second:
+
+| | |
+|---|---|
+| worst fold, left half | 0.70 |
+| worst fold, right half | 0.08 |
+| turn while folded | -0.07 rad/s, toward the folded half |
+| load asymmetry to the lines | 0.68 |
+| recovered to | 0.00, in 13 s |
+| numerical safety envelope | did not engage |
+
+The same air over the whole span folds both halves to 0.712 and does not turn
+the wing.
+
+**Limits, stated:** past about 5 m/s of gust the wing does not come back — it
+pitches into full separation and descends vertically at 7.5 m/s, which is the
+deep-stall attractor of item 5 below and Level 11's problem, not this level's.
+Mirror symmetry in a frontal holds to 1e-15 through the fold and breaks in the
+recovery, where the VSM passes through the same non-converging branch. The
+reopening surge is not modelled: the wing recovers its lift smoothly as the
+fold clears, where a real one dives forward and then pitches back.
+
+**Three defects were found by the exit gates, all in levels below:**
+
+1. **Crossport flow depended on which end of the wing the loop started at.**
+   `CanopyPressureSolver` read its neighbours from the array it was writing, so
+   every cell saw its left neighbour advanced and its right neighbour not. On a
+   symmetric frontal that put 0.1 of difference in Cp between mirror cells
+   within a second, on a wing whose sections agree to 1e-15, and the wing
+   turned. Now read from the start-of-step state.
+2. **Brake reached the trailing edge through slack line.** The line network
+   always knew about the 120 mm of sewn-in slack, because it is in the rest
+   lengths; the aerodynamics did not, and took the handle position as a camber
+   change directly. The first 19% of the travel was deflecting a trailing edge
+   no line was pulling on — a violation of guiding rule 3 in the one place it
+   was not being checked.
+3. **The load reference was the wing's weight spread evenly.** Loading on an
+   arced, tapered wing falls away toward the tips by a factor of three, so an
+   even share read every healthy tip as half unloaded and folded it. The
+   reference is now each section's own load in clean trim, solved once at
+   construction.
+
 ## Test suites
 
-`Tools/check-build.sh` builds the Unreal module and runs ten suites. All green.
+`Tools/check-build.sh` builds the Unreal module and runs eleven suites. All
+green.
 
 | suite | covers |
 |---|---|
@@ -255,7 +350,8 @@ turn rate reproduced at once in an unoptimized build, having hidden at -O2:
 | `aerodynamics_tests` | Level 4 |
 | `pressure_tests` | Level 5 |
 | `membrane_tests` | Level 6 |
-| `coupled_tests` | Level 7 |
+| `collapse_tests` | Level 8's criterion |
+| `coupled_tests` | Level 7, and Level 8's incident benchmarks |
 | `terrain_survey_tests` | terrain georeferencing |
 
 `coupled_tests` is the slow one: ten minutes of flight at 120 Hz plus a brake
@@ -342,4 +438,18 @@ Ordered by how much they matter.
    terrain is the measurement and the anchor is the estimate, so it is recorded
    rather than fitted away. `terrain_survey_tests` prints the table.
 5. **None of the geometry-driven stack flies the wing.** The legacy polar still
-   does.
+   does. Level 8's deliverable of a collapse/reopening *debug view* is blocked
+   on this and nothing else: the pawn draws collapse from the legacy
+   telemetry, because that is what is flying. The per-section state the view
+   would draw — margin, external Cp, fold, propagation flag, fold reach past
+   the line, cravat — is already reported by `SectionCollapseDiagnostics`.
+6. **The reopening surge is not modelled.** A section recovers its lift as the
+   fold clears, smoothly. A real wing dives forward as the nose catches air and
+   then pitches back, and that needs the collapsed section's shape rather than
+   only its state.
+7. **A cravat has never formed in the coupled solve.** It forms in
+   `collapse_tests`, from the built graph's real 0.178 m tip line gap against a
+   fold deep enough to reach past it. In flight the strip's fold depth stays
+   short of that gap, so the contact test correctly returns nothing. Whether
+   that is the wing or the one-dimensional strip understating how far skin
+   hangs is not yet known, and the 2-D mesh is what would answer it.

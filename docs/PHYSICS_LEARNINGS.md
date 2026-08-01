@@ -412,6 +412,69 @@ whether it was ever true.
 
 ---
 
+## 18. A symmetric case is a test instrument
+
+Level 8's symmetric benchmark - the same descending air over both halves of a
+wing - was written to check that a frontal collapse is symmetric. What it
+actually did was find two defects nothing else could see, because a wing with
+nothing asymmetric done to it has exactly one correct answer and any deviation
+has a cause.
+
+**The sum over a symmetric object need not be symmetric.** The collapse
+solver's two half-wing averages were split by the sign of each section's
+midpoint span fraction. With an odd section count one section sits on the
+centreline, its midpoint lands within a rounding error of zero, and it was
+counted whole on whichever side the arithmetic put it. Per-section states
+agreed to 1e-15; the halves differed in the third decimal, and the flight model
+turned on the difference. The fix is to weight each section by how much of it
+lies on each side, from its extent rather than its midpoint - the same
+weighting the aerodynamics already uses for brake.
+
+**A Gauss-Seidel sweep has a direction, and the direction is physics here.**
+`CanopyPressureSolver` computed crossport flow from the array it was writing,
+so every cell saw its left neighbour already advanced and its right neighbour
+not. Air crossed the span more easily one way than the other. Nothing in the
+symmetric flight tests could see it, because they never asked two mirror cells
+to agree. Reading neighbours from the start-of-step state costs one vector and
+makes the answer independent of loop order.
+
+**Rule:** for any solver over a symmetric object, run the symmetric case and
+check the two halves against each other rather than against a tolerance on the
+whole. It is the cheapest defect detector available, and it finds the class of
+bug - loop order, index parity, accumulation - that physical intuition never
+flags.
+
+The same benchmark also says where the model stops being trustworthy, which is
+worth as much: the two halves agree to 1e-15 through the fold and the first
+second of the recovery, then diverge to 0.1 within two aerodynamic intervals as
+the wing passes through the partly separated branch where the VSM does not
+converge. A non-converged nonlinear solve turns rounding into a real
+difference. That is the deep-stall problem showing up somewhere new, not a new
+problem.
+
+---
+
+## 19. The one place the rule was not being checked
+
+Guiding rule 3 says lines carry tension only, and the suspension network has
+enforced it since Level 2 - the 120 mm of slack sewn into the brake line is in
+its rest lengths, so hands-up transmits nothing. The aerodynamics never got the
+message. It took the brake *handle position* as a camber change directly, so
+the first 19% of the handle's travel deflected a trailing edge that no line was
+pulling on.
+
+Nothing caught it because every brake test used enough brake for the line to be
+taut anyway, and the number that was wrong - the trailing edge deflection at
+15% travel - was not the number any test read. It surfaced only when Level 8
+asked the plan's own exit gate: does a brake pump inside the slack do anything
+to a collapse? It did, and it should not have.
+
+**Rule:** a guiding rule enforced in one subsystem is not enforced. Check it
+where the quantity crosses into every *other* subsystem that consumes it - the
+crossings are where an invariant quietly stops applying.
+
+---
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -426,3 +489,7 @@ whether it was ever true.
 | roll damping time constant | 20 ms | sets the maximum aero interval |
 | coupled trim speed | 10.70 m/s | 38.5 km/h against a published 39 |
 | coupled sink and glide | 1.12 m/s, 9.5 | published 1.0 min sink, glide 9.5 |
+| brake slack take-up | 19% of handle travel | below it the trailing edge does not move |
+| tip line gap, built graph | 0.178 m | how far a fold must reach to cravat |
+| gust that folds a half wing | 4 m/s descending, 1 s | 0.70 fold, full recovery |
+| gust the wing does not survive | 5 m/s and up | deep-stall attractor, 7.5 m/s vertical |

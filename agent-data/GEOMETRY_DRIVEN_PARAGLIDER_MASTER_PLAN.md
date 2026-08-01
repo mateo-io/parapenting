@@ -59,14 +59,17 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
 | 7 Coupled solver | **Done** | 38.5 km/h vs published 39; glide 9.5 vs 9.5; turns mirror to 2e-8; suite green |
-| 8 Emergent collapse | Not started | — |
+| 8 Emergent collapse | **Done, with gaps** | fold 0.70 vs 0.08 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
 | 9 Calibration | Not started | — |
 | 10 Performance and legacy removal | Not started | — |
 | 11+ | Not started | — |
 
-**Camp I is complete. Camp II is one level short**, with Level 7 passing every
-gate and Level 6 delivered at a reduced scope — strips rather than a full mesh,
-and no self-collision, which is what Level 8's cravats will need.
+**Camp I is complete. Camp II is two levels short**, with Levels 7 and 8
+passing their gates and Level 6 delivered at a reduced scope — strips rather
+than a full mesh. Self-collision turned out not to be Level 8's blocker: it was
+built, measured to be incapable of firing on a one-dimensional strip, and
+removed, and cravats were built instead from fabric-to-*line* contact, which is
+what a cravat physically is.
 
 ### Carried gaps, by priority
 
@@ -74,7 +77,11 @@ and no self-collision, which is what Level 8's cravats will need.
    measurement. Every flight number in Level 4 rests on theory. The plan calls
    for this work to begin during Level 1; it has not begun.
 2. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
-   endpoints, no self-collision. Level 8's cravats need the self-collision.
+   endpoints. Not the blocker on cravats it was thought to be — a strip cannot
+   self-intersect, measured, and a cravat is fabric on a line — but it is why
+   no cravat has yet formed in the coupled solve: the strip's fold depth stays
+   short of the 0.178 m gap to the nearest line. The 2-D mesh is what would
+   say whether that is the wing or the model.
 3. **Deep stall does not converge** in the VSM solved cold, and will not: the
    separated branch has a negative lift slope, which inverts the downwash
    feedback between sections. Level 11's unsteady wake is the honest treatment.
@@ -125,12 +132,19 @@ weather instead of flying through dead air. `TerrainModel` holds regions
 additively; the renderer draws one at a time and rebuilds on a route change that
 crosses between them.
 
+**Level 8 is closed.** Collapse comes from a pressure balance across the nose
+skin, cravats from a contact test against the built line geometry, and the fold
+reaches the flight by taking its cell's pressure out on the way to the
+aerodynamics — there is no collapse-to-yaw term anywhere. The exit gates are
+incident benchmarks in `coupled_tests` whose only input is air arriving at part
+of the wing. They found three defects in the levels below: crossport flow that
+depended on loop direction, brake reaching the trailing edge through slack
+line, and a load reference that read every healthy tip as half unloaded.
+
 1. **Start the polar acquisition.** It is a data problem with a long lead time,
    it needs XFOIL or equivalent tooling, it can run in parallel with anything,
-   and it is what turns Level 4's numbers from plausible into defensible.
-2. **Then Level 8**, which now has its converged Level 7 and needs
-   self-collision in Level 6 before collapse can be emergent rather than
-   scripted.
+   and it is what turns Level 4's numbers from plausible into defensible. It is
+   now the only thing standing between here and Level 9.
 
 Levels 9 and 10 should not start before the gaps above close: calibrating an
 uncoupled model, or deleting the legacy path while the geometry-driven one

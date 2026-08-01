@@ -30,6 +30,14 @@ void Check(bool condition, const std::string& what)
     }
 }
 
+struct Weather
+{
+    CoupledAtmosphere air;
+    // Seconds the gust lasts. After it the atmosphere is still again, which is
+    // what makes a gust a gust rather than a new trim condition.
+    double gustSeconds = 0.0;
+};
+
 struct Run
 {
     CoupledState state;
@@ -59,6 +67,73 @@ Run Fly(CoupledParagliderSolver& solver, const CoupledControls& controls,
                 std::max(run.worstEnergyResidualW, std::fabs(d.energyResidualW));
             run.worstClosureN =
                 std::max(run.worstClosureN, d.internalForceClosureN);
+        }
+    }
+    run.last = solver.Diagnostics();
+    if (carry) *carry = run.state;
+    return run;
+}
+
+// What the wing did to itself over a flight, rather than where it ended up. A
+// collapse is a transient: reading only the final step says a wing that folded
+// and recovered never folded at all.
+struct FoldRun
+{
+    CoupledState state;
+    CoupledDiagnostics last;
+    double worstLeftCollapse = 0.0;
+    double worstRightCollapse = 0.0;
+    double worstCravat = 0.0;
+    double worstTurnRateRadps = 0.0;
+    // Signed, at the moment the wing was most lopsided. Which way it went is
+    // the whole question in an asymmetric collapse - and it has to be read
+    // while the wing is folded, not at the largest rate anywhere in the
+    // flight: the recovery surge afterwards swings harder than the collapse
+    // did, in the other direction, and it is the wing coming back rather than
+    // the collapse doing anything.
+    double turnAtWorstFoldRadps = 0.0;
+    double worstFoldAsymmetry = 0.0;
+    double worstBankRad = 0.0;
+    bool safetyEnvelopeEngaged = false;
+    double leftBrakeRowTensionN = 0.0;
+};
+
+FoldRun FlyThrough(CoupledParagliderSolver& solver,
+                   const CoupledControls& controls, const Weather& weather,
+                   double seconds, CoupledState* carry = nullptr)
+{
+    FoldRun run;
+    if (carry) run.state = *carry;
+    const int steps = static_cast<int>(seconds / solver.Schedule().timeStepS);
+    const int gustSteps = static_cast<int>(
+        weather.gustSeconds / solver.Schedule().timeStepS);
+    for (int step = 0; step < steps; ++step)
+    {
+        CoupledAtmosphere air = weather.air;
+        if (step >= gustSteps) air.gustWorldMps = Vec3{};
+        solver.Step(run.state, controls, air);
+        const CoupledDiagnostics& d = solver.Diagnostics();
+        run.worstLeftCollapse =
+            std::max(run.worstLeftCollapse, d.collapseState.leftCollapse);
+        run.worstRightCollapse =
+            std::max(run.worstRightCollapse, d.collapseState.rightCollapse);
+        const double lopsided = std::fabs(d.collapseState.leftCollapse
+                                          - d.collapseState.rightCollapse);
+        if (lopsided > run.worstFoldAsymmetry)
+        {
+            run.worstFoldAsymmetry = lopsided;
+            run.turnAtWorstFoldRadps = d.turnRateRadps;
+        }
+        run.worstCravat = std::max(run.worstCravat,
+            std::max(d.collapseState.leftCravat,
+                     d.collapseState.rightCravat));
+        if (step > 60)
+        {
+            run.worstTurnRateRadps = std::max(
+                run.worstTurnRateRadps, std::fabs(d.turnRateRadps));
+            run.worstBankRad =
+                std::max(run.worstBankRad, std::fabs(d.bankRad));
+            if (d.aerodynamicsRejected) run.safetyEnvelopeEngaged = true;
         }
     }
     run.last = solver.Diagnostics();
@@ -343,6 +418,215 @@ int main()
               "its budget");
         Check(three.couplingResidual < 0.05,
               "and the last iteration barely moves the exchanged load");
+    }
+
+    // -- Level 8: incident benchmarks --------------------------------------
+    //
+    // The plan's Level 8 exit gates, asked of the whole aircraft rather than
+    // of the collapse solver on its own. Nothing here scripts a collapse: the
+    // only thing done to the wing is air arriving at part of it, and what the
+    // wing does about that is the answer.
+    {
+        // The symmetric case first, as the control: a gust across the whole
+        // span with nothing asymmetric about it.
+        const auto flyGust = [&](double gustMps, double from, double to,
+                                 double gustSeconds, double totalSeconds,
+                                 const CoupledControls& controls)
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            // Settle first, so the gust hits a flying wing rather than an
+            // initial condition.
+            Fly(wing, controls, 8.0, &state);
+            Weather weather;
+            weather.air.gustWorldMps = Vec3{0.0, 0.0, gustMps};
+            weather.air.gustSpanFrom = from;
+            weather.air.gustSpanTo = to;
+            weather.gustSeconds = gustSeconds;
+            return FlyThrough(wing, controls, weather, totalSeconds, &state);
+        };
+
+        const CoupledControls handsOff;
+        const FoldRun calm = flyGust(0.0, -1.0, 1.0, 0.0, 12.0, handsOff);
+        std::printf("Level 8, still air: worst collapse L %.3f R %.3f, "
+                    "turn rate %.4f rad/s\n",
+                    calm.worstLeftCollapse, calm.worstRightCollapse,
+                    calm.worstTurnRateRadps);
+        Check(calm.worstLeftCollapse < 1.0e-3
+              && calm.worstRightCollapse < 1.0e-3,
+              "a wing flying in still air folds nothing - the collapse model "
+              "is inert until something happens to the canopy");
+        Check(!calm.safetyEnvelopeEngaged,
+              "and the numerical safety envelope does not engage in nominal "
+              "flight (guiding rule 12)");
+
+        // A nominal manoeuvre: a brake turn, which raises incidence and feeds
+        // the inlets. Brake stalls a wing; it does not fold one, and that has
+        // to survive being asked of the whole aircraft.
+        CoupledControls turning;
+        turning.rightBrake = 0.35;
+        turning.weightShift = 0.5;
+        const FoldRun turn = flyGust(0.0, -1.0, 1.0, 0.0, 12.0, turning);
+        std::printf("Level 8, half brake and weight shift: worst collapse "
+                    "L %.3f R %.3f, bank %.1f deg\n",
+                    turn.worstLeftCollapse, turn.worstRightCollapse,
+                    turn.worstBankRad * 180.0 / 3.14159265358979);
+        Check(turn.worstLeftCollapse < 1.0e-3
+              && turn.worstRightCollapse < 1.0e-3,
+              "and a braked turn folds nothing either - brake raises "
+              "incidence, which is the wrong direction for a collapse");
+        Check(!turn.safetyEnvelopeEngaged,
+              "the safety envelope stays out of a nominal manoeuvre");
+
+        // The asymmetric benchmark. Descending air over the left half only,
+        // which is a rotor edge: it takes the incidence off that half without
+        // touching the other.
+        //
+        // Four metres per second, which is a real gust and not an extreme
+        // one. Past about five the wing does not come back, and that is worth
+        // saying plainly because it is not this level's doing: a hard enough
+        // gust pitches the canopy into full separation, and a fully separated
+        // wing in this model descends vertically at 7.5 m/s and stays there.
+        // That is the deep-stall attractor Level 11's unsteady wake is for,
+        // documented in PHYSICS_TODO item 5. A collapse is what puts the wing
+        // there; it is not what keeps it there.
+        const FoldRun asymmetric =
+            flyGust(-4.0, -1.0, 0.0, 1.0, 14.0, handsOff);
+        std::printf("Level 8, 4 m/s down over the left half for 1 s: worst "
+                    "collapse L %.3f R %.3f, cravat %.3f\n",
+                    asymmetric.worstLeftCollapse,
+                    asymmetric.worstRightCollapse, asymmetric.worstCravat);
+        std::printf("  worst turn rate %.3f rad/s, worst bank %.1f deg, "
+                    "recovered to L %.3f after 13 s\n",
+                    asymmetric.worstTurnRateRadps,
+                    asymmetric.worstBankRad * 180.0 / 3.14159265358979,
+                    asymmetric.last.collapseState.leftCollapse);
+        Check(asymmetric.worstLeftCollapse > 0.1,
+              "air arriving down the left half folds it - the incidence drops "
+              "there, the stagnation point climbs over the nose, and the "
+              "suction that was holding the skin out becomes pressure "
+              "pushing it in");
+        Check(asymmetric.worstRightCollapse
+                  < 0.5 * asymmetric.worstLeftCollapse,
+              "on the half the air arrived at, not across the wing");
+        Check(asymmetric.last.collapseState.leftCollapse
+                  < 0.2 * asymmetric.worstLeftCollapse,
+              "and it reopens once the gust has gone - the inlet is fed again "
+              "and the pressure balance comes back");
+        Check(!asymmetric.safetyEnvelopeEngaged,
+              "through a collapse and a recovery without the numerical safety "
+              "envelope engaging");
+
+        // Which way it went. A wing with one half folded turns toward the
+        // folded half, because that half stopped making lift and stopped
+        // making its share of the drag last. Nothing in the solver knows
+        // this: there is no collapse-to-yaw term anywhere, and the sign comes
+        // out of where the remaining lift is.
+        std::printf("  turning %+.3f rad/s at the worst of the fold\n",
+                    asymmetric.turnAtWorstFoldRadps);
+        Check(asymmetric.turnAtWorstFoldRadps < -0.05,
+              "and it turns toward the folded half - which is a spin or a "
+              "spiral entry, not a barrel roll");
+        Check(asymmetric.worstBankRad < 1.2,
+              "banking rather than rolling inverted");
+
+        // A collapsed half carries no load, and the load it is not carrying
+        // has to go somewhere. This is the exit gate about slack lines, read
+        // where the coupled solver can answer it: the imbalance the collapse
+        // hands the line network, which is what takes the tension out of the
+        // lines under the folded half.
+        double worstAsymmetry = 0.0;
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, handsOff, 8.0, &state);
+            Weather weather;
+            weather.air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+            weather.air.gustSpanFrom = -1.0;
+            weather.air.gustSpanTo = 0.0;
+            weather.gustSeconds = 1.0;
+            const int steps = static_cast<int>(6.0
+                / wing.Schedule().timeStepS);
+            const int gustSteps = static_cast<int>(1.0
+                / wing.Schedule().timeStepS);
+            for (int step = 0; step < steps; ++step)
+            {
+                CoupledAtmosphere air = weather.air;
+                if (step >= gustSteps) air.gustWorldMps = Vec3{};
+                wing.Step(state, handsOff, air);
+                worstAsymmetry = std::max(worstAsymmetry,
+                    wing.Diagnostics().collapseLoadAsymmetry);
+            }
+        }
+        std::printf("  worst load asymmetry handed to the lines: %+.3f\n",
+                    worstAsymmetry);
+        Check(worstAsymmetry > 0.2,
+              "the folded half stops carrying its share, and the line network "
+              "is told so - which is what leaves the lines under it slack");
+
+        // The symmetric benchmark, for the same gust across the whole span. A
+        // frontal, and it has to be symmetric: the same air over both halves
+        // must not produce a turn.
+        const FoldRun frontal = flyGust(-4.0, -1.0, 1.0, 1.0, 14.0, handsOff);
+        std::printf("Level 8, 4 m/s down over the whole span: worst collapse "
+                    "L %.3f R %.3f, turn %.3f rad/s, recovered to %.3f\n",
+                    frontal.worstLeftCollapse, frontal.worstRightCollapse,
+                    frontal.worstTurnRateRadps,
+                    frontal.last.collapseState.symmetricCollapse);
+        Check(frontal.worstLeftCollapse > 0.1,
+              "the same air over the whole span folds it too - a frontal");
+        Check(std::fabs(frontal.worstLeftCollapse
+                        - frontal.worstRightCollapse)
+                  < 0.02 * frontal.worstLeftCollapse,
+              "symmetrically - the two halves are the same wing");
+        // Not bit-identical, and the reason is worth stating rather than
+        // widening a tolerance over. Through the fold and the first second of
+        // the recovery the two halves agree to 1e-15. Then the wing passes
+        // through a partly separated transient where the VSM does not
+        // converge - the same negative-lift-slope branch that makes deep stall
+        // have no steady state, PHYSICS_TODO item 5 - and a non-converged
+        // nonlinear solve turns rounding into a real difference within two
+        // aerodynamic intervals. Level 11's unsteady wake is the honest fix.
+        Check(frontal.worstTurnRateRadps < 0.15,
+              "and a symmetric collapse does not turn the wing - what is left "
+              "is the recovery transient, not a heading change");
+
+        // Brake pumping. The plan's gate is that brake only reaches a collapse
+        // when the brake line has tension, and this wing has 120 mm of slack
+        // sewn into a 620 mm travel - so the first 19% of the handle's travel
+        // moves through air and can do nothing to a fold, while a real pull
+        // holds it in.
+        const auto foldWithBrake = [&](double leftBrake)
+        {
+            CoupledControls held;
+            held.leftBrake = leftBrake;
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, CoupledControls{}, 8.0, &state);
+            Weather weather;
+            weather.air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+            weather.air.gustSpanFrom = -1.0;
+            weather.air.gustSpanTo = 0.0;
+            weather.gustSeconds = 1.0;
+            return FlyThrough(wing, held, weather, 6.0, &state);
+        };
+        const FoldRun handsUp = foldWithBrake(0.0);
+        const FoldRun slackBrake = foldWithBrake(0.15);
+        const FoldRun realBrake = foldWithBrake(0.80);
+        std::printf("Level 8, brake on the folded side after 6 s: hands up "
+                    "%.4f, 15%% travel %.4f, 80%% travel %.4f\n",
+                    handsUp.last.collapseState.leftCollapse,
+                    slackBrake.last.collapseState.leftCollapse,
+                    realBrake.last.collapseState.leftCollapse);
+        Check(std::fabs(slackBrake.last.collapseState.leftCollapse
+                        - handsUp.last.collapseState.leftCollapse) < 1.0e-9,
+              "brake inside the sewn-in slack does nothing to a collapse at "
+              "all - the line is not transmitting, so there is nothing for it "
+              "to do (guiding rule 3)");
+        Check(realBrake.last.collapseState.leftCollapse
+                  > handsUp.last.collapseState.leftCollapse,
+              "and brake past the slack holds the fold in, which is why the "
+              "recovery is to release that side first");
     }
 
     // -- determinism -------------------------------------------------------

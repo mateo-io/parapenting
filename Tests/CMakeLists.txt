@@ -227,6 +227,7 @@ add_executable(parapenting_coupled_tests
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
     ../Source/Parapenting/Physics/CanopyMembraneSolver.cpp
+    ../Source/Parapenting/Physics/CanopyCollapseSolver.cpp
     ../Source/Parapenting/Physics/TensionCableSolver.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp

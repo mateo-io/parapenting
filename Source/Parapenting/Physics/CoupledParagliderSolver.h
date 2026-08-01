@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ApparentMassTensor.h"
+#include "CanopyCollapseSolver.h"
 #include "CanopyGeometry.h"
 #include "CanopyMembraneSolver.h"
 #include "CanopyPressureSolver.h"
@@ -48,8 +49,12 @@ namespace Parapenting::Physics
 //   3. aerodynamics    - VSM, at a reduced rate with interpolation between
 //   4. pressure        - cells fed through the inlets the VSM's incidence moves
 //   5. membrane        - the skin under that pressure
-//   6. lines           - the suspension network, warm-started
-//   7. rigid motion    - canopy and payload
+//   6. collapse        - Level 8's pressure balance across the nose, which
+//                        reads the four levels above it and hands back a
+//                        per-section fold that takes the pressure out of the
+//                        cell and the load off the lines
+//   7. lines           - the suspension network, warm-started
+//   8. rigid motion    - canopy and payload
 //
 // Three of those are expensive and none of them needs to run at 120 Hz to be
 // right. The VSM changes only as fast as the wing's attitude does, so it runs
@@ -97,6 +102,18 @@ struct CoupledAtmosphere
 {
     Vec3 windWorldMps{};
     double densityKgM3 = 1.12;
+
+    // An incident gust, world axes, acting over part of the span. Level 8's
+    // asymmetric benchmark needs this and there is no substitute for it: the
+    // wind above changes the frame the whole wing flies in and cannot fold
+    // anything, and a roll rate is the wing's own state rather than something
+    // happening to it. Air arriving at one half and not the other is what a
+    // rotor edge, a thermal wall and a gust front all are.
+    Vec3 gustWorldMps{};
+    // Span fractions the gust covers, -1 at the left tip to +1 at the right.
+    // The default covers the wing, which is the symmetric case.
+    double gustSpanFrom = -1.0;
+    double gustSpanTo = 1.0;
 };
 
 struct CoupledState
@@ -112,6 +129,13 @@ struct CoupledState
     CellPressureState pressure;
     VsmSeparationState separation;
     SuspensionWarmStart suspension;
+    // Level 8. Stepped every physics step, because a fold takes about a tenth
+    // of a second and the aerodynamic interval is a tenth of a second.
+    CollapseState collapse;
+    // What the collapse solver was last told about each section. Refreshed
+    // whenever the aerodynamics run, so a fold between aerodynamic solves
+    // continues from the state that produced it rather than from nothing.
+    std::vector<SectionCollapseInput> collapseInput;
 
     // Aerodynamic load held between full solves, split into the part that
     // depends on the wing's attitude and circulation - which changes slowly
@@ -193,6 +217,15 @@ struct CoupledDiagnostics
     // that manoeuvre's numbers mean nothing.
     bool aerodynamicsRejected = false;
 
+    // Level 8. What the canopy is doing to itself, and what that is doing to
+    // the flight. None of these is a mode: they are span-weighted sums over
+    // per-section states that came out of a pressure balance.
+    CollapseResult collapseState;
+    // The load imbalance the collapse handed to the line network this step,
+    // positive when the right half is carrying more. This is the path from a
+    // folded half wing to slack lines on that side.
+    double collapseLoadAsymmetry = 0.0;
+
     // Flight numbers, for the tests to read.
     double airspeedMps = 0.0;
     double angleOfAttackRad = 0.0;
@@ -219,12 +252,35 @@ public:
 
     double AllUpMassKg() const { return SystemMassKg; }
 
+    // What each section carries in clean hands-up trim, newtons. The reference
+    // the collapse criterion's local unloading is measured against.
+    const std::vector<double>& TrimLoadDistributionN() const
+        { return SectionTrimLoadN; }
+
 private:
+    void SolveTrimLoadDistribution();
+
     CoupledSchedule ScheduleValue;
     VortexStepMethodSolver Aerodynamics;
     CanopyPressureSolver Pressure;
     CanopyMembraneSolver Membrane;
     SuspensionGraph Lines;
+    // Declared after the graph it is measured against: the collapse solver
+    // solves the aerodynamic sections, and the room a fold has at each of them
+    // comes off the suspension graph.
+    CanopyCollapseSolver Collapse;
+    SectionPolarTable Polars;
+    // Per-section room a fold has before it is past the line beside it,
+    // measured off the built graph at construction. Geometry, so it is fixed.
+    std::vector<double> SectionLineGapM;
+    // What each section carries in clean hands-up trim, newtons normal to the
+    // section. This is the reference the collapse criterion's "has this
+    // section stopped carrying load" is measured against, and it has to be the
+    // wing's own span distribution rather than its weight spread evenly: the
+    // loading on an arced, tapered wing falls away toward the tips by a factor
+    // of three, so an even share reads every healthy tip as half unloaded and
+    // folds it. Solved once at construction, from the same solver that flies.
+    std::vector<double> SectionTrimLoadN;
     ApparentMassTensor ApparentMass;
     PayloadMassProperties PayloadMass;
     HarnessGeometry Harness;

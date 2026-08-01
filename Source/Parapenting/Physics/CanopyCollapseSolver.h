@@ -70,10 +70,14 @@ namespace Parapenting::Physics
 //     against the airflow, so the same suction folds it at a much lower
 //     margin.
 //
-// What is NOT here yet, and is named rather than hidden: cravats, which need
-// fabric-to-line contact and therefore the self-collision the plan puts in
-// this level; and the reopening surge, which needs the collapsed section's
-// shape rather than only its state.
+// Cravats are here, as a contact test between Level 6's fold depth and Level
+// 2's line positions, and a cravat holds its section folded because the fabric
+// is physically inside the wing.
+//
+// What is NOT here yet, and is named rather than hidden: the reopening surge,
+// which needs the collapsed section's shape rather than only its state. The
+// wing recovers its lift as the fold clears, but it does so smoothly, where a
+// real one dives forward as the nose catches air and then pitches back.
 
 struct CollapseSpec
 {
@@ -252,6 +256,10 @@ public:
 
 private:
     std::vector<double> SpanFractions;
+    // How much of each section lies right of the centreline, 0 to 1. Only the
+    // one straddling the centre is anything other than 0 or 1, and it is what
+    // keeps a symmetric collapse symmetric.
+    std::vector<double> RightShare;
     CollapseSpec SpecValue;
 };
 }

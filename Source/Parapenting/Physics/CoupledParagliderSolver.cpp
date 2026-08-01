@@ -9,6 +9,16 @@ namespace
 {
 constexpr double GravityMps2 = 9.80665;
 
+std::vector<double> SectionSpanFractions(
+    const std::vector<VsmSection>& sections)
+{
+    std::vector<double> spans;
+    spans.reserve(sections.size());
+    for (const VsmSection& section : sections)
+        spans.push_back(section.spanFraction);
+    return spans;
+}
+
 Quaternion IntegrateAttitude(
     const Quaternion& q, const Vec3& bodyRate, double dt)
 {
@@ -32,14 +42,58 @@ CoupledParagliderSolver::CoupledParagliderSolver(
       Pressure(geometry.Spec().cellCount),
       Membrane(geometry.CellSpacingM()),
       Lines(BuildSuspensionGraph(geometry, linePlan)),
+      Collapse(SectionSpanFractions(Aerodynamics.Sections())),
+      Polars(SectionPolarTable::Analytic()),
       ApparentMass(CanopyApparentMass(geometry))
 {
+    // How far a fold at each aerodynamic station has to reach before it is
+    // past the line beside it. Measured off the graph that was just built, so
+    // moving a line moves the cravat criterion with it.
+    SectionLineGapM.reserve(Aerodynamics.Sections().size());
+    for (const VsmSection& section : Aerodynamics.Sections())
+        SectionLineGapM.push_back(LineFoldGapM(Lines, section.spanFraction));
+
     CanopyMassKg = 5.1;
     SystemMassKg = PayloadMass.TotalKg() + CanopyMassKg;
     ReferenceAreaM2 = Aerodynamics.ReferenceAreaM2();
     ReferenceSpanM = geometry.DevelopedSpanM();
     PendulumLengthM = SuspensionPendulumLengthM(Lines);
     Harness = Lines.plan.harness;
+
+    SolveTrimLoadDistribution();
+}
+
+void CoupledParagliderSolver::SolveTrimLoadDistribution()
+{
+    // The wing in clean hands-up flight, at whatever speed carries its own
+    // weight. Two solves: one at a starting guess, then one at the speed that
+    // first solve says balances the weight. The speed only has to be close -
+    // what is wanted is the SHAPE of the span loading, and that is set by the
+    // planform and the arc rather than by the airspeed.
+    constexpr double DensityKgM3 = 1.12;
+    double airspeed = 11.0;
+    VsmSettings settings;
+    settings.maxIterations = 600;
+    VsmSolution solved;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        VsmSolveInput trim;
+        trim.airspeedBodyMps = Vec3{airspeed, 0.0, 0.0};
+        trim.airDensityKgM3 = DensityKgM3;
+        solved = Aerodynamics.Solve(trim, settings);
+        const double lift = solved.forceBodyN.z;
+        if (lift > 1.0) airspeed *= std::sqrt(
+            SystemMassKg * GravityMps2 / lift);
+        airspeed = std::clamp(airspeed, 5.0, 25.0);
+    }
+
+    SectionTrimLoadN.assign(Aerodynamics.Sections().size(), 0.0);
+    for (std::size_t i = 0;
+         i < Aerodynamics.Sections().size() && i < solved.sections.size(); ++i)
+    {
+        SectionTrimLoadN[i] = std::fabs(Dot(
+            solved.sections[i].forceBodyN, Aerodynamics.Sections()[i].normal));
+    }
 }
 
 void CoupledParagliderSolver::Step(
@@ -48,6 +102,25 @@ void CoupledParagliderSolver::Step(
 {
     const double dt = ScheduleValue.timeStepS;
     CoupledDiagnostics diagnostics;
+
+    // What the hands do to the trailing edge, which is not what the hands do.
+    // There is slack sewn into the brake line at hands-up - 120 mm of a 620 mm
+    // travel on this wing - and a slack line transmits nothing (guiding rule
+    // 3). The line network has always known this, because the slack is in its
+    // rest lengths; the aerodynamics did not, and took the handle position as
+    // a camber change directly, so the first fifth of the travel deflected a
+    // trailing edge that no line was pulling on.
+    const auto engagedBrake = [this](double handTravel)
+    {
+        const double travelM = Lines.plan.brakeTravelM;
+        const double slackM = Lines.plan.brakeSlackM;
+        return std::clamp(
+            (std::clamp(handTravel, 0.0, 1.0) * travelM - slackM)
+                / std::max(1.0e-6, travelM - slackM),
+            0.0, 1.0);
+    };
+    const double leftBrakeAtWing = engagedBrake(controls.leftBrake);
+    const double rightBrakeAtWing = engagedBrake(controls.rightBrake);
 
     // A simulation that starts mid-flight starts with an inflated canopy.
     // Leaving the cells packed while the wing is already doing 10 m/s made
@@ -103,9 +176,44 @@ void CoupledParagliderSolver::Step(
             aero.airspeedBodyMps = airspeedBody;
             aero.angularVelocityBodyRadps = state.angularVelocityBodyRadps;
             aero.airDensityKgM3 = atmosphere.densityKgM3;
-            aero.leftBrake = controls.leftBrake;
-            aero.rightBrake = controls.rightBrake;
-            aero.internalPressureCoefficient = cellPressureCoefficient;
+            aero.leftBrake = leftBrakeAtWing;
+            aero.rightBrake = rightBrakeAtWing;
+            // The pressure the sections actually fly on. A folded cell is not
+            // a cell that lost some pressure - it is skin lying against skin
+            // with nothing inside it - so the collapse state takes its cell's
+            // pressure out on the way to the aerodynamics. This is the whole
+            // feedback path from Level 8 to Level 4, and it needs no new
+            // aerodynamic term: the section polars already turn a cell with no
+            // pressure into lost lift and a drag penalty, which is what makes
+            // a fold cost lift where it is rather than everywhere.
+            std::vector<double> flyingPressure = cellPressureCoefficient;
+            for (std::size_t i = 0; i < flyingPressure.size(); ++i)
+            {
+                const double folded = i < state.collapse.sections.size()
+                    ? state.collapse.sections[i].collapse : 0.0;
+                flyingPressure[i] *= std::clamp(1.0 - folded, 0.0, 1.0);
+            }
+            aero.internalPressureCoefficient = flyingPressure;
+
+            // The gust, in the wing's own axes, at the sections it covers.
+            if (Length(atmosphere.gustWorldMps) > 1.0e-9)
+            {
+                const Vec3 gustBody =
+                    state.attitude.InverseRotate(atmosphere.gustWorldMps);
+                const double from = std::min(
+                    atmosphere.gustSpanFrom, atmosphere.gustSpanTo);
+                const double to = std::max(
+                    atmosphere.gustSpanFrom, atmosphere.gustSpanTo);
+                aero.sectionGustBodyMps.assign(
+                    Aerodynamics.Sections().size(), Vec3{});
+                for (std::size_t i = 0; i < Aerodynamics.Sections().size(); ++i)
+                {
+                    const double span =
+                        Aerodynamics.Sections()[i].spanFraction;
+                    if (span >= from && span <= to)
+                        aero.sectionGustBodyMps[i] = gustBody;
+                }
+            }
 
             VsmSettings settings;
             // Warm-started by the separation state, so a handful of
@@ -273,13 +381,89 @@ void CoupledParagliderSolver::Step(
             // dynamics are far faster than the flight's, so what matters here
             // is the shape it settles to under the pressure just solved.
             MembraneLoad skin;
-            skin.internalPressurePa = pressureResult.gaugePressurePa.empty()
-                ? 0.0 : pressureResult.gaugePressurePa[
-                            pressureResult.gaugePressurePa.size() / 2];
+            const std::vector<double>& gauge = pressureResult.gaugePressurePa;
+            const double medianGaugePa = gauge.empty()
+                ? 0.0 : gauge[gauge.size() / 2];
+            skin.internalPressurePa = medianGaugePa;
             skin.brakeLineForceN = 40.0
-                * (controls.leftBrake + controls.rightBrake);
+                * (leftBrakeAtWing + rightBrakeAtWing);
             const MembraneResult skinResult = Membrane.Step(skin, dt);
             diagnostics.membraneStrain = skinResult.maximumStrain;
+
+            // A second station, at whichever cell is worst fed. The skin's
+            // shape is a function of the pressure holding it out, and the
+            // representative station above is by construction not the one that
+            // is folding - so a wing whose tip has emptied would report the
+            // taut mid-span skin as the shape of the whole canopy. Two solves
+            // bracket the wing and each section is placed between them by its
+            // own gauge pressure, which is a stated interpolation rather than
+            // forty membrane solves per aerodynamic interval.
+            const double lowestGaugePa = gauge.empty()
+                ? 0.0 : *std::min_element(gauge.begin(), gauge.end());
+            MembraneResult worstSkin = skinResult;
+            if (lowestGaugePa < medianGaugePa - 1.0)
+            {
+                MembraneLoad worst = skin;
+                worst.internalPressurePa = lowestGaugePa;
+                worstSkin = Membrane.Step(worst, dt);
+            }
+
+            // -- 6. collapse ----------------------------------------------
+            // Everything the pressure balance needs was solved above. None of
+            // it is written down here a second time.
+            state.collapseInput.assign(
+                solved.sections.size(), SectionCollapseInput{});
+            for (std::size_t i = 0; i < solved.sections.size(); ++i)
+            {
+                const VsmSection& geometrySection = Aerodynamics.Sections()[i];
+                const VsmSectionResult& aeroSection = solved.sections[i];
+                SectionCollapseInput& fold = state.collapseInput[i];
+
+                fold.internalPressureCoefficient =
+                    i < cellPressureCoefficient.size()
+                        ? cellPressureCoefficient[i] : 1.0;
+                fold.angleOfAttackRad = aeroSection.angleOfAttackRad;
+                fold.separation = aeroSection.separation;
+                // A panel straddling the centreline is braked partly by each
+                // hand, which is the same weighting the aerodynamics uses.
+                const double right = std::clamp(
+                    geometrySection.rightSideFraction, 0.0, 1.0);
+                fold.brake = rightBrakeAtWing * right
+                    + leftBrakeAtWing * (1.0 - right);
+                // Already the engaged brake rather than the handle's
+                // travel, so a pump inside the sewn-in slack does nothing to
+                // a fold - which is the plan's exit gate for brake pumping.
+                fold.zeroLiftAngleRad = Polars.ZeroLiftAngleRad(fold.brake);
+
+                // How much load this section is carrying, against what the
+                // same section carries in clean trim. Lines carry what the
+                // fabric hands them, so a section making no lift has slack
+                // lines under it - which is the mechanism behind a turbulence
+                // collapse, and it is measured here rather than asserted.
+                const double trimLoadN = i < SectionTrimLoadN.size()
+                    ? SectionTrimLoadN[i] : 0.0;
+                fold.loadFraction = trimLoadN > 1.0e-6
+                    ? std::clamp(
+                          Dot(aeroSection.forceBodyN, geometrySection.normal)
+                              / trimLoadN,
+                          0.0, 1.0)
+                    : 1.0;
+
+                // The skin at this section, between the two membrane solves.
+                const double gaugeHere = i < gauge.size()
+                    ? gauge[i] : medianGaugePa;
+                const double span = medianGaugePa - lowestGaugePa;
+                const double toWorst = span > 1.0
+                    ? std::clamp((medianGaugePa - gaugeHere) / span, 0.0, 1.0)
+                    : 0.0;
+                fold.skinSlackFraction = skinResult.slackFraction
+                    + (worstSkin.slackFraction - skinResult.slackFraction)
+                        * toWorst;
+                fold.foldDepthM = skinResult.foldDepthM
+                    + (worstSkin.foldDepthM - skinResult.foldDepthM) * toWorst;
+                fold.lineGapM = i < SectionLineGapM.size()
+                    ? SectionLineGapM[i] : 1.0e9;
+            }
         }
     }
 
@@ -289,6 +473,25 @@ structureSolve:
     if (!diagnostics.aerodynamicsSolvedThisStep)
         diagnostics.meanPressureCoefficient =
             state.heldPressureCoefficientMean;
+
+    // The collapse runs every physics step, not once per aerodynamic interval.
+    // A nose folds in about a tenth of a second and the aerodynamic interval
+    // is a tenth of a second, so a collapse solved at 10 Hz would be one step
+    // wide - the fold rate is a real time constant and it has to be resolved.
+    // Its inputs are held between aerodynamic solves, like the loads are.
+    if (!state.collapseInput.empty())
+    {
+        diagnostics.collapseState =
+            Collapse.Step(state.collapse, state.collapseInput, dt);
+    }
+    // A half wing that has folded is not carrying its share. Positive means
+    // the right half carries more, so a folded left half is positive. There is
+    // no coefficient here: a fully folded half carries nothing, which is an
+    // asymmetry of one.
+    diagnostics.collapseLoadAsymmetry = std::clamp(
+        diagnostics.collapseState.leftCollapse
+            - diagnostics.collapseState.rightCollapse,
+        -1.0, 1.0);
 
     const int couplingIterations = std::max(1, ScheduleValue.couplingIterations);
     for (int coupling = 0; coupling < couplingIterations; ++coupling)
@@ -314,6 +517,7 @@ structureSolve:
         suspension.leftBrake = controls.leftBrake;
         suspension.rightBrake = controls.rightBrake;
         suspension.weightShift = controls.weightShift;
+        suspension.spanwiseLoadAsymmetry = diagnostics.collapseLoadAsymmetry;
 
         SuspensionSolverSettings lineSettings;
         lineSettings.iterations = state.initialised
@@ -407,7 +611,6 @@ structureSolve:
     // The held moment, plus the rotational damping evaluated at the rate the
     // wing actually has right now, plus the payload's weight acting through
     // the carabiners. No control term appears here.
-    const Vec3 rate = state.angularVelocityBodyRadps;
     // The damping coefficients, as positive resistances. Only a moment that
     // opposes the rotation is damping; a measured derivative of the other sign
     // is the aerodynamic solve being asked a question it cannot answer, and it

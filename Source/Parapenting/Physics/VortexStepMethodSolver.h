@@ -86,6 +86,16 @@ struct VsmSolveInput
     // depressurised cell group stops making lift where it is, rather than the
     // wing losing performance uniformly.
     std::vector<double> internalPressureCoefficient;
+    // Air velocity at each section, over and above the freestream, body axes.
+    // Empty means still air, which is what every caller before Level 8 had.
+    //
+    // A wing cannot be disturbed by a uniform wind: a wind that covers the
+    // whole canopy changes the frame it flies in and nothing else. What
+    // actually folds a paraglider is air arriving at part of it - a rotor
+    // edge, a thermal wall, a gust front - and this is where that enters. It
+    // is the same term the rotation already contributes, so it costs nothing
+    // but the lookup.
+    std::vector<Vec3> sectionGustBodyMps;
 };
 
 // Per-section separation, carried between solves. This is the attached and

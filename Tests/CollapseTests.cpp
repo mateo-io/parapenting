@@ -5,9 +5,13 @@
 // must produce genuinely unloaded sections; asymmetric collapse must be
 // asymmetric; and nominal flight must never fold anything.
 //
-// Cravats and the reopening surge are not here. They need fabric-to-line
-// contact and the collapsed section's shape, which is the self-collision the
-// plan puts in this level and which is not built yet.
+// Cravats are here, as a contact test between Level 6's fold depth and the
+// line positions Level 2 solves. The reopening surge is not: it needs the
+// collapsed section's shape rather than only its state.
+//
+// What this file cannot ask is what a collapse does to a flight, because it
+// solves the criterion and nothing else. That is in CoupledTests, where the
+// only thing done to the wing is air arriving at part of it.
 #include "CanopyCollapseSolver.h"
 #include "CanopyGeometry.h"
 #include "CanopyPressureSolver.h"

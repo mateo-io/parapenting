@@ -331,6 +331,14 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
     const double dynamicPressureScale = 0.5 * input.airDensityKgM3;
     // The air's velocity relative to the wing. Converted here, once.
     const Vec3 freestream = -input.airspeedBodyMps;
+    // Air arriving at one section and not another. Added to the freestream the
+    // same way the rotation is, because it is the same kind of term: what the
+    // air is doing where this section happens to be.
+    const auto sectionGust = [&input](std::size_t i)
+    {
+        return i < input.sectionGustBodyMps.size()
+            ? input.sectionGustBodyMps[i] : Vec3{};
+    };
 
     // Angle of attack and speed a section sees for a given circulation of its
     // own, with every other section's contribution held fixed.
@@ -376,7 +384,7 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             }
             const Vec3 rotational = Cross(
                 input.angularVelocityBodyRadps, section.controlPointM);
-            external += freestream - rotational;
+            external += freestream - rotational + sectionGust(i);
 
             const double brake =
                 input.leftBrake * (1.0 - section.rightSideFraction)
@@ -500,7 +508,8 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             induced += Influence[i * count + j] * circulation[j];
         const Vec3 rotational = Cross(
             input.angularVelocityBodyRadps, section.controlPointM);
-        const Vec3 localFlow = freestream - rotational + induced;
+        const Vec3 localFlow =
+            freestream - rotational + induced + sectionGust(i);
         const Vec3 inPlane = localFlow
             - section.spanDirection * Dot(localFlow, section.spanDirection);
         const double inPlaneSpeed = Length(inPlane);

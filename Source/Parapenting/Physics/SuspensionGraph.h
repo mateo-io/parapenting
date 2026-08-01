@@ -205,4 +205,14 @@ double SuspensionPendulumLengthM(const SuspensionGraph& graph);
 
 // Total manufactured line length, for comparison against the published 254 m.
 double TotalLineLengthM(const SuspensionGraph& graph);
+
+// How far skin at this span station has to hang out of place before it is past
+// the nearest line running under it, metres. Level 8's cravat criterion is a
+// contact test, and this is the geometric half of it: the lateral room between
+// the section and the closest canopy attachment outboard of it, measured off
+// the built graph rather than asserted about tips in general.
+//
+// Returns a large number where there is no attachment outboard of the station,
+// which is the outermost line - fabric there has nothing to catch on.
+double LineFoldGapM(const SuspensionGraph& graph, double spanFraction);
 }

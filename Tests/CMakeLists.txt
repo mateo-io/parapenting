@@ -315,6 +315,17 @@ add_executable(parapenting_collapse_tests
     CollapseTests.cpp
     ../Source/Parapenting/Physics/CanopyCollapseSolver.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
+    ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/BillowRelaxation.cpp
+    ../Source/Parapenting/Physics/SuspensionGraph.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
+    ../Source/Parapenting/Physics/TensionCableSolver.cpp
+    ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/AerodynamicPolar.cpp
+    ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
 )
 target_include_directories(parapenting_collapse_tests PRIVATE
     ../Source/Parapenting/Physics

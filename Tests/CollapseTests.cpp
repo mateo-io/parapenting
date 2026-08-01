@@ -9,7 +9,9 @@
 // contact and the collapsed section's shape, which is the self-collision the
 // plan puts in this level and which is not built yet.
 #include "CanopyCollapseSolver.h"
+#include "CanopyGeometry.h"
 #include "CanopyPressureSolver.h"
+#include "SuspensionGraph.h"
 
 #include <cmath>
 #include <cstdio>
@@ -286,6 +288,125 @@ int main()
                     heldResult.worstCollapse, releasedResult.worstCollapse);
         Check(heldResult.worstCollapse > releasedResult.worstCollapse,
               "brake on the collapsed side holds the fold in");
+    }
+
+    // -- a cravat is fabric caught on a line -------------------------------
+    {
+        // Measured off the built EPIC 2 suspension graph rather than invented:
+        // how far a folded tip has to reach to get past the line running under
+        // it. The plan asks for cravats from "tip geometry and line/fabric
+        // contact", and both halves are real here - Level 6 solves the fold
+        // depth, Level 2 owns where the lines are.
+        const SuspensionGraph graph =
+            BuildSuspensionGraph(CanopyGeometry{}, Epic2MlLinePlan());
+        double tipGapM = 1.0e9;
+        double tipSpan = 0.0;
+        for (const SuspensionNode& node : graph.nodes)
+        {
+            if (node.kind != SuspensionNodeKind::CanopyAttachment) continue;
+            if (std::fabs(node.spanFraction) < 0.75) continue;
+            // The lateral distance from this attachment to the centreline
+            // side of it is the room a fold has to swing through before it is
+            // outboard of the line hanging from the attachment.
+            const double gap = std::fabs(node.canopyLocalM.y)
+                - std::fabs(CanopyPointLocalM(graph, 0.75, 0.25).y);
+            if (gap > 0.0 && gap < tipGapM)
+            {
+                tipGapM = gap;
+                tipSpan = node.spanFraction;
+            }
+        }
+        std::printf("Tip line gap from the built graph: %.3f m at span "
+                    "%+.2f\n", tipGapM, tipSpan);
+        Check(tipGapM > 0.02 && tipGapM < 2.0,
+              "the tip line gap is a real distance off the suspension graph");
+
+        // A folded tip whose fold does not reach the line cannot cravat,
+        // however hard it is collapsed. This is the check that keeps the
+        // criterion geometric rather than probabilistic.
+        const auto flyCravat = [&](double foldDepthM, double loadFraction,
+                                   double brake, double seconds)
+        {
+            CollapseState state;
+            std::vector<SectionCollapseInput> sections(spans.size(), Trim());
+            for (std::size_t i = 0; i < spans.size(); ++i)
+            {
+                if (spans[i] > -0.75) continue;
+                sections[i].internalPressureCoefficient = 0.0;
+                sections[i].loadFraction = 0.0;
+                sections[i].angleOfAttackRad = -0.12;
+                sections[i].foldDepthM = foldDepthM;
+                sections[i].lineGapM = tipGapM;
+            }
+            constexpr double Dt = 1.0 / 120.0;
+            CollapseResult result;
+            // Fold it first, with the lines slack.
+            for (int step = 0; step < 120; ++step)
+                result = solver.Step(state, sections, Dt);
+            // Then the line comes back under load, which is the moment the
+            // fabric is either trapped or not.
+            for (std::size_t i = 0; i < spans.size(); ++i)
+            {
+                if (spans[i] > -0.75) continue;
+                sections[i].loadFraction = loadFraction;
+                sections[i].brake = brake;
+            }
+            const int steps = static_cast<int>(seconds * 120.0);
+            for (int step = 0; step < steps; ++step)
+                result = solver.Step(state, sections, Dt);
+            return result;
+        };
+
+        const CollapseResult shallow = flyCravat(0.5 * tipGapM, 1.0, 0.0, 3.0);
+        const CollapseResult deep = flyCravat(2.2 * tipGapM, 1.0, 0.0, 3.0);
+        std::printf("Fold shallower than the gap: cravat %.3f. Deeper: %.3f\n",
+                    shallow.leftCravat, deep.leftCravat);
+        Check(shallow.leftCravat < 1.0e-6,
+              "a fold that does not reach the line cannot catch on it - the "
+              "criterion is contact, not a chance of one");
+        Check(deep.leftCravat > 0.05,
+              "and one that reaches past a loaded line does catch");
+        Check(deep.rightCravat < 1.0e-6,
+              "on the side it happened, not across the wing");
+
+        // The order of events is the whole reason a cravat is rarer than a
+        // collapse: the fabric has to be past the line at the moment the line
+        // reloads. Reaching while everything stays slack drops back out.
+        const CollapseResult neverLoaded =
+            flyCravat(2.2 * tipGapM, 0.0, 0.0, 3.0);
+        std::printf("Deep fold, line never reloads: cravat %.3f\n",
+                    neverLoaded.leftCravat);
+        Check(neverLoaded.leftCravat < 1.0e-6,
+              "a fold that reaches past a slack line is not caught by it - "
+              "nothing is holding it there");
+
+        // It LATCHES. This is the property that matters and the one that was
+        // wrong first time: a cravat that is a function of the current fold
+        // melts away as the section reopens, which is exactly the behaviour
+        // that makes a cravat dangerous by not happening. Checked as
+        // persistence rather than against a magnitude - how deep the catch
+        // gets depends on the race between the line reloading and the section
+        // reopening, and that race is physics rather than a number to pin.
+        const CollapseResult persists =
+            flyCravat(2.2 * tipGapM, 1.0, 0.0, 20.0);
+        const CollapseResult braked =
+            flyCravat(2.2 * tipGapM, 1.0, 0.9, 20.0);
+        std::printf("Twenty seconds: hands up %.3f, deep brake %.3f\n",
+                    persists.leftCravat, braked.leftCravat);
+        Check(persists.leftCravat >= deep.leftCravat * 0.98,
+              "a cravat held by a loaded line does not fall out on its own - "
+              "seventeen more seconds of flying does not shift it");
+        Check(braked.leftCravat < persists.leftCravat * 0.75,
+              "and deep brake on that side walks it back off, which is the "
+              "clearance a pilot actually flies");
+
+        // The race itself, stated: reloading the line is what traps the fabric
+        // AND what helps the section reopen. That is why a cravat is rarer
+        // than a collapse, and why the catch is partial rather than total in a
+        // section that recovers quickly.
+        std::printf("  fold reach past the line at catch: %.3f m of a "
+                    "%.3f m gap\n",
+                    deep.sections[0].foldReachPastLineM, tipGapM);
     }
 
     // -- determinism -------------------------------------------------------

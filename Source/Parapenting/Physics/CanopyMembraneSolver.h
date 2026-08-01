@@ -42,11 +42,26 @@ namespace Parapenting::Physics
 // each constraint depends on the angle its segment makes to the weave.
 //
 // Scope, stated because the plan's Level 6 is larger than this: strips at
-// chosen chord stations rather than a full two-dimensional mesh; ribs as fixed
-// endpoints rather than as their own membranes; no self-collision, which the
-// plan puts at Level 8 with cravats. What it does give is a section whose
-// bulge, slack and stretch are solved from pressure, seam length and applied
-// load rather than drawn - and which goes slack when the pressure leaves.
+// chosen chord stations rather than a full two-dimensional mesh; ribs as their
+// own endpoints rather than their own membranes. What it does give is a section
+// whose bulge, slack, fold depth and stretch are solved from pressure, seam
+// length, rib spacing and applied load rather than drawn - and which goes slack
+// when the pressure leaves.
+//
+// SELF-COLLISION IS NOT HERE, AND CANNOT BE USEFULLY. The plan puts fabric
+// self-collision in this object at Level 8, for cravats. It was built, and then
+// removed, because a one-dimensional strip cannot self-intersect: a chain under
+// a transverse load with both ends pinned settles as a simple curve. That was
+// measured rather than argued - the strip was collapsed with the ribs drawn
+// from full spacing down to a tenth of it, and the segment-crossing count was
+// zero at every step of the way, with the fold merely deepening from 31 mm to
+// 121 mm. Collision code on this object can never fire.
+//
+// Crumpling needs loads that reverse along the skin, which needs the
+// two-dimensional mesh this level does not have. A cravat, meanwhile, is
+// fabric caught on a LINE rather than on itself, and Level 8 builds it from
+// this strip's fold depth against the suspension geometry - which is real
+// contact between two things that both exist.
 
 struct FabricMaterial
 {
@@ -98,6 +113,7 @@ struct MembraneSpec
     // how fast the skin settles, not where it settles, and the shape is
     // checked against the analytic arc rather than against itself.
     double solverMassScale = 1.0e4;
+
 };
 
 struct MembraneNode
@@ -130,6 +146,24 @@ struct MembraneLoad
     double brakeLineForceN = 0.0;
     // Gravity, mostly negligible against the pressure but present.
     double gravityMps2 = 9.80665;
+    // How far apart the two ribs holding this strip are, as a fraction of the
+    // design spacing. One is the flying wing.
+    //
+    // This is what makes a fold possible at all, and it took a failing control
+    // to notice. The strip is pinned to its ribs, and a panel cut 2.6% longer
+    // than the gap it spans is very nearly taut - and a taut chain between two
+    // fixed points cannot cross itself, however hard it is pushed. So with the
+    // ribs held at design spacing, self-collision is inert: there is no fold
+    // for it to resolve.
+    //
+    // A collapsing section is not a section with the same ribs and less
+    // pressure. The cell loses its air, the shell loses the pressure that was
+    // holding it open, and the ribs are drawn together by the fabric between
+    // them - which is exactly when the skin has length to spare and crumples
+    // rather than bulging. That convergence is an input here rather than
+    // something this strip could solve, because the ribs belong to the cell
+    // and this is one station across it.
+    double ribSeparationFraction = 1.0;
 };
 
 struct MembraneResult
@@ -153,6 +187,11 @@ struct MembraneResult
     double kineticEnergyJ = 0.0;
     // Largest constraint violation left after the fixed iteration budget.
     double constraintResidualM = 0.0;
+    // How deep the deepest fold is, metres below the rib-to-rib line. A bulge
+    // is positive sagitta; a fold is this. It is what a collapsed section
+    // hangs into, and Level 8 reads it to decide whether a folded tip reaches
+    // the lines.
+    double foldDepthM = 0.0;
 };
 
 class CanopyMembraneSolver

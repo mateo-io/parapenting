@@ -147,6 +147,62 @@ CollapseResult CanopyCollapseSolver::Step(
         }
         section.collapse = std::clamp(section.collapse, 0.0, 1.0);
         result.sections[i].collapse = section.collapse;
+
+        // -- cravats -------------------------------------------------------
+        // Fabric caught on a line. Geometry first: how far the fold reaches
+        // past the line running under this station. Level 6 solves the depth,
+        // Level 2 owns the gap, and neither of them is about cravats - which
+        // is what makes this a contact test rather than a risk model.
+        //
+        // The fold only reaches where the section has actually folded, so the
+        // depth is scaled by how collapsed it is. A flying section has a
+        // bulge, not a fold, and reaches nothing.
+        const double reach =
+            input[i].foldDepthM * section.collapse - input[i].lineGapM;
+        result.sections[i].foldReachPastLineM = reach;
+
+        const bool trapped =
+            input[i].loadFraction >= SpecValue.cravatTrappingLoadFraction;
+
+        // Catching. A cravat LATCHES: once the fabric is round the line and
+        // the line is loaded, it stays there even as the rest of the section
+        // reopens and the fold shallows. Getting this wrong makes the cravat a
+        // function of the current fold rather than a state, and it then melts
+        // away as the wing recovers - which is precisely the behaviour that
+        // makes a cravat dangerous by NOT happening.
+        if (reach > 0.0 && trapped)
+        {
+            const double depth = std::clamp(reach / std::max(0.02,
+                input[i].lineGapM), 0.0, 1.0);
+            if (depth > section.cravat)
+            {
+                const double rate = std::clamp(
+                    SpecValue.cravatCatchRatePerSecond * dt, 0.0, 1.0);
+                section.cravat += (depth - section.cravat) * rate;
+            }
+        }
+
+        // Clearing, which is a separate question from catching and can happen
+        // in the same step. A cravat does not fall out on its own while the
+        // line through it is loaded - the harder the wing flies, the tighter
+        // that line pulls. What clears it is deep brake on that side walking
+        // the fabric back off, or the line going slack enough to let go.
+        if (section.cravat > 0.0)
+        {
+            const double brakeHelp =
+                input[i].brake >= SpecValue.cravatClearingBrake
+                    ? (input[i].brake - SpecValue.cravatClearingBrake)
+                        / std::max(1.0e-6, 1.0 - SpecValue.cravatClearingBrake)
+                    : 0.0;
+            const double slackHelp = trapped ? 0.0 : 1.0;
+            const double rate = std::clamp(
+                SpecValue.cravatClearRatePerSecond * dt
+                    * (slackHelp + brakeHelp),
+                0.0, 1.0);
+            section.cravat -= section.cravat * rate;
+        }
+        section.cravat = std::clamp(section.cravat, 0.0, 1.0);
+        result.sections[i].cravat = section.cravat;
     }
 
     // Span-weighted halves, and the worst single section.
@@ -156,16 +212,20 @@ CollapseResult CanopyCollapseSolver::Step(
     {
         const double collapse = state.sections[i].collapse;
         const double span = SpanFractions[i];
+        const double cravat = state.sections[i].cravat;
         if (span < 0.0)
         {
             result.leftCollapse += collapse;
+            result.leftCravat += cravat;
             leftWeight += 1.0;
         }
         else
         {
             result.rightCollapse += collapse;
+            result.rightCravat += cravat;
             rightWeight += 1.0;
         }
+        if (cravat > 0.5) ++result.cravattedSectionCount;
         if (collapse > result.worstCollapse)
         {
             result.worstCollapse = collapse;
@@ -173,8 +233,16 @@ CollapseResult CanopyCollapseSolver::Step(
         }
         if (collapse > 0.5) ++result.collapsedSectionCount;
     }
-    if (leftWeight > 0.0) result.leftCollapse /= leftWeight;
-    if (rightWeight > 0.0) result.rightCollapse /= rightWeight;
+    if (leftWeight > 0.0)
+    {
+        result.leftCollapse /= leftWeight;
+        result.leftCravat /= leftWeight;
+    }
+    if (rightWeight > 0.0)
+    {
+        result.rightCollapse /= rightWeight;
+        result.rightCravat /= rightWeight;
+    }
     result.symmetricCollapse =
         std::min(result.leftCollapse, result.rightCollapse);
     return result;

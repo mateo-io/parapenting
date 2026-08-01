@@ -88,6 +88,20 @@ MembraneResult CanopyMembraneSolver::Step(
     const auto nodes = NodeList.size();
     const double segment = CellWidth / static_cast<double>(nodes - 1);
 
+    // The ribs, wherever the cell is holding them this step. Moving them is
+    // what gives the skin length to spare; the cut length of the fabric never
+    // changes, which is why the strip crumples rather than shrinking.
+    {
+        const double separation =
+            CellWidth * std::clamp(load.ribSeparationFraction, 0.05, 1.5);
+        const double slackOffset = 0.5 * (CellWidth - separation);
+        for (MembraneNode& node : NodeList)
+        {
+            if (node.inverseMassKgInv > 0.0) continue;
+            node.positionM.y = slackOffset + node.acrossCell * separation;
+        }
+    }
+
     for (int substep = 0; substep < substeps; ++substep)
     {
         for (Constraint& constraint : Constraints) constraint.multiplier = 0.0;
@@ -180,6 +194,7 @@ MembraneResult CanopyMembraneSolver::Step(
                 a.positionM += correction * -a.inverseMassKgInv;
                 b.positionM += correction * b.inverseMassKgInv;
             }
+
         }
 
         for (std::size_t index = 0; index < nodes; ++index)
@@ -194,6 +209,7 @@ MembraneResult CanopyMembraneSolver::Step(
     result.positionM.resize(nodes);
     double energy = 0.0;
     double peak = 0.0;
+    double deepest = 0.0;
     for (std::size_t index = 0; index < nodes; ++index)
     {
         result.positionM[index] = NodeList[index].positionM;
@@ -202,10 +218,12 @@ MembraneResult CanopyMembraneSolver::Step(
         energy += 0.5 * mass * Dot(NodeList[index].velocityMps,
                                    NodeList[index].velocityMps);
         peak = std::max(peak, std::fabs(NodeList[index].positionM.z));
+        deepest = std::min(deepest, NodeList[index].positionM.z);
     }
     result.kineticEnergyJ = energy;
     result.sagittaM = peak;
     result.sagittaFraction = peak / CellWidth;
+    result.foldDepthM = -deepest;
 
     double slack = 0.0;
     for (const Constraint& constraint : Constraints)

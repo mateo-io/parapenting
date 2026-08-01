@@ -107,6 +107,31 @@ struct CollapseSpec
     // section keeps the nose from catching air, which is why the standard
     // recovery is to release the brake on that side first and only then pump.
     double brakeHoldsCollapseScale = 0.6;
+
+    // -- cravats ----------------------------------------------------------
+    // A cravat is fabric caught on a LINE, not on itself. Three things have to
+    // be true at once, and all three are solved elsewhere: the section is
+    // folded (Level 8's own collapse), the fold is deep enough to reach past
+    // the line running under it (Level 6's fold depth against Level 2's
+    // geometry), and the line then comes back under tension and traps it
+    // (Level 2 again).
+    //
+    // The order matters and is the whole reason a cravat is rarer than a
+    // collapse: the fabric has to be somewhere it should not be at the moment
+    // the line reloads. A fold that reaches while everything stays slack drops
+    // straight back out.
+    double cravatCatchRatePerSecond = 6.0;
+    // Tension above which a reloading line is holding the fold rather than
+    // hanging beside it, as a fraction of the section's normal load.
+    double cravatTrappingLoadFraction = 0.35;
+    // How fast a cravat clears when the line lets go of it. Slow, and slower
+    // than a collapse reopens - the fabric has to come back out the way it
+    // went in, past a line that is still there.
+    double cravatClearRatePerSecond = 0.35;
+    // Deep brake on that side pulls the trailing edge and can walk the fabric
+    // back off the line, which is the standard cravat clearance before a
+    // stabilo pull. Below this the brake does nothing for it.
+    double cravatClearingBrake = 0.55;
 };
 
 // What one section is doing, per span station. All of it is solved, none of it
@@ -128,6 +153,16 @@ struct SectionCollapseInput
     double skinSlackFraction = 0.0;
     // Brake applied to this section, 0 to 1.
     double brake = 0.0;
+
+    // -- cravat geometry, from Level 6 and Level 2 ------------------------
+    // How far the folded skin hangs below the canopy surface here, metres.
+    // Level 6's fold depth, which only exists once the ribs have converged.
+    double foldDepthM = 0.0;
+    // How far a fold has to reach to get past the nearest line running under
+    // this station, metres. Measured off the built suspension graph, so it is
+    // the real gap between this attachment and the line beside it rather than
+    // a number about tips in general.
+    double lineGapM = 1.0;
 };
 
 struct SectionCollapseState
@@ -136,6 +171,13 @@ struct SectionCollapseState
     // progressively and a half-collapsed wing flies differently from both a
     // clean one and a fully folded one.
     double collapse = 0.0;
+    // Fabric caught on a line, 0 to 1.
+    //
+    // This is the state that does not clear itself. A collapse reopens when
+    // the pressure comes back; a cravat is held by the line that is through
+    // it, and the harder the wing flies the tighter that line pulls. It is
+    // why a cravat turns into a spiral and a collapse usually does not.
+    double cravat = 0.0;
 };
 
 struct CollapseState
@@ -157,6 +199,11 @@ struct SectionCollapseDiagnostics
     // its own pressure balance - which is what makes a collapse spread across
     // a wing rather than appearing everywhere with the same cause.
     bool propagated = false;
+    double cravat = 0.0;
+    // How far the fold reaches past the line beside it, metres. Positive means
+    // the fabric is where a line can trap it. Reported because it is the
+    // geometric half of the cravat criterion and it is measurable.
+    double foldReachPastLineM = 0.0;
 };
 
 struct CollapseResult
@@ -172,6 +219,9 @@ struct CollapseResult
     double worstCollapse = 0.0;
     double worstSpanFraction = 0.0;
     int collapsedSectionCount = 0;
+    double leftCravat = 0.0;
+    double rightCravat = 0.0;
+    int cravattedSectionCount = 0;
 };
 
 class CanopyCollapseSolver

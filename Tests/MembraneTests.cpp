@@ -40,6 +40,37 @@ MembraneLoad Pressurised(double pascals)
     load.internalPressurePa = pascals;
     return load;
 }
+
+// Do two non-adjacent segments of the strip cross?
+//
+// The invariant a piece of fabric obeys, stated geometrically rather than as a
+// number to match: a sheet does not pass through itself. Counted with an
+// orientation test on the settled polyline, which needs no tolerance and no
+// reference value - either the segments cross or they do not.
+int SegmentCrossings(const std::vector<Vec3>& points)
+{
+    const auto cross2D = [](const Vec3& o, const Vec3& a, const Vec3& b)
+    {
+        return (a.y - o.y) * (b.z - o.z) - (a.z - o.z) * (b.y - o.y);
+    };
+    const auto straddles = [&](const Vec3& p1, const Vec3& p2,
+                               const Vec3& q1, const Vec3& q2)
+    {
+        const double d1 = cross2D(p1, p2, q1);
+        const double d2 = cross2D(p1, p2, q2);
+        const double d3 = cross2D(q1, q2, p1);
+        const double d4 = cross2D(q1, q2, p2);
+        return ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0));
+    };
+    int crossings = 0;
+    const std::size_t count = points.size();
+    for (std::size_t i = 0; i + 1 < count; ++i)
+        for (std::size_t j = i + 2; j + 1 < count; ++j)
+            if (straddles(points[i], points[i + 1],
+                          points[j], points[j + 1]))
+                ++crossings;
+    return crossings;
+}
 }
 
 // The analytic answer this is checked against.
@@ -305,6 +336,72 @@ int main()
         Check(identical,
               "the same input gives a bit-identical section - fixed substeps "
               "and a fixed iteration count, no adaptive anything");
+    }
+
+    // -- the ribs converge, and the skin folds rather than shrinking -------
+    {
+        // A collapsing section is not the same ribs with less pressure. The
+        // cell loses its air, the shell loses what held it open, and the ribs
+        // are drawn together - which is when the cut fabric has length to
+        // spare and hangs into a fold. That fold depth is what Level 8 reads
+        // to decide whether a folded tip reaches the lines.
+        const auto collapseAt = [](double ribSeparationFraction)
+        {
+            CanopyMembraneSolver section = MakeSection();
+            // Pressurised first, so this starts as a flying section rather
+            // than as a flat line folding from nothing.
+            section.Settle(Pressurised(65.0), 4.0);
+            MembraneLoad collapsing = Pressurised(0.0);
+            collapsing.externalDynamicPressurePa = 240.0;
+            collapsing.brakeLineForceN = 26.0;
+            collapsing.ribSeparationFraction = ribSeparationFraction;
+            return section.Settle(collapsing, 3.0);
+        };
+
+        std::printf("Rib convergence:\n");
+        double previousFold = 0.0;
+        bool deepens = true;
+        int worstCrossings = 0;
+        for (const double separation : {1.0, 0.8, 0.55, 0.35, 0.2, 0.1})
+        {
+            const MembraneResult folded = collapseAt(separation);
+            const int crossings = SegmentCrossings(folded.positionM);
+            worstCrossings = std::max(worstCrossings, crossings);
+            std::printf("  ribs at %.2f of spacing: fold %6.1f mm, "
+                        "crossings %d\n",
+                        separation, 1000.0 * folded.foldDepthM, crossings);
+            if (folded.foldDepthM < previousFold) deepens = false;
+            previousFold = folded.foldDepthM;
+        }
+        Check(deepens,
+              "drawing the ribs together deepens the fold - the skin has "
+              "nowhere to go but out of plane, because its cut length does "
+              "not change");
+
+        // The measurement that removed a feature. The plan puts fabric
+        // self-collision in this solver for cravats; it was built here and
+        // taken out again, because a one-dimensional strip cannot
+        // self-intersect. A chain under a transverse load with both ends
+        // pinned settles as a simple curve, and no amount of collapsing
+        // changes that - the fold merely deepens. Collision code on this
+        // object could never have fired, and this is the check that says so.
+        //
+        // Crumpling needs loads that reverse along the skin, which needs the
+        // two-dimensional mesh Level 6 does not have. A cravat is fabric
+        // caught on a LINE, which is contact between two things that both
+        // exist, and that is where Level 8 builds it.
+        Check(worstCrossings == 0,
+              "a spanwise strip never folds through itself at any rib "
+              "convergence, which is why self-collision here would be dead "
+              "code rather than physics");
+
+        // And a flying section is unaffected by any of this: rib separation
+        // of one is the wing, and the analytic-arc result above still stands.
+        const MembraneResult flying =
+            MakeSection().Settle(Pressurised(65.0), 8.0);
+        Check(flying.foldDepthM < 1.0e-9,
+              "a pressurised section has no fold at all - it bulges, which is "
+              "the sagitta the analytic arc is checked against");
     }
 
     if (Failures == 0) std::printf("All membrane checks passed.\n");

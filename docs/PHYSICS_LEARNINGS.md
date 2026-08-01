@@ -326,6 +326,58 @@ must be as suspicious of that value as of the new one.
 
 ---
 
+## 15. A coordinate is a claim about the world
+
+Three separate defects, one root: a position that meant something different to
+two parts of the program.
+
+- **The frame flip.** The terrain frame defined +Y as route-left while the
+  flight frame defined it as route-right, and nothing converted. The whole
+  surveyed landscape was mirrored about the route axis. It was invisible in
+  play because the mirroring was *uniform* — pull left, bank left, watch the
+  world turn left — and only the relationship to real geography was wrong,
+  which is precisely what ridge lift, rotor, wind bearings and circuits are
+  built on.
+- **The invented lane.** Two routes were translated as a group onto `y = -8500`
+  to keep them off the surveyed grid, preserving their intra-valley geometry
+  while placing them 20 km from the valley. The terrain there was an analytic
+  proxy that put a 950 m landing field at 4683 m.
+- **The Interlaken-relative weather.** Thermal triggers and every authored
+  weather volume were expressed relative to one launch, with a single lane
+  offset standing in for "somewhere else". Somewhere else was dead air.
+
+**Rule:** a coordinate system is not a convention to be recorded, it is a claim
+that has to be *checked against something outside the program*. The check that
+finally held this together tests both halves in one place: that left brake turns
+the wing toward -Y, **and** that the lake which is really west reads its real
+surface elevation on that side. Either half alone passes happily while the world
+is mirrored.
+
+**Corollary:** never special-case one route's or one site's coordinates. Project
+from the anchor. Every special case here was a 20 km error wearing a comment
+explaining why it was fine.
+
+---
+
+## 16. The datum is part of the measurement
+
+Local z in this project is metres relative to a landing field at 565 m — not
+MSL, not above ground. Two rotor samples at the same "altitude" of z = 260
+compared open valley air against a point thirty metres *inside a hillside*. The
+0.82-against-0.00 that produced was recorded as evidence that the airflow model
+was sided against the geography, cited in three documents, and carried for 25
+commits after the bug it described had been fixed.
+
+Sampled at a common height above ground, the field is symmetric and always was.
+
+**Rule:** before comparing two measurements, state what they are relative to. In
+terrain, "same altitude" is almost never the comparison you want; "same height
+above ground" usually is. And a measurement offered as evidence for a defect
+should be re-taken when the defect is closed — otherwise the number outlives the
+bug and keeps arguing for it.
+
+---
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

@@ -141,3 +141,14 @@ See [docs/V0_PLAN.md](docs/V0_PLAN.md) for scope and acceptance criteria and
 [docs/TERRAIN_AND_MAC.md](docs/TERRAIN_AND_MAC.md) for the geodata and Mac
 delivery pipeline. The long-term physics and Switzerland roadmap is in
 [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md).
+
+Working on the physics or the world? Start with these four:
+
+- [docs/PHYSICS_ENGINE.md](docs/PHYSICS_ENGINE.md) — what is built and what it
+  is checked against
+- [docs/PHYSICS_TODO.md](docs/PHYSICS_TODO.md) — every open item, what blocks
+  it, what done looks like
+- [docs/PHYSICS_LEARNINGS.md](docs/PHYSICS_LEARNINGS.md) — what it cost, as
+  rules rather than anecdotes
+- [docs/TERRAIN.md](docs/TERRAIN.md) — the coordinate frame, the surveyed
+  regions, and the traps that have cost real time

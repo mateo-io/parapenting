@@ -1,19 +1,27 @@
 # Regional terrain rendering
 
-The Interlaken play area uses one authoritative surveyed heightfield for
-atmosphere, landing logic and visible terrain. A sparse analytic Grindelwald
-lane extends the same physics coordinate frame to First, Grund and Bodmi while
-licensed regional elevation data is still pending. Rendering is divided into
-independently cullable tiles without changing physics coordinates.
+> **`docs/TERRAIN.md` is the authoritative description of the frame, the
+> surveyed regions and the traps.** This file covers rendering topology and
+> surface shading only.
+
+Two surveyed swissALTI3D regions — Interlaken and Grindelwald — share one
+physics coordinate frame and feed atmosphere, landing logic and visible terrain
+alike. The renderer draws **one region at a time**, rebuilding when a route
+change crosses between them, and divides it into independently cullable tiles
+without changing physics coordinates.
 
 ## Layout
 
-- rendered extent: `x -1800…6100 m`, `y -4500…10000 m`;
-- 8 × 16 render tiles;
-- 40 × 40 quads per tile;
-- approximately 24.7 × 22.7 m sample spacing;
-- 215,168 submitted vertices including seam duplication;
-- 409,600 triangles;
+Per region, from `LayoutFor(x, y)`, with tile counts chosen to keep vertex
+spacing near the 20 m source cells:
+
+| region | rendered extent | tiles | spacing |
+|---|---|---|---|
+| `interlaken` | x [-1800, 6100], y [-3500, 4500] | 8 × 8 | 19.8 × 20.0 m |
+| `grindelwald` | x [4500, 11500], y [-18500, -14000] | 7 × 5 | 20.0 × 18.0 m |
+
+- 50 × 50 quads per tile, 51 × 51 vertices;
+- at most 166,464 submitted vertices and 320,000 triangles for a region;
 - no procedural collision cooking.
 
 Shared tile-edge positions are evaluated from identical world coordinates, so
@@ -26,12 +34,11 @@ default pawn. The pawn's first route reset therefore uses the surveyed launch
 elevation; it cannot be embedded later by replacing an analytic fallback
 surface during `BeginPlay`.
 
-The surveyed Interlaken heightfield is authoritative only inside its imported
-coverage. The Grindelwald lane uses a common 565 m world datum and geographic
-horizontal offsets from First, preserving world axes and meteorological wind
-direction. Its terrain is deliberately a broad simulation proxy: route anchors
-match published elevations, but slopes and landforms must not be read as
-surveyed ground.
+Each surveyed heightfield is authoritative only inside its own bounds. Outside
+every region the analytic Interlaken proxy takes over; it is a shape, not a
+place, and nothing terrain-dependent should be validated on it. Grindelwald used
+to be exactly that — a hand-shaped analytic lane at an invented offset — and is
+now its own surveyed region at the sites' true projected positions.
 
 The topology contract lives in the engine-independent
 `TerrainRenderLayout.h`. Headless tests enforce geographic coverage, sub-25 m
@@ -50,9 +57,8 @@ Vertex shading combines surveyed elevation and normal with:
 - terrain exposure consistent with the authored alpine sun direction.
 
 Every tile uses its own render bounds, allowing Unreal frustum and occlusion
-culling to reject distant/off-screen portions of the expanded tiled region.
-The eastern edge fully contains Höhematte and its approach, while the northern
-sparse lane contains both Grindelwald routes. This is an intermediate scalable
-terrain path. Licensed Grindelwald elevation, orthophoto authoring, virtual
-textures and a true World Partition content build remain future production
-work.
+culling to reject distant/off-screen portions of the drawn region. Both landing
+fields and their approaches sit inside the Interlaken region; both Grindelwald
+routes sit inside the Grindelwald one. Region-at-a-time drawing is the
+intermediate scalable path — orthophoto authoring, virtual textures and a true
+World Partition content build remain future production work.

@@ -793,19 +793,22 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     const FColor RiserColors[4] = {
         FColor(235, 45, 38), FColor(245, 205, 35),
         FColor(55, 105, 225), FColor(40, 190, 90)};
-    const float RiserForeAftCm[4] = {2.0f, -4.0f, -10.0f, -14.0f};
     for (int32 Side = -1; Side <= 1; Side += 2)
     {
         const bool bLeft = Side < 0;
-        const float CarabinerY = static_cast<float>(bLeft
-            ? Telemetry.leftCarabinerLateralCm
-            : Telemetry.rightCarabinerLateralCm);
-        const FVector CarabinerLocal(
-            0.0f, CarabinerY,
-            static_cast<float>(Telemetry.carabinerVerticalCm));
+        const FVector CarabinerLocal = CarabinerLocalCm(bLeft);
         DrawDebugSphere(
             GetWorld(), ActorTransform.TransformPosition(CarabinerLocal),
             4.5f, 8, FColor(205, 205, 210), false, 0.0f, 0, 1.5f);
+        // The maillon and the harness webbing the carabiner hangs on, so the
+        // load path is visibly continuous from the pilot up rather than
+        // starting in mid air beside them.
+        const FVector HarnessTop = PilotRigToActor().TransformPosition(
+            FVector(-2.0f, bLeft ? -6.0f : 6.0f, 8.0f));
+        DrawDebugLine(
+            GetWorld(), ActorTransform.TransformPosition(HarnessTop),
+            ActorTransform.TransformPosition(CarabinerLocal),
+            FColor(60, 62, 68), false, 0.0f, 0, 3.0f);
         for (int32 Group = 0; Group < 4; ++Group)
         {
             const float TensionN = static_cast<float>(bLeft
@@ -814,14 +817,30 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             const float Load01 = FMath::Clamp(
                 FMath::Sqrt(FMath::Max(0.0f, TensionN) / 180.0f),
                 0.0f, 1.0f);
-            const FVector RiserTop(
-                RiserForeAftCm[Group], CarabinerY + Side * Group * 1.6f,
-                CarabinerLocal.Z + 38.0f + Group * 3.0f);
+            const FVector RiserTop = RiserTopLocalCm(Group, bLeft);
+            // Webbing, not thread: a riser is a flat band about 2 cm wide, so
+            // it is drawn as two rails with a maillon bar across the top. At
+            // one hairline per group the four groups read as a single smear of
+            // lines going the same way, which is the main reason the rig did
+            // not look like a rig.
+            const FVector Lateral = PilotRigToActor().TransformVector(
+                FVector(0.0f, 1.0f, 0.0f)) * 1.1f;
+            const float Width = FMath::Lerp(1.1f, 2.6f, Load01);
+            for (int32 Rail = -1; Rail <= 1; Rail += 2)
+            {
+                DrawDebugLine(
+                    GetWorld(),
+                    ActorTransform.TransformPosition(
+                        CarabinerLocal + Lateral * Rail),
+                    ActorTransform.TransformPosition(
+                        RiserTop + Lateral * Rail),
+                    RiserColors[Group], false, 0.0f, 0, Width);
+            }
             DrawDebugLine(
-                GetWorld(), ActorTransform.TransformPosition(CarabinerLocal),
-                ActorTransform.TransformPosition(RiserTop),
-                RiserColors[Group], false, 0.0f, 0,
-                FMath::Lerp(1.2f, 3.8f, Load01));
+                GetWorld(),
+                ActorTransform.TransformPosition(RiserTop - Lateral),
+                ActorTransform.TransformPosition(RiserTop + Lateral),
+                RiserColors[Group], false, 0.0f, 0, Width);
         }
     }
     for (const auto& Attachment : SuspensionGeometry.attachments)
@@ -873,23 +892,27 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         const float Flutter = (1.0f - Pressure)
             * 24.0f * FMath::Sin(static_cast<float>(
                 SimulationTimeSeconds * 12.0 + Span01 * 9.0));
-        float RiserForeAft = 2.0f;
+        // Which riser this group hangs from. RiserGroup indexes the same
+        // A/A'/B/C ordering the riser draw uses, so a main line starts exactly
+        // where its riser ends; TensionGroup indexes the telemetry, which
+        // reports A/B/C plus brakes and has no separate A' entry.
+        int32 RiserGroup = 0;
         int32 TensionGroup = 0;
         FColor GroupColor(235, 45, 38);
         if (Attachment.group == Parapenting::Physics::SuspensionGroup::BabyA)
         {
-            RiserForeAft = 0.0f;
+            RiserGroup = 1;
             GroupColor = FColor(245, 80, 45);
         }
         else if (Attachment.group == Parapenting::Physics::SuspensionGroup::B)
         {
-            RiserForeAft = -4.0f;
+            RiserGroup = 2;
             TensionGroup = 1;
             GroupColor = FColor(245, 205, 35);
         }
         else if (Attachment.group == Parapenting::Physics::SuspensionGroup::C)
         {
-            RiserForeAft = -10.0f;
+            RiserGroup = 3;
             TensionGroup = 2;
             GroupColor = FColor(55, 105, 225);
         }
@@ -902,13 +925,11 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         const float LineLoad01 = FMath::Clamp(
             FMath::Sqrt(FMath::Max(0.0f, LineTensionN) / 180.0f),
             0.0f, 1.0f);
-        const float CarabinerY = static_cast<float>(bLeft
-            ? Telemetry.leftCarabinerLateralCm
-            : Telemetry.rightCarabinerLateralCm);
-        const FVector PilotLocal(
-            RiserForeAft,
-            CarabinerY,
-            static_cast<float>(Telemetry.carabinerVerticalCm));
+        // A main line starts at the top of its riser, not at the carabiner.
+        // Starting them all at the carabiner drew the risers as four stubs
+        // with the lines running past them from a common point below - which
+        // is why the attachments looked wrong and the lines looked parallel.
+        const FVector PilotLocal = RiserTopLocalCm(RiserGroup, bLeft);
         const float LoadedChord =
             static_cast<float>(AttachStation.chordM) * MetresToCm
             * static_cast<float>(SuspensionLoadPose.chordScale);
@@ -978,14 +999,10 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         const float BrakeLoad01 = FMath::Clamp(
             FMath::Sqrt(FMath::Max(0.0f, BrakeTensionN) / 55.0f),
             0.0f, 1.0f);
-        const float CarabinerY = static_cast<float>(bLeft
-            ? Telemetry.leftCarabinerLateralCm
-            : Telemetry.rightCarabinerLateralCm);
-        const FVector HandLocal(
-            -4.0f - Brake * 28.0f,
-            CarabinerY + Side * 13.0f,
-            static_cast<float>(Telemetry.carabinerVerticalCm)
-                + 8.0f - Brake * 34.0f);
+        // The fist the forearm is drawn to. The brake line and the hand
+        // holding it were computed independently before, so pulling a brake
+        // moved the arm down and left the line ending beside it.
+        const FVector HandLocal = BrakeHandLocalCm(bLeft);
         for (int32 Branch = 0; Branch < 4; ++Branch)
         {
             const float Span01 = Side * (0.24f + Branch * 0.20f);
@@ -1185,6 +1202,61 @@ void AParagliderPawn::PosePilotSegment(
         RadiusScale, RadiusScale, LengthCm / 100.0f));
 }
 
+FTransform AParagliderPawn::PilotRigToActor() const
+{
+    return PilotRig ? PilotRig->GetRelativeTransform() : FTransform::Identity;
+}
+
+FVector AParagliderPawn::CarabinerLocalCm(bool bLeft) const
+{
+    // Rig space: the carabiners are hardware on the harness, one to each side,
+    // half the harness's own carabiner separation apart. That separation is the
+    // lever the payload's weight acts on in Level 3, so the drawn rig and the
+    // solved statics describe the same hardware rather than two similar ones.
+    //
+    // The 34 cm height is the physics model's own carabiner height. Its
+    // telemetry also carried a `22 sin(roll)` lateral shift and a
+    // `10 (1 - cos(roll))` drop, which is the harness rolling - and PilotRig is
+    // already rotated by that same roll. Two descriptions of one motion, which
+    // is why the pilot and the lines disagreed on screen. The rig supplies it
+    // once now, and the telemetry fields remain for CSV and analysis.
+    constexpr float MetresToCm = static_cast<float>(
+        Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+    const float HalfSeparationCm = 0.5f * MetresToCm * static_cast<float>(
+        Parapenting::Physics::HarnessGeometryFor(Equipment)
+            .carabinerSeparationM);
+    const FVector InRig(
+        -2.0f, bLeft ? -HalfSeparationCm : HalfSeparationCm, 34.0f);
+    return PilotRigToActor().TransformPosition(InRig);
+}
+
+FVector AParagliderPawn::RiserTopLocalCm(int32 Group, bool bLeft) const
+{
+    // A, A', B, C front to back. Real risers are about 45 cm of webbing with
+    // the groups separated by a few centimetres fore and aft; that separation
+    // is what makes the mains fan instead of running as one parallel sheet.
+    static constexpr float ForeAftCm[4] = {6.0f, 1.0f, -5.0f, -11.0f};
+    static constexpr float RiserLengthCm = 45.0f;
+    const int32 Index = FMath::Clamp(Group, 0, 3);
+    const FVector Carabiner = CarabinerLocalCm(bLeft);
+    const FVector Up = PilotRigToActor().TransformVector(
+        FVector(0.0f, 0.0f, 1.0f));
+    const FVector Fore = PilotRigToActor().TransformVector(
+        FVector(1.0f, 0.0f, 0.0f));
+    return Carabiner + Up * RiserLengthCm + Fore * ForeAftCm[Index];
+}
+
+FVector AParagliderPawn::BrakeHandLocalCm(bool bLeft) const
+{
+    // The hand the arm is actually drawn to. This used to be a point built
+    // from the carabiner and the brake input, so the brake lines converged
+    // somewhere near the pilot rather than into their fists.
+    const Parapenting::Physics::Vec3& Hand = bLeft
+        ? LastPilotPose.leftHandCm : LastPilotPose.rightHandCm;
+    return PilotRigToActor().TransformPosition(
+        FVector(Hand.x, Hand.y, Hand.z));
+}
+
 void AParagliderPawn::UpdatePilotVisual()
 {
     const auto& T = Dynamics.LastTelemetry();
@@ -1200,6 +1272,9 @@ void AParagliderPawn::UpdatePilotVisual()
             T.leftCollapse, T.rightCollapse), T.frontalCollapse),
         T.recoverySurge
     });
+    // Cached for the suspension draw, which hangs the risers off this same
+    // body rather than off an independently reconstructed anchor.
+    LastPilotPose = Pose;
     const auto ToFVector = [](const Parapenting::Physics::Vec3& Value)
     {
         return FVector(Value.x, Value.y, Value.z);

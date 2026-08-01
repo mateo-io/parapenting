@@ -13,6 +13,7 @@
 #include "Physics/ChallengeEvaluator.h"
 #include "Physics/WeatherSnapshot.h"
 #include "Physics/EquipmentSetup.h"
+#include "Physics/PilotPose.h"
 #include "Physics/HapticFeedback.h"
 #include "Physics/PilotProgression.h"
 #include "Physics/AccessibilityProfile.h"
@@ -266,6 +267,26 @@ private:
         UStaticMeshComponent* segment,
         const FVector& start, const FVector& end, float radiusScale);
 
+    // The rig hangs off the pilot, not beside them.
+    //
+    // These three were independent before: the body was posed at
+    // PilotPose::rigOffsetCm, the carabiners were rebuilt in actor space from
+    // telemetry, and the brake "hands" were invented from the carabiner
+    // position rather than being the hands the arms are drawn to. So a weight
+    // shift moved the pilot while the lines stayed put, and the brake lines
+    // ended in mid air near the hands rather than at them.
+    //
+    // Everything now derives from PilotRig's own transform, which already
+    // carries the weight-shift offset and harness roll. Actor-space
+    // centimetres, which is what the draw calls want.
+    FTransform PilotRigToActor() const;
+    FVector CarabinerLocalCm(bool bLeft) const;
+    // Riser tops, where the four groups separate fore/aft. Group order is
+    // A, A', B, C from front to back; the mains for a group start here rather
+    // than at the carabiner, which is what makes them fan.
+    FVector RiserTopLocalCm(int32 Group, bool bLeft) const;
+    FVector BrakeHandLocalCm(bool bLeft) const;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> Root;
 
@@ -403,6 +424,10 @@ private:
         FVector OffsetFromRunM = FVector::ZeroVector;
     };
     SuspensionRenderShape LineShape[Parapenting::Physics::LineRowCount];
+    // The pose the pilot was last drawn in. Cached so the suspension draw can
+    // hang the risers off the same body the arms and torso were built from,
+    // rather than recomputing an anchor that then disagrees with it.
+    Parapenting::Physics::PilotPose LastPilotPose{};
     Parapenting::Physics::ParagliderSolverClock SolverClock{
         PhysicsStepSeconds};
     double SimulationTimeSeconds = 0.0;

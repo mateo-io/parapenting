@@ -130,6 +130,13 @@ public:
         CellPressureState& state, const CellPressureInput& input,
         double deltaSeconds) const;
 
+    // Seeds the state as an already-inflated wing: cells full, pressure not
+    // yet built. Starting a simulation mid-flight means starting with an
+    // inflated canopy - a state that begins flying at 10 m/s with packed
+    // cells is not a wing, and the aerodynamics will correctly report that it
+    // makes almost no lift.
+    void SeedInflated(CellPressureState& state) const;
+
     // Where the stagnation point sits for a given incidence, radians from the
     // chord line toward the lower surface.
     double StagnationAngleRad(

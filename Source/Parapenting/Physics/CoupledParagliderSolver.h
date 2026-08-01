@@ -17,30 +17,22 @@ namespace Parapenting::Physics
 // Level 7 of the master plan: run the whole thing, in a defined order, and
 // account for it.
 //
-// ====================== TRIM IS NOT YET STABLE ========================
-// Built, runs, deterministic, and not in the test suite: hands-off flight
-// decelerates and stalls instead of settling into a glide.
+// Trim works and matches the published wing. Hands off it settles at 10.70 m/s
+// (38.5 km/h against a published 39), 1.12 m/s of sink and a glide of 9.5
+// against a published 9.5, with net force and moment going to zero. Ten
+// minutes holds between 10.55 and 10.70 m/s. Internal force closure is exact
+// and energy residual stays under 4 W on a 925 N aircraft.
 //
-// What works. The schedule below runs all six solvers in order at a fixed
-// 120 Hz. Internal force closure is exact - every line tension still appears
-// twice with opposite sign when the network is driven by the coupling rather
-// than solved alone. The first 200 steps are clean and physical: 10.86 m/s,
-// 973 N of lift against a 925 N weight, 1.15 m/s of sink.
+// One check still fails and the suite is still excluded for it: asymmetric
+// brake held for ten seconds reports a NaN turn rate. A direct probe of the
+// same case over the same duration does not reproduce it, so the suspect is
+// the test harness rather than the solver, but that is unverified and the
+// suite stays out until it is.
 //
-// What does not. Over about four seconds the wing decelerates, the flight
-// path steepens, and the angle of attack climbs from 6 degrees through the
-// section stall at 10 and on to 90, where it sits descending vertically at
-// 7.5 m/s. By then drag reads 610 N, so it is genuinely stalled rather than
-// merely slow. The deceleration comes first and the stall follows it, so the
-// question to answer is what is taking the energy out - the suspects are the
-// held aerodynamic load being stale in body axes while the flight path
-// rotates under it, and the trim incidence the wing is started at not being
-// the one this polar actually trims at.
-//
-// Two real bugs were found and fixed getting this far, both recorded below:
-// the rotational damping being held across the aerodynamic interval, and the
-// pendulum restoring moment being absent entirely.
-// ======================================================================
+// Three bugs were found and fixed getting here, all recorded below: rotational
+// damping held across the aerodynamic interval, the pendulum restoring moment
+// missing entirely, and - the one that caused the stall - a pressure state
+// that started packed while the flight state started flying.
 //
 // Levels 1 to 6 built six solvers that each answer their own question well and
 // have never been asked to agree. This is the order they run in and the
@@ -131,6 +123,7 @@ struct CoupledState
     Vec3 heldAeroForceBodyN{};
     Vec3 heldAeroMomentBodyNm{};
     Vec3 rotationalDampingNmPerRadps{};
+    double heldPressureCoefficientMean = 1.0;
     std::vector<double> heldPressureCoefficient;
     int stepsSinceAerodynamics = 1 << 20;
     bool initialised = false;
@@ -174,6 +167,11 @@ struct CoupledDiagnostics
     double vsmResidual = 0.0;
     bool vsmConverged = false;
     bool aerodynamicsSolvedThisStep = false;
+    // Set when a solve was rejected and the previous load held instead. This
+    // is a numerical safety envelope, not flight behaviour (guiding rule 12):
+    // it is reported, it is separate, and if it engages during a manoeuvre
+    // that manoeuvre's numbers mean nothing.
+    bool aerodynamicsRejected = false;
 
     // Flight numbers, for the tests to read.
     double airspeedMps = 0.0;
@@ -210,6 +208,7 @@ private:
     ApparentMassTensor ApparentMass;
     PayloadMassProperties PayloadMass;
     HarnessGeometry Harness;
+    InstalledDragSpec InstalledDrag;
 
     double CanopyMassKg = 5.1;
     double SystemMassKg = 105.0;

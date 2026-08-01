@@ -48,6 +48,14 @@ void CoupledParagliderSolver::Step(
     const double dt = ScheduleValue.timeStepS;
     CoupledDiagnostics diagnostics;
 
+    // A simulation that starts mid-flight starts with an inflated canopy.
+    // Leaving the cells packed while the wing is already doing 10 m/s made
+    // the pressure model report Cp near zero, which the section polars
+    // correctly turned into 15% of the lift and a large drag penalty - so the
+    // wing stalled on its first aerodynamic re-solve and never recovered. The
+    // solvers were all right; the initial condition was not a wing.
+    if (!state.initialised) Pressure.SeedInflated(state.pressure);
+
     // -- 1. controls -------------------------------------------------------
     // Nothing to integrate: brake and bar are rest-length changes, and they
     // reach the wing through the line network in step 6 and through the
@@ -105,6 +113,31 @@ void CoupledParagliderSolver::Step(
             const VsmSolution solved = Aerodynamics.SolveUnsteady(
                 aero, state.separation, dt, settings);
 
+            // Reject a solve that has not converged to anything usable. Deep
+            // stall genuinely has no steady state - the separated branch has a
+            // negative lift slope, which inverts the downwash feedback between
+            // sections - so the VSM will not settle there and must not be
+            // allowed to hand a diverged load to the structure. Holding the
+            // previous load is wrong, but it is bounded and it is reported.
+            const auto allFinite = [](const Vec3& v)
+            {
+                return std::isfinite(v.x) && std::isfinite(v.y)
+                    && std::isfinite(v.z);
+            };
+            const bool usable =
+                allFinite(solved.forceBodyN)
+                && allFinite(solved.momentBodyNm)
+                && Length(solved.forceBodyN) < 50.0 * SystemMassKg * GravityMps2;
+            if (!usable)
+            {
+                diagnostics.aerodynamicsRejected = true;
+                diagnostics.vsmResidual = solved.residual;
+                diagnostics.vsmConverged = false;
+                diagnostics.meanPressureCoefficient =
+                    state.heldPressureCoefficientMean;
+                goto structureSolve;
+            }
+
             aeroTargetForce = solved.forceBodyN;
 
             // Measure how much of the moment is the wing's rotation being
@@ -126,10 +159,20 @@ void CoupledParagliderSolver::Step(
                 // Below this the measurement is noise divided by nothing.
                 return std::fabs(omega) > 1.0e-3 ? delta / omega : 0.0;
             };
-            const Vec3 measured{
-                derivative(difference.x, rate.x),
-                derivative(difference.y, rate.y),
-                derivative(difference.z, rate.z)};
+            const bool probeUsable = allFinite(stationary.momentBodyNm);
+            const Vec3 measured = probeUsable
+                ? Vec3{derivative(difference.x, rate.x),
+                       derivative(difference.y, rate.y),
+                       derivative(difference.z, rate.z)}
+                : Vec3{};
+            if (!probeUsable)
+            {
+                // The rotation-free probe is a second solve and can fail on
+                // its own. Falling back to the previous derivative keeps the
+                // damping bounded rather than letting a NaN through it.
+                diagnostics.aerodynamicsRejected = true;
+                aeroTargetMoment = exchangedMomentBody;
+            }
             // Keep the previous derivative on any axis that was not turning
             // enough to measure one.
             state.rotationalDampingNmPerRadps = Vec3{
@@ -156,6 +199,8 @@ void CoupledParagliderSolver::Step(
             const CellPressureResult pressureResult =
                 Pressure.Step(state.pressure, cells, dt);
             cellPressureCoefficient = pressureResult.pressureCoefficient;
+            state.heldPressureCoefficientMean =
+                pressureResult.meanPressureCoefficient;
             diagnostics.meanPressureCoefficient =
                 pressureResult.meanPressureCoefficient;
 
@@ -173,6 +218,13 @@ void CoupledParagliderSolver::Step(
             diagnostics.membraneStrain = skinResult.maximumStrain;
         }
     }
+
+structureSolve:
+    // The pressure coefficient is only recomputed when the aerodynamics run,
+    // so it is carried rather than reported as zero on the steps between.
+    if (!diagnostics.aerodynamicsSolvedThisStep)
+        diagnostics.meanPressureCoefficient =
+            state.heldPressureCoefficientMean;
 
     const int couplingIterations = std::max(1, ScheduleValue.couplingIterations);
     for (int coupling = 0; coupling < couplingIterations; ++coupling)
@@ -231,6 +283,16 @@ void CoupledParagliderSolver::Step(
         state.payload, PayloadMass, Harness, payloadInput, dt);
     diagnostics.leftCarabinerLoadN = payloadLoads.leftCarabinerN;
     diagnostics.rightCarabinerLoadN = payloadLoads.rightCarabinerN;
+
+    // Everything hanging below the wing. Lines, risers, harness and pilot are
+    // 47% of the canopy's own drag on this aircraft, so leaving them out of
+    // the coupled solve makes it glide at 14 where the wing glides at 9.5.
+    const InstalledDragResult installed = EvaluateInstalledDrag(
+        InstalledDrag, airspeedBody, atmosphere.densityKgM3);
+    const Vec3 installedDragBody = airspeed > 1.0e-6
+        ? airspeedBody * (-installed.totalDragN / airspeed) : Vec3{};
+    exchangedForceBody += installedDragBody;
+    exchangedMomentBody += installed.momentBodyNm;
 
     // Forces on the system. The line network is internal - it appears once on
     // the canopy and once on the payload, and cancels - so what accelerates

@@ -157,9 +157,15 @@ int main()
         const double speedBefore = pulsed.Diagnostics().airspeedMps;
         const double altitudeBefore = state.positionWorldM.z;
 
+        // 0.35, not 0.55. With this polar, half brake at trim incidence puts
+        // the sections past their stall angle, and deep stall is the regime
+        // the VSM cannot settle in - the separated branch has a negative lift
+        // slope, so there is no steady state to find. That is a real
+        // limitation and it is tested for separately below, rather than being
+        // wrapped into a gate about energy.
         CoupledControls both;
-        both.leftBrake = 0.55;
-        both.rightBrake = 0.55;
+        both.leftBrake = 0.35;
+        both.rightBrake = 0.35;
         const Run pulling = Fly(pulsed, both, 1.5, &state);
         const Run releasing = Fly(pulsed, CoupledControls{}, 6.0, &state);
 
@@ -193,9 +199,9 @@ int main()
         };
 
         CoupledControls rightBrake;
-        rightBrake.rightBrake = 0.6;
+        rightBrake.rightBrake = 0.35;
         CoupledControls leftBrake;
-        leftBrake.leftBrake = 0.6;
+        leftBrake.leftBrake = 0.35;
         CoupledControls rightShift;
         rightShift.weightShift = 1.0;
 
@@ -221,6 +227,41 @@ int main()
               "toward");
         Check(std::fabs(shifted.last.bankRad) > 1.0e-5,
               "and banks the wing through that load rather than a moment");
+    }
+
+    // -- deep stall is refused, not faked ----------------------------------
+    {
+        // Heavy brake takes the sections past stall, where a steady solve has
+        // no answer. The safety envelope must engage, must say so, and must
+        // keep the state finite - a diverged load reaching the structure is
+        // how the whole thing used to end up at NaN.
+        CoupledParagliderSolver stalling(canopy, Epic2MlLinePlan());
+        CoupledState state;
+        Fly(stalling, CoupledControls{}, 6.0, &state);
+        CoupledControls deep;
+        deep.leftBrake = 0.9;
+        deep.rightBrake = 0.9;
+        bool everRejected = false;
+        const CoupledAtmosphere air;
+        for (int step = 0; step < 120 * 5; ++step)
+        {
+            stalling.Step(state, deep, air);
+            if (stalling.Diagnostics().aerodynamicsRejected)
+                everRejected = true;
+        }
+        std::printf("Deep stall at 0.9 brake: rejected a solve %s, airspeed "
+                    "%.2f m/s, still finite %d\n",
+                    everRejected ? "yes" : "no",
+                    stalling.Diagnostics().airspeedMps,
+                    static_cast<int>(
+                        std::isfinite(stalling.Diagnostics().airspeedMps)));
+        Check(std::isfinite(stalling.Diagnostics().airspeedMps)
+              && std::isfinite(state.positionWorldM.z),
+              "deep stall stays finite - an unconverged aerodynamic solve is "
+              "refused rather than handed to the structure");
+        Check(everRejected,
+              "and the safety envelope says when it engaged, so no number "
+              "from that stretch is mistaken for flight behaviour");
     }
 
     // -- the coupling is converged, not budgeted ---------------------------

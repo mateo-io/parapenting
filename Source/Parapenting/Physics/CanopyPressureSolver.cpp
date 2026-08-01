@@ -28,6 +28,14 @@ CanopyPressureSolver::CanopyPressureSolver(
 {
 }
 
+void CanopyPressureSolver::SeedInflated(CellPressureState& state) const
+{
+    const auto cells = static_cast<std::size_t>(Cells);
+    state.gaugePressurePa.assign(cells, 0.0);
+    state.filledFraction.assign(cells, 1.0);
+    state.initialised = true;
+}
+
 double CanopyPressureSolver::StagnationAngleRad(
     double angleOfAttackRad, double zeroLiftAngleRad) const
 {

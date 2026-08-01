@@ -281,24 +281,18 @@ by a factor of fourteen.
 
 Ordered by how much they matter.
 
-1. **The terrain frame disagrees with the flight frame.** `RouteFrame`, the
-   heightfield and the content placement define +Y as route-left; the flight
-   frame has +Y as right. Nothing converts. Measured consequence: foehn rotor is
-   0.82 route-left and 0.15 route-right, so lee rotor lands on the wrong side of
-   the ridge relative to the surveyed geography. This blocks the Level 0 exit
-   gate and is the oldest open defect in the project.
-2. **Both Grindelwald routes are off the map** — outside the surveyed
+1. **Both Grindelwald routes are off the map** — outside the surveyed
    heightfield *and* the rendered extent. The analytic fallback puts the Grund
    landing field at 4683 m against a published 950 m, in air with no thermal
    field. They are selectable content.
-3. **Deep stall does not converge** in the VSM solved cold, and will not: the
+2. **Deep stall does not converge** in the VSM solved cold, and will not: the
    separated branch has a negative lift slope, which inverts the downwash
    feedback between sections, and a wing in deep stall has no stable steady
    state. Level 11's unsteady wake is the honest treatment. Locked as a
    known-failure check. Inside the coupled solve, where the separation state is
    carried between steps, the wing does walk into stall — see Level 7.
-4. **Section polars are analytic.** No XFOIL runs, no measured data. Every
+3. **Section polars are analytic.** No XFOIL runs, no measured data. Every
    flight number above rests on theory.
-5. **The apparent-mass rotational terms are disputed** (above).
-6. **None of the geometry-driven stack flies the wing.** The legacy polar still
+4. **The apparent-mass rotational terms are disputed** (above).
+5. **None of the geometry-driven stack flies the wing.** The legacy polar still
    does.

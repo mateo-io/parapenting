@@ -101,29 +101,34 @@ constexpr bool IsRight(double spanFraction) { return spanFraction > 0.0; }
 }
 
 // ---------------------------------------------------------------------------
-// UNRESOLVED: the terrain frame disagrees with the flight frame
+// RESOLVED: the terrain frame agrees with the flight frame
 // ---------------------------------------------------------------------------
-// RouteFrame, the heightfield generator, RouteCatalogue and the content
-// placement in ParapentingGameMode all define +Y as route-LEFT. The flight
-// frame above has +Y as right. Nothing converts between them, so the surveyed
-// landscape is mirrored about the route axis relative to the flight.
+// This block recorded the project's oldest defect: RouteFrame, the heightfield
+// generator, RouteCatalogue and the content placement in ParapentingGameMode
+// all defined +Y as route-LEFT while the flight frame has +Y as right, with
+// nothing converting, so the surveyed landscape was mirrored about the route
+// axis relative to the flight.
 //
-// Verified rather than inferred: Lake Thun sits at 557.7 m in the heightfield
-// at local y = -2500, and the lake mesh is placed at y = -1450 with the
-// comment "route-right/west of the southbound Amisbuehl line". Under the
-// terrain's own convention that is correct - the real lake is west, which is
-// route-right of a southbound track. But the renderer treats -Y as the
-// pilot's left, so Lake Thun appears on the wrong side, and pulling the left
-// brake tracks route-right across the ground.
+// Fixed by flipping the terrain side to match the flight frame - the flight
+// frame is the one Unreal's handedness and the whole dynamics stack depend on,
+// so it was cheaper and safer to move the terrain to it. The heightfield was
+// regenerated in the same change rather than reinterpreted, so the data and
+// the transform have never disagreed.
 //
-// It is invisible in normal play because the mirroring is consistent: pull
-// left, bank left, see the world turn left. Only the relationship to real
-// geography is wrong - which is exactly what ridge lift, lee rotor, wind
-// bearings and landing circuits depend on.
+// Gated end to end by TerrainSurveyTests' handedness section, which asserts
+// both halves in one place and would fail if either drifted:
 //
-// This blocks the Level 0 exit gate ("left input, left attachment, left line,
-// left canopy half, and left world trajectory agree"). Resolve before any
-// solver level is built on top of it.
+//   * left weight shift and left brake each turn the wing toward -Y, and
+//     mirror their right-hand counterparts to 0.05 rad over 40 s;
+//   * Lake Thun - which is really west, and therefore route-right of the
+//     southbound Amisbuehl line - reads 557.7 m MSL at local y = +2500, on the
+//     wing's right, within 6 m of its true surface.
+//
+// Note when re-measuring anything sided: local z is metres relative to the
+// Lehn landing field at 565 m, so a "fixed altitude" sample can sit inside a
+// hillside on one flank and in open air on the other. An early measurement of
+// lee rotor asymmetry was exactly that mistake. Sample at a height above
+// ground when comparing two places.
 
 // ---------------------------------------------------------------------------
 // Chord

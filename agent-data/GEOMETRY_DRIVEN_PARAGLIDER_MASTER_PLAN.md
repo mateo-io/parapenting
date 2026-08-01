@@ -70,31 +70,24 @@ and no self-collision, which is what Level 8's cravats will need.
 
 ### Carried gaps, by priority
 
-1. **The terrain frame disagrees with the flight frame.** `RouteFrame` and the
-   heightfield define +Y as route-left; the flight frame has +Y as right, and
-   nothing converts. Measured: foehn rotor is 0.82 route-left against 0.15
-   route-right, so lee rotor sits on the wrong side of the ridge relative to the
-   surveyed geography. This blocks the **Level 0** exit gate and is the oldest
-   open defect in the project. Everything from Level 9 onward that depends on
-   real terrain is built on it.
-2. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
+1. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
    measurement. Every flight number in Level 4 rests on theory. The plan calls
    for this work to begin during Level 1; it has not begun.
-3. **Both Grindelwald routes are off the surveyed heightfield and off the
+2. **Both Grindelwald routes are off the surveyed heightfield and off the
    rendered extent.** Analytic terrain puts the Grund landing at 4683 m against
    a published 950 m, in air with no thermal field. Selectable content.
-4. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
+3. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
    endpoints, no self-collision. Level 8's cravats need the self-collision.
-5. **Deep stall does not converge** in the VSM solved cold, and will not: the
+4. **Deep stall does not converge** in the VSM solved cold, and will not: the
    separated branch has a negative lift slope, which inverts the downwash
    feedback between sections. Level 11's unsteady wake is the honest treatment.
    Locked as a known-failure check. Inside the coupled solve, with the
    separation state carried between steps, the wing does reach a fully
    separated 46-degree stall at 4.65 m/s of sink without the solve failing.
-6. **Apparent-mass rotational terms are disputed** — leading coefficients
+5. **Apparent-mass rotational terms are disputed** — leading coefficients
    unverified against the source paper, and 14× the existing estimate in roll.
    Registered `Disputed`; nothing uses their magnitude.
-7. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
+6. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
    is guiding rule 11 working as intended, but it means none of Levels 1-7 has
    been exercised by a pilot.
 
@@ -110,13 +103,25 @@ the force it accepted but not the moment. `docs/PHYSICS_ENGINE.md` has the
 diagnosis and `docs/PHYSICS_LEARNINGS.md` sections 7, 13 and 14 have what it
 teaches.
 
-1. **Resolve the terrain/flight frame disagreement.** It is a Level 0 gate, it
-   is cheap relative to what it blocks, and every later level that touches
-   terrain inherits it. It moves every route's geometry, so it wants a clear run
-   and a careful re-validation of the terrain suite.
-2. **Start the polar acquisition.** It is a data problem with a long lead time,
+**The terrain/flight frame disagreement is also closed**, and had been for 25
+commits before anyone noticed. `da9f998` flipped `RouteFrame`, the heightfield
+generator, `RouteCatalogue` and the content placement together and regenerated
+the surveyed grid in the same change, and TerrainSurveyTests' handedness section
+has gated both halves — turn direction and Lake Thun's real position — ever
+since. The gap list kept carrying it because the measurement offered as its
+evidence, foehn rotor at 0.82 route-left against 0.15 route-right, was never
+re-taken. It does not survive re-taking: local z is relative to the Lehn field,
+so the fixed altitude those two samples shared put one of them thirty metres
+inside a hillside. Sampled at a common height above ground, rotor sits on the
+flanks of both sides, because it is computed from the terrain gradient.
+
+1. **Start the polar acquisition.** It is a data problem with a long lead time,
    it needs XFOIL or equivalent tooling, it can run in parallel with anything,
    and it is what turns Level 4's numbers from plausible into defensible.
+2. **Put the Grindelwald routes on real ground**, or stop shipping them as
+   selectable content. Two of ten routes currently fly off the surveyed
+   heightfield and off the rendered extent, into analytic terrain 3.7 km above
+   the published landing elevation, in air with no thermal field.
 3. **Then Level 8**, which now has its converged Level 7 and needs
    self-collision in Level 6 before collapse can be emergent rather than
    scripted.

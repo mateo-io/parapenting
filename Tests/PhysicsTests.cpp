@@ -930,22 +930,37 @@ int main()
             {1280.0, -760.0, 1800.0}, 90.0);
         assert(corridorAir.thermalLiftMps > 0.1);
         regionalAir.SetPreset(WeatherPresetId::FoehnRotor);
-        const Atmosphere regionalRotor = regionalAir.Sample(
-            {760.0, -8260.0, 260.0}, 0.0);
-        const Atmosphere primaryRotor = regionalAir.Sample(
-            {760.0, 760.0, 260.0}, 0.0);
-        // These two asserted that foehn rotor is the same everywhere. It is
-        // not: measured now, rotor at route-left (+Y, y = +760) is 0.82 and at
-        // route-right (-Y, y = -760) is 0.15, and out at the regional routes
-        // it is 0.00. The field is strongly sided - and it is sided against
-        // the surveyed geography, because the terrain frame and the flight
-        // frame disagree about which way +Y points. That disagreement is the
-        // UNRESOLVED note in ParagliderCoordinateSystem.h, and lee rotor
-        // landing on the wrong side of the ridge is exactly the consequence it
-        // predicts. Recorded here as measured, not asserted as intended.
-        assert(regionalRotor.rotorStrength == 0.0);
-        assert(primaryRotor.rotorStrength > 0.1);
-        assert(regionalRotor.rotorStrength < primaryRotor.rotorStrength);
+        // Sampled at a fixed height ABOVE GROUND, which is the only way two
+        // places compare. Local z is metres relative to the Lehn field at
+        // 565 m, so the fixed z = 260 these once used is 825 m MSL - open air
+        // over the valley at y = -760, and thirty metres inside the hillside
+        // at y = +760, where the ground is 1146 m. That buried sample returned
+        // a rotor of 0.82 against the valley's 0.00, and the difference was
+        // read as the field being sided against the surveyed geography. It was
+        // not; it was one sample underground. The terrain frame has agreed
+        // with the flight frame since the route-right flip, and
+        // TerrainSurveyTests gates that directly.
+        const auto RotorAboveGround = [&](double x, double y)
+        {
+            return regionalAir
+                .Sample({x, y, TerrainModel::HeightM(x, y) + 260.0}, 0.0)
+                .rotorStrength;
+        };
+        // Rotor comes from the terrain gradient the wind crosses, so it lives
+        // on the flanks and not over flat ground - on both sides of the route,
+        // rather than on a hardcoded one. These stations are chosen on the
+        // ANALYTIC proxy, because this suite does not load the surveyed
+        // heightfield and the flanks sit in different places on the two
+        // surfaces. TerrainSurveyTests is where the surveyed terrain's sides
+        // are checked.
+        const double westFlank = RotorAboveGround(760.0, 1000.0);
+        const double eastFlank = RotorAboveGround(760.0, -750.0);
+        const double regionalRotorStrength = RotorAboveGround(760.0, -8260.0);
+        assert(westFlank > 0.0);
+        assert(eastFlank > 0.0);
+        // Off the surveyed corridor there is no rotor field at all, which is
+        // the same content gap the survey report flags as ANALYTIC.
+        assert(regionalRotorStrength == 0.0);
         std::size_t advancedLandings = 0;
         std::size_t routesOutsideRenderedTerrain = 0;
         for (std::size_t i = 0; i < RouteProfileCount(); ++i)

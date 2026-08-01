@@ -91,17 +91,44 @@ swissALTI3D puts at 2073 m. Every other site agrees within 12 m.
 - Recorded with a named tolerance in `terrain_survey_tests` rather than fitted
   away — the terrain is the measurement, the anchor is the estimate.
 
-## Unverified because the toolchain was unavailable
+## UNCOMPILED ENGINE CHANGES — read this first
 
-**9. The Unreal module has not been compiled since the terrain-region work.**
-`ParapentingTerrain`, `ParapentingGameMode` and `ParagliderPawn` all changed.
-External Unreal build/cook/package was quota-blocked until roughly 2026-08-05.
+**Deliberate decision: we have stopped attempting Unreal module builds for now.**
+External Unreal build/cook/package is quota-blocked until roughly 2026-08-05, and
+retrying it burns time without producing a result. Engine-side work continues and
+is committed unverified, on purpose. This is the debt that buys that.
 
-- The CMake suite builds each `Physics/*.cpp` as its own translation unit, which
-  is exactly the configuration where a unity-build name collision is invisible.
-  **Tests green does not mean the module compiles.** It has let the module stay
-  broken for hours before.
-- Run `Tools/check-build.sh` (no `--tests`) as soon as the quota lifts.
+**The CMake suites do not compile a single line of engine code.** They build each
+`Physics/*.cpp` as its own translation unit — exactly the configuration in which a
+unity-build name collision is invisible, which has let the module stay broken for
+hours while the tests stayed green. **All ten suites passing says nothing about
+any file below.**
+
+Unverified engine changes, newest first:
+
+| commit | files | what could break |
+|---|---|---|
+| `fa26882` | `ParagliderPawn.{h,cpp}` | New `PilotRigToActor` / `CarabinerLocalCm` / `RiserTopLocalCm` / `BrakeHandLocalCm` helpers; `LastPilotPose` member needing `PilotPose.h` in the header; `HarnessGeometryFor(Equipment)` call site |
+| `74d1b9b` | `ParapentingTerrain.{h,cpp}`, `ParapentingGameMode.cpp`, `ParagliderPawn.cpp` | `TerrainRenderLayout` went from static constants to an instance — every `Layout::` use had to become `Active.`; new `EngineUtils.h` and `ParapentingTerrain.h` includes in the pawn; `TActorIterator` in `ResetFlight` |
+
+**When the quota lifts, before anything else:**
+
+```sh
+Tools/check-build.sh          # module AND tests, in that order
+```
+
+Then a runtime smoke test, because these changes are visual and structural:
+
+1. fly the Amisbühl → Lehn route — risers should read as four separate webbing
+   bands per side, mains should fan from the riser tops, and the brake lines
+   should end in the pilot's fists through the whole brake range;
+2. weight-shift hard both ways — the pilot, the carabiners and the lines must
+   move as one object;
+3. `[` / `]` to a Grindelwald route — the terrain mesh must rebuild for the new
+   region rather than leaving the pilot over empty space, and back again.
+
+Nothing else in this file should start before that, because every later engine
+change stacks on top of an unverified one.
 
 ## Closed recently, for orientation
 

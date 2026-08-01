@@ -215,6 +215,13 @@ Its directory timestamp is 2026-07-30 15:28:31. It predates the latest wing,
 landing-rollout and collapse/recovery changes and must not be described as the
 latest build.
 
+**We have stopped attempting module builds for now**, deliberately. The quota
+below makes every attempt a waste of time, so engine-side work is being
+committed unverified and the debt is tracked in one place:
+[`docs/PHYSICS_TODO.md`](PHYSICS_TODO.md), under "UNCOMPILED ENGINE CHANGES",
+which lists each affected commit and what to smoke-test once a build is
+possible. Do not add engine changes without adding them to that table.
+
 External Unreal build/cook/package execution was quota-blocked until roughly
 2026-08-05 13:55. When available:
 

@@ -413,6 +413,50 @@ int main()
                     deep.sections[0].foldReachPastLineM, tipGapM);
     }
 
+    // -- mirror symmetry ---------------------------------------------------
+    //
+    // The claim the coupled suite cannot isolate, made here where it can be:
+    // given mirrored input, this solver is mirror-exact. In flight it is not,
+    // and the reason is upstream - a partly separated wing's circulation solve
+    // has no steady state, so what arrives here has already lost symmetry.
+    // Checking it there would be checking the VSM.
+    {
+        CollapseState state;
+        std::vector<SectionCollapseInput> sections(spans.size(), Trim());
+        for (std::size_t i = 0; i < spans.size(); ++i)
+        {
+            // Symmetric in span, and deliberately not uniform - a uniform
+            // input would be mirror-symmetric even if the solver indexed its
+            // sections backwards.
+            const double shape = 1.0 - 0.6 * std::fabs(spans[i]);
+            sections[i].internalPressureCoefficient = 0.2 * shape;
+            sections[i].angleOfAttackRad = -0.10 * shape;
+            sections[i].loadFraction = shape;
+        }
+        CollapseResult result;
+        for (int step = 0; step < 240; ++step)
+            result = solver.Step(state, sections, 1.0 / 120.0);
+
+        double worstMirrorError = 0.0;
+        const std::size_t count = state.sections.size();
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            worstMirrorError = std::max(worstMirrorError,
+                std::fabs(state.sections[i].collapse
+                          - state.sections[count - 1 - i].collapse));
+        }
+        std::printf("Mirrored input, worst section mirror error: %.2e; "
+                    "halves %.6f and %.6f\n",
+                    worstMirrorError, result.leftCollapse,
+                    result.rightCollapse);
+        Check(worstMirrorError < 1.0e-12,
+              "mirrored input gives a mirror-exact fold, section by section");
+        Check(std::fabs(result.leftCollapse - result.rightCollapse) < 1.0e-12,
+              "and the two half-wing sums agree - which they did not when a "
+              "section straddling the centreline was counted whole on "
+              "whichever side its midpoint rounded to");
+    }
+
     // -- determinism -------------------------------------------------------
     {
         const auto run = [&]()

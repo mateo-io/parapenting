@@ -178,6 +178,10 @@ struct FlightState
     double harnessPitchRad = 0.0;
     double harnessPitchRateRadps = 0.0;
     double previousLongitudinalAccelerationMps2 = 0.0;
+    // Where a bob hanging under this aircraft points, relative to the wing's
+    // own underside: the tilt of apparent gravity in body axes. This is the
+    // angle between wing and pilot, and it is what the canopy swings by.
+    double previousHangTiltRad = 0.0;
     double previousLoadFactor = 1.0;
     // Level 3 payload body: the pilot's own pendulum under the carabiners.
     PayloadState payload{};

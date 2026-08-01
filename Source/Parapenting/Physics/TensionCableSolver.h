@@ -45,6 +45,18 @@ struct SuspensionSolveInput
     // moment of its own.
     double weightShift = 0.0;
     double gravityMps2 = 9.80665;
+
+    // Hold the canopy at this attitude instead of letting the solve find it,
+    // and report the moment the lines exert there.
+    //
+    // Solved free, the canopy rotates until the lines exert no moment on it,
+    // which answers "what incidence does this wing hang at". Held, the same
+    // network answers a different and equally real question: "how hard do
+    // these lines resist being rotated away from that". That is the wing's
+    // pitch stiffness, and it is a property of where the A, B and C rows
+    // attach along the chord - not something to write down as a number.
+    bool holdCanopyAttitude = false;
+    Quaternion imposedCanopyAttitude{};
 };
 
 struct SuspensionSolverSettings
@@ -116,6 +128,12 @@ struct SuspensionSolution
     // Largest compressive force any slack cable transmitted. Must be exactly
     // zero; the exit gate is not "small".
     double slackCompressiveForceN = 0.0;
+
+    // The moment the lines exert on the canopy at the pose the solve ended
+    // at, world axes. Solved free this goes to zero by construction, which is
+    // what equilibrium means. Solved with the attitude held it is the real
+    // answer, and the derivative of it is the wing's pitch stiffness.
+    Vec3 canopyMomentBodyNm{};
 
     // Equilibrium residuals from the final iteration.
     double canopyForceResidualN = 0.0;

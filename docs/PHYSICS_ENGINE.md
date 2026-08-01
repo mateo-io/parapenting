@@ -252,6 +252,81 @@ turn rate reproduced at once in an unoptimized build, having hidden at -O2:
    a turn rate of 100 rad/s, and then infinity. The gate now bounds the moment
    at twice `q·S·b`, on the accepted solve and on both probes.
 
+## Pitch: the wing and the pilot are two bodies
+
+Added after Level 8, because Level 8's exit gate asks for a reopening surge and
+there was nothing in the model that could surge.
+
+The payload was pinned straight below the canopy in body axes. The wing could
+pitch, but it could never *swing*, and the angle between wing and pilot — which
+is most of what a pilot feels in pitch — did not exist as a quantity. Three
+things followed from that, none of them visible until the degree of freedom was
+added:
+
+- **No surge.** A brake release could not send the wing out ahead of the pilot,
+  because there was no "ahead".
+- **The accelerator did nothing.** Bar shortens the A and B risers by 120 and
+  80 mm, which rotates the wing nose-down on its lines. The line network
+  modelled that correctly and always had; the flight model never read the pitch
+  it produced, so pulling full bar changed the airspeed by *nothing at all*.
+- **The wing had a fictitious pitch spring.** A lumped "pendulum moment"
+  restored the canopy toward level. A mass hanging from a single point has no
+  pitch stiffness whatsoever — it is free to rotate about the attachment.
+
+What actually holds a paraglider at its incidence is the line geometry: A, B
+and C attach at different stations along the chord, so rotating the canopy
+lengthens one row and shortens another. That is measurable, and it is now
+measured rather than asserted — `TensionCableSolver` gained a mode that holds
+the canopy at an imposed attitude and reports the moment the lines exert there,
+and the solver probes ±0.02 rad either side of the free equilibrium at
+construction:
+
+| | |
+|---|---|
+| line pitch stiffness | 5723 N·m/rad, linear to within 3% over ±0.06 rad |
+| free hang angle | 4.75° nose-up |
+| zero of the spring | at that hang angle, to 0.8 N·m |
+
+The pilot is then a bob on a 7 m line whose pivot is being accelerated by the
+air, with the spring acting once — written from the potential so the canopy's
+moment and the pilot's reaction cannot double-count.
+
+Measured, hands-off, brake to 0.7 for three seconds and release:
+
+| | canopy ahead of pilot |
+|---|---|
+| trim | 0.77 m |
+| under brake | 0.00 m (the wing comes back over the pilot) |
+| top of the surge | 1.85 m, at 0.16 rad/s |
+
+and the accelerator now does something: 8.21 m/s at 11.8° hands-up, 9.58 m/s at
+6.9° on full bar. A gust that does nothing to the wing hands-up folds it on
+bar, which is the collapse-proneness of accelerated flight arriving on its own.
+
+**One defect fixed on the way in, one introduced and caught:** the harness drag
+was being applied as a moment on the canopy *and* as a force on the pilot once
+the pendulum existed — the same force pitching the wing twice. It acts on the
+pilot and reaches the wing through the lines, so only the lines' own drag
+moment stays on the canopy.
+
+### The trim disagreement this exposed
+
+Trim is now **8.21 m/s (29.5 km/h) against a published 39**, and full bar 34.4
+against a published 53. Both low by about the same fraction.
+
+The previous model agreed with the published 39 km/h almost exactly. That
+agreement was two errors cancelling: the canopy was pinned level, which forced
+the wing to fly at 4.5° of incidence, and 4.5° is not what a paraglider flies
+at. It now hangs 4.75° nose-up and glides at 6.6°, so it flies at 11.8° — which
+is what a paraglider does. A too-low incidence was compensating for a lift
+curve that is too high.
+
+The lift curve is item 1 of `PHYSICS_TODO.md`: analytic thin-airfoil polars,
+no XFOIL, every coefficient registered `Provisional`. Level 9 is where it gets
+resolved, and this is now the strongest single piece of evidence that it must
+be. The disagreement is bounded by a check in `coupled_tests` rather than
+tuned away — the same treatment as Grindelwald's anchor.
+
 ## Level 8 — emergent collapse
 
 `CanopyCollapseSolver`, and its integration into the coupled solve. **Built.**
@@ -297,15 +372,25 @@ second:
 
 | | |
 |---|---|
-| worst fold, left half | 0.70 |
-| worst fold, right half | 0.08 |
-| turn while folded | -0.07 rad/s, toward the folded half |
-| load asymmetry to the lines | 0.68 |
+| worst fold, left half | 0.68 |
+| worst fold, right half | 0.04 |
+| turn while folded | -0.08 rad/s, toward the folded half |
+| load asymmetry to the lines | 0.67 |
 | recovered to | 0.00, in 13 s |
 | numerical safety envelope | did not engage |
 
-The same air over the whole span folds both halves to 0.712 and does not turn
-the wing.
+Measured on full bar, because that is when a wing folds — and nothing says so:
+2 m/s of sink over half the span does nothing hands-up and folds the wing on
+bar, because bar moves both sides of the pressure balance the wrong way at
+once.
+
+The same air over the whole span folds both halves to the same peak, 0.688. It
+does not stay mirror-symmetric through the event: the two halves differ by up
+to 0.15 part way through and the wing develops a turn. That is not the collapse
+solver, which is mirror-exact to 0.0e+00 given mirrored input — `collapse_tests`
+checks it directly, because that is the only place the claim can be isolated.
+It is the circulation solve under it, which has no steady state to find when
+the wing is this deeply separated.
 
 **Limits, stated:** past about 5 m/s of gust the wing does not come back — it
 pitches into full separation and descends vertically at 7.5 m/s, which is the

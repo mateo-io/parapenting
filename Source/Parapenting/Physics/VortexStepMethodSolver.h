@@ -201,6 +201,13 @@ struct InstalledDragResult
     double totalDragN = 0.0;
     // About the canopy quarter-chord centre, body axes.
     Vec3 momentBodyNm{};
+    // The two contributions separately, because they do not act on the same
+    // body. The lines hang off the canopy and their drag is a moment on it.
+    // The harness drag acts on the PILOT, and reaches the canopy only through
+    // the lines - so a model with a real pendulum must not apply it to the
+    // canopy as well, or the same force pitches the wing twice.
+    Vec3 lineMomentBodyNm{};
+    Vec3 harnessMomentBodyNm{};
 };
 
 InstalledDragResult EvaluateInstalledDrag(

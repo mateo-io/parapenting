@@ -182,6 +182,7 @@ SuspensionSolution SolveSuspension(
     const double canopyMass = std::max(1e-3, settings.canopySolverMassKg);
     const double canopyInertia = std::max(1e-3, settings.canopySolverInertiaKgM2);
 
+    Vec3 lastCanopyMoment{};
     for (int iteration = 0; iteration < settings.iterations; ++iteration)
     {
         // Canopy attachments follow the canopy pose exactly. There is one
@@ -263,11 +264,25 @@ SuspensionSolution SolveSuspension(
 
         canopyVelocity =
             (canopyVelocity + canopyForce / canopyMass * dt) * retention;
-        canopyAngularVelocity =
-            (canopyAngularVelocity + canopyMoment / canopyInertia * dt)
-                * retention;
         canopyOrigin += canopyVelocity * dt;
-        canopyAttitude = Integrate(canopyAttitude, canopyAngularVelocity, dt);
+        if (input.holdCanopyAttitude)
+        {
+            // Held. The canopy still floats to where the line forces balance,
+            // but it does not rotate, so the moment left over at the end of
+            // the relaxation is what the lines are exerting on it rather than
+            // something the solve has driven to zero.
+            canopyAngularVelocity = Vec3{};
+            canopyAttitude = input.imposedCanopyAttitude;
+        }
+        else
+        {
+            canopyAngularVelocity =
+                (canopyAngularVelocity + canopyMoment / canopyInertia * dt)
+                    * retention;
+            canopyAttitude = Integrate(
+                canopyAttitude, canopyAngularVelocity, dt);
+        }
+        lastCanopyMoment = canopyMoment;
 
     }
 
@@ -295,6 +310,7 @@ SuspensionSolution SolveSuspension(
     solution.nodePositionM = position;
     solution.canopyOriginM = canopyOrigin;
     solution.canopyAttitude = canopyAttitude;
+    solution.canopyMomentBodyNm = lastCanopyMoment;
     solution.canopyPitchRad = IncidenceOf(canopyAttitude);
     solution.canopyRollRad = BankOf(canopyAttitude);
     solution.incidenceChangeRad =

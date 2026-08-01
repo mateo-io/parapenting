@@ -94,9 +94,12 @@ InstalledDragResult EvaluateInstalledDrag(
     const Vec3 dragDirection = -Normalized(airspeedBodyMps);
     const Vec3 harnessArm{0.0, 0.0, -spec.harnessBelowCanopyM};
     const Vec3 lineArm{0.0, 0.0, -0.5 * spec.harnessBelowCanopyM};
+    result.harnessMomentBodyNm =
+        Cross(harnessArm, dragDirection * result.harnessDragN);
+    result.lineMomentBodyNm =
+        Cross(lineArm, dragDirection * result.lineDragN);
     result.momentBodyNm =
-        Cross(harnessArm, dragDirection * result.harnessDragN)
-        + Cross(lineArm, dragDirection * result.lineDragN);
+        result.harnessMomentBodyNm + result.lineMomentBodyNm;
     return result;
 }
 

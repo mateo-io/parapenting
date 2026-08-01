@@ -10,6 +10,20 @@ nothing geometry-driven flies the wing yet.
 
 ## Blocked on things this environment does not have
 
+**0. Trim is 25% slow, and the polars are the suspect.** 29.5 km/h against a
+published 39, and 34.4 on full bar against a published 53. This appeared the
+moment the wing and the pilot became two bodies: the model now flies at 11.8
+degrees of incidence, which is what a paraglider does, where before it flew at
+4.5, which is not.
+
+- The old agreement with the published 39 was two errors cancelling - the
+  canopy was pinned level, and a too-low incidence was compensating for a lift
+  curve that is too high.
+- Blocked by the same thing as item 1, and it is the strongest evidence yet
+  that item 1 is the gate on Level 9.
+- Bounded by a check in `coupled_tests` so it cannot quietly grow, and recorded
+  rather than fitted away.
+
 **1. Section polars are analytic.** Thin-airfoil lift with the circular-arc
 zero-lift angle, brake as a trailing-edge flap, Viterna-Corrigan post-stall.
 All derived, all registered `Provisional`. Every flight number in Level 4 rests
@@ -36,15 +50,19 @@ estimate by a factor of fourteen in roll.
 
 ## Level 8 — emergent collapse (built)
 
-**3. The reopening surge.** A section recovers its lift smoothly as the fold
-clears. A real wing dives forward as the nose catches air and then pitches
-back.
+**3. The reopening surge is now a pendulum, not a shape.** The wing and the
+pilot are two bodies on a 7 m line with the line geometry's own measured pitch
+spring between them, so a collapse recovery swings the wing forward the way a
+brake release does - 0.77 m ahead of the pilot at trim, 1.85 m at the top of a
+surge.
 
-- Blocked by: nothing. It needs the collapsed section's *shape* rather than
-  only its state, which means reading the membrane's fold geometry back into
-  the aerodynamics instead of only its depth.
-- Done when: a recovered collapse produces a pitch excursion and a speed
-  overshoot, and the energy accounting still closes across it.
+- What is still missing is the local part: the surge is driven by the change in
+  the whole wing's force, not by the *shape* of the reopening section. A real
+  frontal recovery has the nose catching air and scooping forward, which needs
+  the membrane's fold geometry read back into the aerodynamics.
+- Done when: a recovered collapse's pitch excursion differs from the one the
+  same force change produces symmetrically, and the energy accounting still
+  closes across it.
 
 **4. A cravat has never formed in the coupled solve.** It forms in
 `collapse_tests`, from the built graph's real 0.178 m tip line gap against a

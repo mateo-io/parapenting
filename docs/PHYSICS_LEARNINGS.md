@@ -475,6 +475,37 @@ crossings are where an invariant quietly stops applying.
 
 ---
 
+## 20. Agreement with a published number is not validation
+
+The coupled model matched the manufacturer's 39 km/h trim speed almost exactly,
+and had done since Level 7. It was wrong. The canopy was pinned straight below
+the payload in body axes, which forced it to fly at 4.5 degrees of incidence;
+a paraglider flies at about 11. The wing's lift curve - analytic thin-airfoil,
+never validated against anything - is correspondingly too high. The two errors
+were the same size and opposite signs, so the headline number came out right
+and both of them stayed hidden for two levels.
+
+Giving the wing and the pilot their real degree of freedom broke the agreement
+immediately: trim fell to 29.5 km/h and the incidence rose to 11.8. The model
+got *more* correct and the validation number got worse, which is the shape this
+always takes.
+
+**Rule:** a single scalar matching a published value validates nothing on its
+own, because any two compensating errors can produce it. What validates is
+agreement across quantities that cannot compensate for each other - trim speed
+AND incidence AND the bar-to-trim ratio AND sink - and a stated mechanism for
+each. When one number is right and the states behind it are not physical, the
+number is a coincidence being maintained by a bug.
+
+**Corollary, and the reason this one lasted:** the missing degree of freedom
+was invisible because nothing asked for it. There was no test for "does the
+wing move fore and aft relative to the pilot", because it was not a quantity
+the model had. A model cannot fail a test for a state it does not represent -
+which is why the accelerator changing the airspeed by exactly nothing went
+unnoticed through two levels of gates.
+
+---
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -487,8 +518,11 @@ crossings are where an invariant quietly stops applying.
 | apparent mass, normal | 33.6 kg | a third of the aircraft |
 | pendulum stiffness | ~7000 N·m/rad | dominates pitch and roll |
 | roll damping time constant | 20 ms | sets the maximum aero interval |
-| coupled trim speed | 10.70 m/s | 38.5 km/h against a published 39 |
-| coupled sink and glide | 1.12 m/s, 9.5 | published 1.0 min sink, glide 9.5 |
+| coupled trim speed | 8.21 m/s | 29.5 km/h against a published 39 - see §20 |
+| coupled trim incidence | 11.8 deg | what a paraglider flies at; it was 4.5 |
+| line pitch stiffness | 5723 N·m/rad | measured off the graph, not assumed |
+| wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |
+| canopy lead at trim | 0.77 m | and 1.85 m at the top of a surge |
 | brake slack take-up | 19% of handle travel | below it the trailing edge does not move |
 | tip line gap, built graph | 0.178 m | how far a fold must reach to cravat |
 | gust that folds a half wing | 4 m/s descending, 1 s | 0.70 fold, full recovery |

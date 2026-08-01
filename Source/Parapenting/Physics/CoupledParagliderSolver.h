@@ -129,6 +129,19 @@ struct CoupledState
     CellPressureState pressure;
     VsmSeparationState separation;
     SuspensionWarmStart suspension;
+    // Where the pilot is hanging, relative to straight below the canopy.
+    // Radians, positive when the pilot is AHEAD of the wing - which is what
+    // pulling brake does, and the surge is the wing coming back past it.
+    //
+    // This was not a degree of freedom at all until now: the payload was
+    // pinned straight below the canopy in body axes, so the wing could pitch
+    // but it could never swing. A paraglider is two masses on a 7 m line and
+    // almost everything a pilot feels in pitch is the angle between them -
+    // the dive on release, the surge out of a collapse, the pendulum that
+    // makes a brake input arrive late. None of that could happen.
+    double payloadSwingRad = 0.0;
+    double payloadSwingRateRadps = 0.0;
+
     // Level 8. Stepped every physics step, because a fold takes about a tenth
     // of a second and the aerodynamic interval is a tenth of a second.
     CollapseState collapse;
@@ -226,6 +239,19 @@ struct CoupledDiagnostics
     // folded half wing to slack lines on that side.
     double collapseLoadAsymmetry = 0.0;
 
+    // The pendulum between the wing and the pilot. Positive swing is the pilot
+    // ahead of the wing; positive surge rate is the wing coming forward past
+    // the pilot, which is what a pilot means by the word.
+    double payloadSwingRad = 0.0;
+    double payloadSwingRateRadps = 0.0;
+    // How far ahead of the pilot the canopy is, metres along track. The same
+    // angle in the units the rendering needs, and the one a pilot can see.
+    double canopyLeadM = 0.0;
+    // The moment the lines' fore-aft spread puts on the canopy. Zero when the
+    // pilot hangs where the lines are unstressed, and the wing's entire pitch
+    // stiffness otherwise.
+    double linePitchMomentNm = 0.0;
+
     // Flight numbers, for the tests to read.
     double airspeedMps = 0.0;
     double angleOfAttackRad = 0.0;
@@ -257,8 +283,21 @@ public:
     const std::vector<double>& TrimLoadDistributionN() const
         { return SectionTrimLoadN; }
 
+    // The wing's pitch stiffness, measured off the built suspension graph by
+    // rotating the canopy either side of its free equilibrium and reading the
+    // moment the lines exert. Newton-metres per radian.
+    double PitchStiffnessNmPerRad() const { return LinePitchStiffnessNmPerRad; }
+    // The incidence the wing hangs at with no aerodynamic moment, from the
+    // same solve. The zero of that spring.
+    double TrimIncidenceRad() const { return TrimLineIncidenceRad; }
+
 private:
+    double LinePitchStiffnessNmPerRad = 0.0;
+    double TrimLineIncidenceRad = 0.0;
+    double TrimSwingRad = 0.0;
+    double AcceleratedSwingRad = 0.0;
     void SolveTrimLoadDistribution();
+    void MeasureLinePitchStiffness();
 
     CoupledSchedule ScheduleValue;
     VortexStepMethodSolver Aerodynamics;

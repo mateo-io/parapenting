@@ -58,7 +58,7 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
-| 7 Coupled solver | **Done** | 38.5 km/h vs published 39; glide 9.5 vs 9.5; turns mirror to 2e-8; suite green |
+| 7 Coupled solver | **Done, with a trim gap** | turns mirror to 2e-8, books balance, suite green; trim now 29.5 km/h vs published 39 - see the note below |
 | 8 Emergent collapse | **Done, with gaps** | fold 0.70 vs 0.08 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
 | 9 Calibration | Not started | — |
 | 10 Performance and legacy removal | Not started | — |
@@ -70,6 +70,21 @@ than a full mesh. Self-collision turned out not to be Level 8's blocker: it was
 built, measured to be incapable of firing on a one-dimensional strip, and
 removed, and cravats were built instead from fabric-to-*line* contact, which is
 what a cravat physically is.
+
+**The wing and the pilot are now two bodies.** The payload was pinned straight
+below the canopy in body axes, so the angle between wing and pilot - most of
+what a pilot feels in pitch - did not exist. There was no surge, the
+accelerator changed the airspeed by nothing at all, and the wing's pitch
+stiffness was a lumped pendulum term standing in for the line geometry. The
+stiffness is now measured off the built graph (5723 Nm/rad, linear to 3%), the
+swing is a real degree of freedom, and bar works through the mechanism it
+actually works through.
+
+That broke the model's agreement with the published trim speed, and the break
+is the finding: the old agreement was two errors cancelling. Pinned level, the
+wing flew at 4.5 degrees of incidence; free, it flies at 11.8, which is what a
+paraglider does, and it flies 25% slow because the analytic lift curve is too
+high. Gap 1 below is now the gate on Level 9 by a wide margin.
 
 ### Carried gaps, by priority
 

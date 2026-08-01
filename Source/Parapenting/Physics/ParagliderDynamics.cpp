@@ -173,9 +173,34 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // teleporting with the rigid system attitude.
     const double pitchNaturalFrequency =
         std::sqrt(9.80665 / SuspensionLengthM);
+    // Where the wing hangs relative to the pilot, and it is not a function of
+    // the brake handle. The pilot is 95 kg of a 105 kg aircraft, so the pilot
+    // is very nearly the centre of mass and the WING is what moves: the pair
+    // hangs along apparent gravity, and apparent gravity tilts by the
+    // aircraft's own longitudinal acceleration. Positive pitches the canopy
+    // aft, which is what happens when the wing decelerates and the pilot
+    // keeps going.
+    //
+    // This used to be `symmetricBrake * 0.14 + zoom * 0.16 - 0.55 *
+    // harnessPitch` - a scripted target in the control input, capped at 8
+    // degrees, with no dependence on what the aircraft was actually doing. It
+    // is why the pilot visibly swung and the wing did not, and why there was
+    // no surge on release: the two ends of one angle were two different
+    // scripts, and only one of them was driven by the flight.
+    //
+    // It is the same expression as the harness pendulum's target above, and
+    // deliberately so. There is one relative angle between wing and pilot;
+    // this is that angle, seen from the wing.
+    // Bounded at 34 degrees, which is about 4 m of arc on this wing. A real
+    // canopy does go a long way back behind the pilot under a fast, deep
+    // brake application - that is exactly what loads the surge that follows -
+    // but this legacy model's brake deceleration is fierce enough to hold the
+    // pendulum near its stop for a full second, which a wing does not. The
+    // bound is a stated limit of the legacy path, not a handling number: the
+    // coupled solver has the same angle as a real degree of freedom and needs
+    // no limit at all.
     const double canopyPitchTarget =
-        symmetricBrake * 0.14 + state.brakeZoomEnergy * 0.16
-        - 0.55 * state.harnessPitchRad;
+        std::clamp(state.previousHangTiltRad, -0.60, 0.60);
     const double relativePitchAcceleration =
         pitchNaturalFrequency * pitchNaturalFrequency
             * (canopyPitchTarget - state.canopyRelativePitchRad)
@@ -183,10 +208,16 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             * state.canopyRelativePitchRateRadps;
     state.canopyRelativePitchRateRadps +=
         relativePitchAcceleration * dt;
+    // Wide enough that a real surge is not shaved off by the limit. The old
+    // range stopped at 0.38 rad, which a hard brake release reaches on its
+    // own and a collapse recovery goes well past - so the most visible pitch
+    // event a pilot ever sees was being clipped at the top. What bounds it
+    // now is the physics: the lines cannot push, so the wing cannot swing
+    // above the pilot's own level.
     state.canopyRelativePitchRad = std::clamp(
         state.canopyRelativePitchRad
             + state.canopyRelativePitchRateRadps * dt,
-        -0.32, 0.38);
+        -0.85, 0.85);
     const double wingSpanM = std::sqrt(Params.areaM2 * 5.2);
     const GroundEffectOutput landingAero = EvaluateGroundEffect({
         atmosphere.groundClearanceM,
@@ -617,6 +648,28 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     });
     state.previousLongitudinalAccelerationMps2 =
         state.attitude.InverseRotate(acceleration).x;
+    // How far a bob hanging under this aircraft is displaced from vertical.
+    // A pendulum hangs along apparent gravity, and what tilts apparent gravity
+    // away from true vertical is the HORIZONTAL acceleration - so that is what
+    // this measures, in the world frame, along the direction of travel.
+    //
+    // Measuring it in body axes instead does not work, and both of the obvious
+    // ways were tried. Body-x of the total acceleration puts a large part of
+    // gravity itself into the answer whenever the wing is pitched, which under
+    // brake is most of it. Apparent gravity expressed in body axes is worse
+    // again: it carries the body's whole pitch attitude, which the actor's own
+    // rotation already shows, so the canopy swings once for the aircraft
+    // pitching and once more for the same thing measured again. Horizontal and
+    // world-framed, gravity cannot leak in and neither can attitude.
+    {
+        Vec3 alongTrack = state.velocityWorldMps;
+        alongTrack.z = 0.0;
+        const double groundSpeed = Length(alongTrack);
+        const double alongTrackAcceleration = groundSpeed > 0.5
+            ? Dot(acceleration, alongTrack / groundSpeed) : 0.0;
+        state.previousHangTiltRad =
+            std::atan2(-alongTrackAcceleration, 9.80665);
+    }
     // Load factor is the specific force - what an accelerometer on the
     // harness reads, the total acceleration less gravity - in g. The payload
     // body was reading this and it was never written, so the carabiners sat

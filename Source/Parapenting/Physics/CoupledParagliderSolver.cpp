@@ -61,6 +61,76 @@ CoupledParagliderSolver::CoupledParagliderSolver(
     Harness = Lines.plan.harness;
 
     SolveTrimLoadDistribution();
+    MeasureLinePitchStiffness();
+}
+
+void CoupledParagliderSolver::MeasureLinePitchStiffness()
+{
+    // What holds a paraglider's wing at its incidence is not a pendulum. A
+    // mass hanging from a single point has no pitch stiffness at all - it is
+    // free to rotate about the attachment - and this solver's lumped
+    // "pendulum moment" was standing in for something else entirely: the A, B
+    // and C rows attach at different stations along the chord, so rotating the
+    // canopy lengthens one row and shortens another, and the lines pull it
+    // back. That is the real spring, it is in the graph, and it can be
+    // measured rather than written down.
+    //
+    // Rotate the canopy a small angle either side of its free equilibrium with
+    // the network solved at each, and take the slope of the moment.
+    SuspensionSolveInput probe;
+    probe.aeroForceN = Vec3{0.0, 0.0, SystemMassKg * GravityMps2};
+    probe.canopyWeightN = CanopyMassKg * GravityMps2;
+
+    SuspensionSolverSettings settings;
+    settings.iterations = 12000;
+
+    // The pose the wing hangs at on its own, which is the zero of the spring.
+    const SuspensionSolution free = SolveSuspension(Lines, probe, settings);
+    TrimLineIncidenceRad = free.canopyPitchRad;
+    // The swing angle at which the lines are unstressed in pitch. With the
+    // canopy nose-up by t, the world-down line direction sits at -t in the
+    // canopy's own axes, so the two coordinates are the same one negated.
+    TrimSwingRad = -free.canopyPitchRad;
+
+    // And the same pose on full bar. This is the entire mechanism of the
+    // accelerator and it was doing nothing at all: bar shortens the A and B
+    // risers by 120 and 80 mm, which rotates the wing nose-down and drops its
+    // incidence, and that is why a wing on bar flies faster and is
+    // collapse-prone. The line network has always modelled it - the shortened
+    // risers are in its geometry - but the flight model never read the pitch
+    // it produced, so pulling full bar changed the airspeed by nothing
+    // whatsoever.
+    SuspensionSolveInput accelerated = probe;
+    accelerated.accelerator = 1.0;
+    const SuspensionSolution onBar =
+        SolveSuspension(Lines, accelerated, settings);
+    AcceleratedSwingRad = -onBar.canopyPitchRad;
+
+    constexpr double ProbeAngleRad = 0.02;
+    const auto momentAt = [&](double offset)
+    {
+        SuspensionSolveInput held = probe;
+        held.holdCanopyAttitude = true;
+        held.imposedCanopyAttitude =
+            NoseUpAttitude(TrimLineIncidenceRad + offset);
+        return SolveSuspension(Lines, held, settings).canopyMomentBodyNm.y;
+    };
+    // Centred, for the same reason Level 7's damping probe is: a one-sided
+    // difference is not odd in the angle, so nose-up and nose-down would
+    // measure two different springs on a wing that has one.
+    const double up = momentAt(ProbeAngleRad);
+    const double down = momentAt(-ProbeAngleRad);
+    const double slope = (up - down) / (2.0 * ProbeAngleRad);
+    // Restoring, and in this frame that means a POSITIVE slope: a positive
+    // right-hand rotation about +Y tips the nose down (SuspensionGraph.h says
+    // so, and it is the trap that convention has set twice before), so the
+    // nose-down moment answering a nose-up displacement comes back positive.
+    // Measured over +-0.06 rad the curve is straight to within 3% and passes
+    // through zero at the free equilibrium, which is what a spring is.
+    //
+    // Refuse a measurement of the wrong sign rather than feeding excitation
+    // back into the pitch axis.
+    LinePitchStiffnessNmPerRad = slope > 0.0 ? slope : 0.0;
 }
 
 void CoupledParagliderSolver::SolveTrimLoadDistribution()
@@ -560,7 +630,11 @@ structureSolve:
     const Vec3 installedDragBody = airspeed > 1.0e-6
         ? airspeedBody * (-installed.totalDragN / airspeed) : Vec3{};
     exchangedForceBody += installedDragBody;
-    exchangedMomentBody += installed.momentBodyNm;
+    // Only the LINES' drag moment. The harness drag acts on the pilot, eight
+    // metres below, and the path by which it pitches the wing is the pendulum
+    // and the line spring - which now exist, and which apply it below. Adding
+    // it here as well pitched the wing with the same force twice.
+    exchangedMomentBody += installed.lineMomentBodyNm;
 
     // Forces on the system. The line network is internal - it appears once on
     // the canopy and once on the payload, and cancels - so what accelerates
@@ -629,15 +703,114 @@ structureSolve:
     // moment is the wing's own, nothing restores attitude, and the canopy
     // pitches up until it is descending vertically at 7.5 m/s with no forward
     // speed at all - which is what it did.
-    const Vec3 payloadOffsetBody{0.0, 0.0, -PendulumLengthM};
+    // WHERE the payload is hanging is a state, not a constant. The pilot is a
+    // 95 kg bob on the end of a 7 m line whose pivot - the wing - is being
+    // accelerated by the air. Pinning the bob straight below the pivot removes
+    // the single most important thing in a paraglider's pitch behaviour: the
+    // wing and the pilot are not at the same place along track, the angle
+    // between them is what a brake input actually changes first, and the surge
+    // is that angle running back through zero.
+    //
+    // The bob equation, with the pivot accelerating. With e the unit vector
+    // from canopy to payload and t the tangential direction:
+    //
+    //     e = ( sin q, 0, -cos q )      t = ( cos q, 0, sin q )
+    //     bob acceleration = a_pivot + L q'' t - L q'^2 e
+    //     tangential balance:  L q'' = (g - a_pivot) . t  +  drag term
+    //
+    // so it is driven by the difference between what the wing is doing and
+    // what gravity is doing, in body axes, and nothing else. Brake decelerates
+    // the wing, the pilot keeps going and swings ahead; release accelerates
+    // the wing and it swings back past the pilot, which is the dive. Neither
+    // is written down anywhere - they are the same equation with the sign of
+    // a_pivot reversed.
+    const double swing = state.payloadSwingRad;
+    const Vec3 pendulumTangentBody{std::cos(swing), 0.0, std::sin(swing)};
+    const Vec3 gravityBody =
+        state.attitude.InverseRotate(Vec3{0.0, 0.0, -GravityMps2});
+    // The harness hangs in the airflow and the pilot is most of the aircraft's
+    // parasitic drag, so the bob is pushed aft by its own drag - which is why
+    // a pilot hangs slightly behind the wing in trim rather than exactly
+    // under it. Level 4's installed drag already knows the number.
+    const Vec3 harnessDragBody = airspeed > 1.0e-6
+        ? airspeedBody * (-installed.harnessDragN / airspeed) : Vec3{};
+    const double tangentialAccel =
+        Dot(gravityBody - accelerationBody, pendulumTangentBody)
+        + Dot(harnessDragBody, pendulumTangentBody)
+            / std::max(1.0, PayloadMass.TotalKg());
+    // Damping. The lines are not a frictionless hinge and the harness is a
+    // bluff body sweeping through air, so the swing bleeds out over a few
+    // periods rather than ringing forever. A real wing's pitch oscillation
+    // after a big input dies in about three swings, which is a damping ratio
+    // near 0.2 at this pendulum's 0.56 Hz.
+    constexpr double SwingDampingRatio = 0.20;
+    const double swingFrequency =
+        std::sqrt(GravityMps2 / std::max(0.5, PendulumLengthM));
+    // The lines' own pitch spring, measured off the graph at construction.
+    // This is what actually holds a wing at its incidence, and it is why a
+    // paraglider is not a mass on a string: the A, B and C rows attach at
+    // different stations along the chord, so swinging the pilot forward
+    // lengthens one row and shortens another and the lines resist it. The
+    // spring is a single interaction seen from both ends - the canopy gets the
+    // moment below, the pilot gets its reaction here - so it is written once,
+    // from the potential, and cannot double-count.
+    // Where the lines are unstressed, which the accelerator moves. Linear in
+    // the pedal because the riser shortening is: the plan lists a trim and a
+    // full-bar length for each riser and bar interpolates between them.
+    const double unstressedSwing = TrimSwingRad
+        + (AcceleratedSwingRad - TrimSwingRad)
+            * std::clamp(controls.accelerator, 0.0, 1.0);
+    const double swingFromTrim = state.payloadSwingRad - unstressedSwing;
+    const double springTorqueNm = -LinePitchStiffnessNmPerRad * swingFromTrim;
+    const double payloadArmInertiaKgM2 = std::max(1.0,
+        PayloadMass.TotalKg() * PendulumLengthM * PendulumLengthM);
+    const double swingAcceleration =
+        tangentialAccel / std::max(0.5, PendulumLengthM)
+        + springTorqueNm / payloadArmInertiaKgM2
+        - 2.0 * SwingDampingRatio * swingFrequency
+            * state.payloadSwingRateRadps;
+    state.payloadSwingRateRadps += swingAcceleration * dt;
+    state.payloadSwingRad += state.payloadSwingRateRadps * dt;
+    // The lines cannot push, so the pilot cannot swing above the wing's own
+    // level. Well outside anything short of an SIV manoeuvre, and it is a
+    // geometric limit rather than a handling number.
+    constexpr double SwingLimitRad = 1.4;
+    if (state.payloadSwingRad > SwingLimitRad
+        || state.payloadSwingRad < -SwingLimitRad)
+    {
+        state.payloadSwingRad =
+            std::clamp(state.payloadSwingRad, -SwingLimitRad, SwingLimitRad);
+        state.payloadSwingRateRadps = 0.0;
+    }
+
+    const Vec3 payloadOffsetBody{
+        PendulumLengthM * std::sin(state.payloadSwingRad),
+        0.0,
+        -PendulumLengthM * std::cos(state.payloadSwingRad)};
     const Vec3 payloadWeightWorld{
         0.0, 0.0, -PayloadMass.TotalKg() * GravityMps2};
+    // With the payload swung forward this is no longer a pure restoring
+    // moment: the weight now acts on an arm that is ahead of the wing, and it
+    // pitches the canopy. That coupling is the whole point - it is how the
+    // pilot swinging forward under brake pitches the wing back, and how the
+    // wing surging forward pitches it down again.
     const Vec3 pendulumMoment = Cross(
         payloadOffsetBody, state.attitude.InverseRotate(payloadWeightWorld));
+    // The canopy's end of the same spring. Rotating the canopy nose-up moves
+    // the line aft in its own frame, so the swing angle and the canopy's
+    // nose-up angle are the same coordinate with opposite signs - which is why
+    // this is the reaction to the term in the swing equation above and not a
+    // second spring.
+    const double linePitchMomentNm = -LinePitchStiffnessNmPerRad * swingFromTrim;
+    diagnostics.linePitchMomentNm = linePitchMomentNm;
+    diagnostics.payloadSwingRad = state.payloadSwingRad;
+    diagnostics.payloadSwingRateRadps = state.payloadSwingRateRadps;
+    diagnostics.canopyLeadM = -payloadOffsetBody.x;
 
     const Vec3 undampedMomentBody{
         exchangedMomentBody.x + pendulumMoment.x + payloadLoads.rollMomentNm,
-        exchangedMomentBody.y + pendulumMoment.y + payloadLoads.pitchMomentNm,
+        exchangedMomentBody.y + pendulumMoment.y + payloadLoads.pitchMomentNm
+            + linePitchMomentNm,
         exchangedMomentBody.z + pendulumMoment.z};
     // Inertia about the canopy, with the payload on its arm - m L^2 dominates
     // anything the canopy contributes on its own, and it is what sets the

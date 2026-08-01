@@ -310,3 +310,15 @@ target_include_directories(parapenting_still_air_probe PRIVATE
 target_compile_options(parapenting_still_air_probe PRIVATE
     -Wall -Wextra -Wpedantic
 )
+
+add_executable(parapenting_collapse_tests
+    CollapseTests.cpp
+    ../Source/Parapenting/Physics/CanopyCollapseSolver.cpp
+    ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
+)
+target_include_directories(parapenting_collapse_tests PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_collapse_tests PRIVATE
+    -Wall -Wextra -Wpedantic
+)

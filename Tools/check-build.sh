@@ -39,6 +39,7 @@ run_tests() {
     "$BUILD_DIR/parapenting_aerodynamics_tests"
     "$BUILD_DIR/parapenting_pressure_tests"
     "$BUILD_DIR/parapenting_membrane_tests"
+    "$BUILD_DIR/parapenting_collapse_tests"
     # Level 7. Ten minutes of flight at 120 Hz plus a brake sweep, so this one
     # takes minutes rather than seconds - it is the whole stack running.
     "$BUILD_DIR/parapenting_coupled_tests"

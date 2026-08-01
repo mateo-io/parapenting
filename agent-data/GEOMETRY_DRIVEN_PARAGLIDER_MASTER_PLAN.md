@@ -58,14 +58,14 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
-| 7 Coupled solver | **Built, trim unstable** | closure exact; decelerates and stalls over ~4 s |
+| 7 Coupled solver | **Trim on the numbers, one check failing** | 38.5 km/h vs published 39; sink 1.12; glide 9.5 vs 9.5 |
 | 8 Emergent collapse | Not started | — |
 | 9 Calibration | Not started | — |
 | 10 Performance and legacy removal | Not started | — |
 | 11+ | Not started | — |
 
 **Camp I is complete. Camp II is two levels short**, with Level 6 delivered at a
-reduced scope and Level 7 not passing its own gates.
+reduced scope and Level 7 passing every gate but one.
 
 ### Carried gaps, by priority
 
@@ -76,9 +76,12 @@ reduced scope and Level 7 not passing its own gates.
    surveyed geography. This blocks the **Level 0** exit gate and is the oldest
    open defect in the project. Everything from Level 9 onward that depends on
    real terrain is built on it.
-2. **Level 7 trim is unstable.** First 200 steps clean; then decelerates, α
-   climbs through the section stall to 90 degrees, settles descending vertically.
-   Deceleration leads and stall follows.
+2. **One Level 7 check fails.** Asymmetric brake held for ten seconds reports a
+   NaN turn rate. A direct probe of the same case over the same duration does
+   not reproduce it, so the suspect is the test harness rather than the solver -
+   but that is unverified, and the suite stays excluded until it is understood.
+   Everything else passes: trim, ten-minute stability, energy, internal closure,
+   coupling convergence, and deep stall being refused rather than faked.
 3. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
    measurement. Every flight number in Level 4 rests on theory. The plan calls
    for this work to begin during Level 1; it has not begun.
@@ -100,11 +103,14 @@ reduced scope and Level 7 not passing its own gates.
 
 ### Recommended next steps, in order
 
-1. **Fix Level 7 trim.** Everything above it is blocked and it is a focused
-   debugging problem, not a design one. Instrument the energy balance per
-   subsystem across the first four seconds and find where the energy goes; the
-   two suspects are the held load being stale in body axes while the flight path
-   rotates beneath it, and the starting incidence not being this polar's trim.
+Step 1 below is **done**. The cause was not in any solver: the pressure state
+started packed while the flight state started flying, so the aerodynamics were
+correctly told the cells were empty and the wing correctly stalled. Installed
+drag was also missing from the coupled solve. Both are fixed, and the coupled
+trim now lands on the published figures.
+
+1. ~~Fix Level 7 trim.~~ **Done.** What remains of Level 7 is the single failing
+   check above, which is worth an hour rather than a session.
 2. **Resolve the terrain/flight frame disagreement.** It is a Level 0 gate, it
    is cheap relative to what it blocks, and every later level that touches
    terrain inherits it.
@@ -644,10 +650,14 @@ line in the original budget)*
 
 ## Level 7 — Coupled solver and convergence
 
-> **Status: built, trim not stable.** The schedule, the staggered coupling
-> and the accounting all work - internal force closure is exact. Hands-off
-> flight decelerates and stalls over about four seconds instead of settling
-> into a glide. Excluded from the test suite until it does.
+> **Status: trim on the published numbers, one check failing.** Hands off it
+> settles at 10.70 m/s - 38.5 km/h against a published 39 - with 1.12 m/s of
+> sink and a glide of 9.5 against a published 9.5. Ten minutes holds within
+> 0.15 m/s, internal closure is exact, energy residual stays under 4 W, and the
+> coupling is converged rather than budgeted. Deep stall is refused rather than
+> faked, with the safety envelope reported. Still excluded from the suite for
+> one check: asymmetric brake over ten seconds reports a NaN turn rate that a
+> direct probe cannot reproduce.
 
 **Budget: 18 hours** *(was 10)*
 

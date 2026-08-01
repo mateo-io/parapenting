@@ -38,7 +38,7 @@ CanopyGeometry ──┬─→ SuspensionGraph ──→ TensionCableSolver
            HarnessGeometry → PayloadRigidBody   (Level 3)
            ApparentMassTensor                   (Level 4)
 
-           CoupledParagliderSolver              (Level 7, trim unstable)
+           CoupledParagliderSolver              (Level 7, trim on the numbers)
 ```
 
 ## Level 1 — geometry
@@ -166,19 +166,37 @@ endpoints, no self-collision.
 
 ## Level 7 — coupled solver
 
-`CoupledParagliderSolver`. **Built, deterministic, and not in the test suite:
-trim is not stable.**
+`CoupledParagliderSolver`. **Trim works and matches the published wing.** One
+test still fails, so the suite stays excluded.
 
 The schedule runs all six solvers in order at fixed 120 Hz with staggered
-aero/structure coupling. Internal force closure is exact. The first 200 steps
-are clean — 10.86 m/s, 973 N of lift against a 925 N weight, 1.15 m/s of sink.
-Over the next four seconds the wing decelerates, α climbs through the 10-degree
-section stall to 90, and it settles descending vertically at 7.5 m/s.
+aero/structure coupling, the VSM at a reduced rate with the rate-dependent part
+of its load re-evaluated every step, and the line network warm-started.
 
-The deceleration leads and the stall follows, so the open question is where the
-energy goes. Suspects: the held load being stale in body axes while the flight
-path rotates beneath it, and the starting incidence not being the one this polar
-trims at.
+Hands off, it settles at:
+
+| | coupled solver | published EPIC 2 ML |
+|---|---|---|
+| trim speed | 10.70 m/s = **38.5 km/h** | 39 km/h |
+| sink | **1.12 m/s** | 1.0 m/s min sink |
+| glide | **9.5** | 9.5 |
+
+Net force and moment go to zero. Ten minutes holds between 10.55 and 10.70 m/s.
+Internal force closure is exact and the energy residual stays under 4 W on a
+925 N aircraft. Taking a coupling iteration away changes airspeed by 0.002 m/s,
+so the staggered solve is converged rather than tuned to its budget.
+
+**Deep stall is refused rather than faked.** Heavy brake takes the sections past
+stall, where a steady solve has no answer, so a non-finite or implausible
+aerodynamic solve is rejected and the previous load held. This is a numerical
+safety envelope in the sense of guiding rule 12 — reported in the diagnostics,
+separate from flight behaviour, and asserted to engage at 0.9 brake while
+keeping the state finite.
+
+**Still failing:** asymmetric brake held for ten seconds reports a NaN turn
+rate. A direct probe of the same case over the same duration does not reproduce
+it, which points at the test harness rather than the solver — but that is
+unverified.
 
 ## Test suites
 
@@ -196,7 +214,8 @@ trims at.
 | `membrane_tests` | Level 6 |
 | `terrain_survey_tests` | terrain georeferencing |
 
-`coupled_tests` exists and is excluded, because Level 7 does not pass it.
+`coupled_tests` exists and is excluded: one of its checks, asymmetric brake over
+ten seconds, still reports a NaN turn rate.
 
 ## Coefficient registry
 
@@ -220,7 +239,9 @@ Ordered by how much they matter.
    0.82 route-left and 0.15 route-right, so lee rotor lands on the wrong side of
    the ridge relative to the surveyed geography. This blocks the Level 0 exit
    gate and is the oldest open defect in the project.
-2. **Level 7 trim is unstable** (above).
+2. **One Level 7 check fails** — asymmetric brake over ten seconds, NaN turn
+   rate, not reproducible by direct probe. The suite stays excluded until it is
+   understood.
 3. **Both Grindelwald routes are off the map** — outside the surveyed
    heightfield *and* the rendered extent. The analytic fallback puts the Grund
    landing field at 4683 m against a published 950 m, in air with no thermal

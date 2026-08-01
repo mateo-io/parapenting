@@ -168,7 +168,39 @@ it.
 
 ---
 
-## 9. Degenerate cases with no meaningful answer
+## 9. Six solvers means six initial conditions
+
+The Level 7 coupled solve stalled and fell out of the sky, and the cause was in
+none of the solvers.
+
+The flight state started **flying** — 10.8 m/s, level, in trim. The cell
+pressure state started **packed** — every cell empty, because that is the honest
+default for a canopy that has not inflated yet. On the first aerodynamic
+re-solve the VSM was told every cell was at zero internal pressure. Level 5's
+coupling then correctly cut section lift to 15% and added a large drag penalty,
+and the wing correctly stalled.
+
+**Every subsystem did exactly the right thing.** The aggregate was a wing doing
+10 m/s with no air in it, which is not a wing.
+
+What makes this class hard is that it is invisible from inside any one solver.
+Each had a defensible default. Only the combination was nonsense, and nothing
+owned the combination.
+
+**Rule:** when state lives in several subsystems, "start the simulation" is its
+own operation with its own correctness condition — every piece of state
+consistent with the same instant. Give it a name (`SeedInflated`), call it
+explicitly, and be suspicious of any subsystem whose default is "the beginning
+of its own story" when the caller is starting mid-story.
+
+A second, cheaper instance of the same thing in the same commit: the coupled
+solver was not applying installed drag, so it glided at 14 where the wing glides
+at 9.5. Level 4 had computed it correctly and Level 7 simply never asked. An
+integration layer can be wrong purely by omission, and omission does not throw.
+
+---
+
+## 10. Degenerate cases with no meaningful answer
 
 A dead calm has no wind direction. `atan2(0, 0)` returns 0 or 180 depending on
 the *sign of zero*, and the preflight briefing charged the launch a 48-point
@@ -179,13 +211,15 @@ the magnitude. Do not let a formula answer a question that has no answer.
 
 ---
 
-## 10. Validate against something external
+## 11. Validate against something external
 
 The checks that actually caught things were the ones with an outside reference:
 
 - lifting-line theory for the VSM — **0.2% on CL_α**
 - the circular-arc solution for the membrane — **26.32 mm vs 25.99**
-- published best glide — **9.46 vs 9.5**
+- published best glide — **9.46 vs 9.5** for the wing alone, and **9.5** again
+  from the fully coupled solve, which also lands trim speed at 38.5 km/h against
+  a published 39
 - published total line length — **254.8 m vs 254**
 - rigid-body statics for carabiner loads — exact
 
@@ -200,7 +234,7 @@ right.
 
 ---
 
-## 11. What honest failure looks like
+## 12. What honest failure looks like
 
 Three things were committed *not working*, deliberately:
 
@@ -231,3 +265,5 @@ fixes it, which is exactly when you want to be told.
 | apparent mass, normal | 33.6 kg | a third of the aircraft |
 | pendulum stiffness | ~7000 N·m/rad | dominates pitch and roll |
 | roll damping time constant | 20 ms | sets the maximum aero interval |
+| coupled trim speed | 10.70 m/s | 38.5 km/h against a published 39 |
+| coupled sink and glide | 1.12 m/s, 9.5 | published 1.0 min sink, glide 9.5 |

@@ -215,15 +215,21 @@ Its directory timestamp is 2026-07-30 15:28:31. It predates the latest wing,
 landing-rollout and collapse/recovery changes and must not be described as the
 latest build.
 
-**We have stopped attempting module builds for now**, deliberately. The quota
-below makes every attempt a waste of time, so engine-side work is being
-committed unverified and the debt is tracked in one place:
-[`docs/PHYSICS_TODO.md`](PHYSICS_TODO.md), under "UNCOMPILED ENGINE CHANGES",
-which lists each affected commit and what to smoke-test once a build is
-possible. Do not add engine changes without adding them to that table.
+**The module builds, in about 35 seconds.** Run `Tools/check-build.sh` — module
+first, then all eleven suites. There is no reason to skip it.
 
-External Unreal build/cook/package execution was quota-blocked until roughly
-2026-08-05 13:55. When available:
+The paragraph that used to be here said Unreal build/cook was "quota-blocked
+until roughly 2026-08-05 13:55". That was wrong, it went unchallenged for a long
+time, and it silently changed how work was done: engine changes were committed
+unverified and a whole section of `docs/PHYSICS_TODO.md` was written to track the
+resulting debt. When the claim was finally tested, the module built clean on the
+first attempt with every "unverified" file compiling. Unreal has no build quota.
+
+Left here deliberately as a marker: a written-down constraint is the kind of
+claim nobody re-tests, because the response to it is to route around it rather
+than to check it. `PHYSICS_LEARNINGS.md` §17.
+
+The steps below remain the right ones for cook/package and QA:
 
 1. compile the editor target;
 2. launch and smoke-test the Amisbühl → Lehn route;

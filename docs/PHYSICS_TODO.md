@@ -91,33 +91,40 @@ swissALTI3D puts at 2073 m. Every other site agrees within 12 m.
 - Recorded with a named tolerance in `terrain_survey_tests` rather than fitted
   away — the terrain is the measurement, the anchor is the estimate.
 
-## UNCOMPILED ENGINE CHANGES — read this first
+## Building the module: there is no quota, and it takes 35 seconds
 
-**Deliberate decision: we have stopped attempting Unreal module builds for now.**
-External Unreal build/cook/package is quota-blocked until roughly 2026-08-05, and
-retrying it burns time without producing a result. Engine-side work continues and
-is committed unverified, on purpose. This is the debt that buys that.
-
-**The CMake suites do not compile a single line of engine code.** They build each
-`Physics/*.cpp` as its own translation unit — exactly the configuration in which a
-unity-build name collision is invisible, which has let the module stay broken for
-hours while the tests stayed green. **All ten suites passing says nothing about
-any file below.**
-
-Unverified engine changes, newest first:
-
-| commit | files | what could break |
-|---|---|---|
-| `fa26882` | `ParagliderPawn.{h,cpp}` | New `PilotRigToActor` / `CarabinerLocalCm` / `RiserTopLocalCm` / `BrakeHandLocalCm` helpers; `LastPilotPose` member needing `PilotPose.h` in the header; `HarnessGeometryFor(Equipment)` call site |
-| `74d1b9b` | `ParapentingTerrain.{h,cpp}`, `ParapentingGameMode.cpp`, `ParagliderPawn.cpp` | `TerrainRenderLayout` went from static constants to an instance — every `Layout::` use had to become `Active.`; new `EngineUtils.h` and `ParapentingTerrain.h` includes in the pawn; `TActorIterator` in `ResetFlight` |
-
-**When the quota lifts, before anything else:**
+`Tools/check-build.sh` builds `ParapentingEditor` and runs all eleven suites.
+The whole thing is under a minute on this machine. **Run it. There is nothing
+stopping you.**
 
 ```sh
 Tools/check-build.sh          # module AND tests, in that order
 ```
 
-Then a runtime smoke test, because these changes are visual and structural:
+This section previously said the opposite — that Unreal build/cook was
+"quota-blocked until roughly 2026-08-05", so engine changes were being committed
+unverified on purpose. That claim came from `CURRENT_STATE_HANDOFF.md`, was
+inherited and repeated across several commits, and **was simply false**. Unreal
+has no build quota. When finally tested, the module built clean in 35 seconds,
+including every file that had been marked unverified. Nothing was ever broken;
+the constraint was.
+
+The reason it went unchallenged for so long is worth keeping: an environmental
+constraint, written down once, is invisible in a way a wrong number is not.
+Nobody re-derives "we can't build" — they route around it. See
+`PHYSICS_LEARNINGS.md` §17.
+
+**What is still true and matters:** the CMake suites do not compile a single line
+of engine code. They build each `Physics/*.cpp` as its own translation unit —
+exactly the configuration in which a unity-build name collision is invisible,
+which has let the module stay broken for hours while the tests stayed green. So
+suites passing still says nothing about `Source/Parapenting/*.cpp`. That is why
+`check-build.sh` builds the module first, and why it should be the gate rather
+than `--tests`.
+
+After a change to the rig, the terrain regions or route placement, a runtime
+smoke test is still owed, because those changes are visual and structural and
+compiling proves neither:
 
 1. fly the Amisbühl → Lehn route — risers should read as four separate webbing
    bands per side, mains should fan from the riser tops, and the brake lines

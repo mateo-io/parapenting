@@ -378,6 +378,40 @@ bug and keeps arguing for it.
 
 ---
 
+## 17. Verify the constraints, not just the code
+
+A handoff document said Unreal build/cook was "quota-blocked until roughly
+2026-08-05". It was inherited, repeated across several commits, used to justify
+committing engine changes unverified, and used to write a whole tracking section
+for the resulting debt. It was false. Unreal has no build quota. The first time
+anyone ran the build it succeeded in 35 seconds, with every file that had been
+marked unverified compiling clean.
+
+This is the third instance of the same failure in this project, and the other
+two are §12 and §16: a rotor measurement taken thirty metres underground that
+argued for an already-fixed bug for 25 commits, and a diagnosis recorded as
+"unverified" that parked a defect for a whole level. But a false *constraint* is
+worse than a false *number*, because of how each fails:
+
+- a wrong number is load-bearing — something eventually computes with it and
+  disagrees;
+- a wrong constraint is never computed with at all. The response to "we can't
+  do X" is to route around X. Routing around leaves no contradiction to trip
+  over, so the claim is never re-derived. It just quietly changes what gets
+  built and what gets checked.
+
+**Rule:** treat an inherited statement about the *environment* — a quota, a
+missing tool, a broken pipeline, an unavailable dataset — as an untested claim
+with a short expiry, not as a fact. Test it before designing around it. It costs
+one command; believing it costs everything downstream of the workaround.
+
+**Corollary:** when you do record a real constraint, record how it was
+established and when, so the next reader knows what re-testing it would take.
+"Quota-blocked until 2026-08-05" has no method attached and no way to check
+whether it was ever true.
+
+---
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

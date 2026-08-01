@@ -19,6 +19,9 @@ namespace Parapenting::Physics
 //   +Y     : route-right (bearing ~266.7 deg, ~due west)
 //   Z      : metres relative to the Lehn landing field
 //   CRS    : LV95 / LN02, EPSG:2056
+//
+// Every surveyed region shares this frame, so a coordinate means one thing
+// everywhere in the simulator regardless of which grid answers for it.
 struct RouteFrame
 {
     // WGS84 is authoritative: these must match the Amisbuehl oben and Lehn
@@ -79,17 +82,48 @@ struct RouteFrame
     static inline const double rightEast = forwardNorth;
     static inline const double rightNorth = -forwardEast;
 
-    // Surveyed extent of Content/Terrain/interlaken.asc. Samples outside this
-    // rectangle fall through to the analytic proxy.
-    static constexpr double surveyedXMinM = -1800.0;
-    static constexpr double surveyedXMaxM = 6100.0;
-    static constexpr double surveyedYMinM = -3500.0;
-    static constexpr double surveyedYMaxM = 4500.0;
+    // Surveyed regions, in this one frame. Each mirrors the bounds of the
+    // matching Content/Terrain/<name>.asc and the REGIONS table in
+    // Tools/Terrain/build_heightfield.py; RouteFrameTests holds them to the
+    // provenance files. Samples outside every region fall through to the
+    // analytic proxy.
+    struct SurveyedRegion
+    {
+        const char* name;
+        double xMinM;
+        double xMaxM;
+        double yMinM;
+        double yMaxM;
+
+        constexpr bool Contains(double xM, double yM) const
+        {
+            return xM >= xMinM && xM <= xMaxM && yM >= yMinM && yM <= yMaxM;
+        }
+    };
+
+    // Two valleys 20 km apart, not one grid spanning both: the ground between
+    // them is not flown, and stretching a single heightfield across it would
+    // carry 250 km2 of terrain nobody ever sees.
+    static constexpr SurveyedRegion regions[] = {
+        {"interlaken", -1800.0, 6100.0, -3500.0, 4500.0},
+        {"grindelwald", 4500.0, 11500.0, -18500.0, -14000.0},
+    };
+    static constexpr int regionCount =
+        static_cast<int>(sizeof(regions) / sizeof(regions[0]));
 
     static constexpr bool IsInsideSurveyedBounds(double xM, double yM)
     {
-        return xM >= surveyedXMinM && xM <= surveyedXMaxM
-            && yM >= surveyedYMinM && yM <= surveyedYMaxM;
+        for (const SurveyedRegion& region : regions)
+            if (region.Contains(xM, yM)) return true;
+        return false;
+    }
+
+    // Which region covers this position, or nullptr for none.
+    static constexpr const SurveyedRegion* RegionAt(double xM, double yM)
+    {
+        for (const SurveyedRegion& region : regions)
+            if (region.Contains(xM, yM)) return &region;
+        return nullptr;
     }
 
     static double LocalToEastingM(double xM, double yM)

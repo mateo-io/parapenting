@@ -73,20 +73,21 @@ and no self-collision, which is what Level 8's cravats will need.
 1. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
    measurement. Every flight number in Level 4 rests on theory. The plan calls
    for this work to begin during Level 1; it has not begun.
-2. **Both Grindelwald routes are off the surveyed heightfield and off the
-   rendered extent.** Analytic terrain puts the Grund landing at 4683 m against
-   a published 950 m, in air with no thermal field. Selectable content.
-3. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
+2. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
    endpoints, no self-collision. Level 8's cravats need the self-collision.
-4. **Deep stall does not converge** in the VSM solved cold, and will not: the
+3. **Deep stall does not converge** in the VSM solved cold, and will not: the
    separated branch has a negative lift slope, which inverts the downwash
    feedback between sections. Level 11's unsteady wake is the honest treatment.
    Locked as a known-failure check. Inside the coupled solve, with the
    separation state carried between steps, the wing does reach a fully
    separated 46-degree stall at 4.65 m/s of sink without the solve failing.
-5. **Apparent-mass rotational terms are disputed** — leading coefficients
+4. **Apparent-mass rotational terms are disputed** — leading coefficients
    unverified against the source paper, and 14× the existing estimate in roll.
    Registered `Disputed`; nothing uses their magnitude.
+5. **Grindelwald First's anchor is 50 m above its surveyed ground.**
+   Published 2123 m is the top station; the WGS84 pair is on the launch slope
+   below it, which swissALTI3D puts at 2073 m. Every other site agrees within
+   12 m. Recorded rather than fitted away - the terrain is the measurement.
 6. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
    is guiding rule 11 working as intended, but it means none of Levels 1-7 has
    been exercised by a pilot.
@@ -115,14 +116,19 @@ so the fixed altitude those two samples shared put one of them thirty metres
 inside a hillside. Sampled at a common height above ground, rotor sits on the
 flanks of both sides, because it is computed from the terrain gradient.
 
+**Grindelwald is on real ground.** Its own swissALTI3D region — 50 tiles, x
+[4500, 11500], y [-18500, -14000] in the same route frame — replaced the
+invented y = -8500 lane. All ten routes now launch and land on surveyed terrain,
+the Grund field reads 948 m against a published 950 m where the analytic proxy
+said 4683 m, and the region carries its own thermal triggers and authored
+weather instead of flying through dead air. `TerrainModel` holds regions
+additively; the renderer draws one at a time and rebuilds on a route change that
+crosses between them.
+
 1. **Start the polar acquisition.** It is a data problem with a long lead time,
    it needs XFOIL or equivalent tooling, it can run in parallel with anything,
    and it is what turns Level 4's numbers from plausible into defensible.
-2. **Put the Grindelwald routes on real ground**, or stop shipping them as
-   selectable content. Two of ten routes currently fly off the surveyed
-   heightfield and off the rendered extent, into analytic terrain 3.7 km above
-   the published landing elevation, in air with no thermal field.
-3. **Then Level 8**, which now has its converged Level 7 and needs
+2. **Then Level 8**, which now has its converged Level 7 and needs
    self-collision in Level 6 before collapse can be emergent rather than
    scripted.
 

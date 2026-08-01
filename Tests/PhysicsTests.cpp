@@ -166,23 +166,35 @@ int main()
         assert(active.rigRotationDegrees.z > 10.0);
     }
     {
-        using Layout = TerrainRenderLayout;
-        static_assert(Layout::TileCount() == 64);
-        static_assert(Layout::VerticesPerTile() == 2601);
-        static_assert(Layout::TrianglesPerTile() == 5000);
-        assert(Layout::TotalVertices() < 220000);
-        assert(Layout::TotalTriangles() < 420000);
-        // Sample spacing should track the 20 m heightfield: fine enough to
-        // resolve it, coarse enough not to spend vertices on nothing.
-        assert(Layout::SampleSpacingXM() > 15.0
-            && Layout::SampleSpacingXM() <= 22.0);
-        assert(Layout::SampleSpacingYM() > 15.0
-            && Layout::SampleSpacingYM() <= 22.0);
-        // The visible mesh must not claim ground the survey does not cover.
-        assert(Layout::xMinM >= RouteFrame::surveyedXMinM);
-        assert(Layout::xMaxM <= RouteFrame::surveyedXMaxM);
-        assert(Layout::yMinM >= RouteFrame::surveyedYMinM);
-        assert(Layout::yMaxM <= RouteFrame::surveyedYMaxM);
+        // One layout per surveyed region, and every one of them has to hold
+        // the same two contracts: a vertex budget, and a mesh that never
+        // claims ground the survey does not cover.
+        for (const auto& region : RouteFrame::regions)
+        {
+            const TerrainRenderLayout layout = LayoutFor(
+                0.5 * (region.xMinM + region.xMaxM),
+                0.5 * (region.yMinM + region.yMaxM));
+            assert(layout.VerticesPerTile() == 2601);
+            assert(layout.TrianglesPerTile() == 5000);
+            assert(layout.TotalVertices() < 220000);
+            assert(layout.TotalTriangles() < 420000);
+            // Sample spacing should track the 20 m heightfield: fine enough to
+            // resolve it, coarse enough not to spend vertices on nothing.
+            assert(layout.SampleSpacingXM() > 15.0
+                && layout.SampleSpacingXM() <= 22.0);
+            assert(layout.SampleSpacingYM() > 15.0
+                && layout.SampleSpacingYM() <= 22.0);
+            // Exactly the region's own rectangle, not a rectangle that spills
+            // onto ground the analytic proxy would have to invent.
+            assert(layout.xMinM == region.xMinM);
+            assert(layout.xMaxM == region.xMaxM);
+            assert(layout.yMinM == region.yMinM);
+            assert(layout.yMaxM == region.yMaxM);
+        }
+        // The Interlaken region is what a position off every region gets, so
+        // its tile count is the one the actor reserves for.
+        assert(LayoutFor(0.0, 0.0).TileCount() == 64);
+        assert(LayoutFor(1.0e9, 1.0e9).TileCount() == 64);
     }
     {
         assert(TerrainModel::LoadHeightfieldAscii(
@@ -861,6 +873,19 @@ int main()
 
     {
         using namespace Parapenting::Physics;
+        // Both surveyed regions, so route endpoints can be held to the
+        // published site elevations rather than to the analytic proxy. Loading
+        // is additive; run from the repo root or one level below it.
+        const auto LoadRegion = [](const char* name)
+        {
+            return TerrainModel::LoadHeightfieldAscii(
+                       std::string("Content/Terrain/") + name)
+                || TerrainModel::LoadHeightfieldAscii(
+                       std::string("../Content/Terrain/") + name);
+        };
+        assert(LoadRegion("interlaken.asc"));
+        assert(LoadRegion("grindelwald.asc"));
+        assert(TerrainModel::LoadedRegionCount() == 2);
         assert(RouteProfileCount() == 10);
         const auto& primary = GetRouteProfile(RouteProfileId::AmisbuehlLehn);
         assert(RouteHorizontalDistanceM(primary) > 2300.0);
@@ -891,44 +916,56 @@ int main()
         const Vec3 firstLaunch = RouteLaunchLocalM(firstGrund);
         const Vec3 grundLanding = RouteLandingLocalM(firstGrund);
         const Vec3 bodmiLanding = RouteLandingLocalM(firstBodmi);
-        assert(std::abs(firstLaunch.x) < 0.01);
-        // Grindelwald sits route-right of the Interlaken axis, so these are
-        // negative in the flipped terrain frame. Same stale-sign story as the
-        // Niederhorn launch above.
-        assert(std::abs(firstLaunch.y + 8500.0) < 0.01);
-        assert(grundLanding.x > 4000.0 && grundLanding.x < 4050.0);
-        assert(grundLanding.y < -6250.0 && grundLanding.y > -6350.0);
-        assert(bodmiLanding.y < -7400.0 && bodmiLanding.y > -7480.0);
-        assert(std::abs(TerrainModel::HeightM(
-            firstLaunch.x, firstLaunch.y) - 1558.0) < 2.0);
-        // Both Grindelwald routes land off the surveyed heightfield, where
-        // the analytic fallback puts the Grund landing field at 4683 m - some
-        // 3.7 km above the published 950 m. TerrainSurveyTests already
-        // reports these two routes as ANALYTIC; asserting a surveyed height
-        // here would be asserting the fallback's arithmetic, so what is
-        // checked is the published elevation the briefing actually uses, and
-        // the gap stays visible in the survey report.
+        // Grindelwald sits where Grindelwald is. These were an invented lane
+        // at x = 0, y = -8500 until the valley got its own surveyed region:
+        // the intra-valley geometry was right and the whole group was 20 km
+        // from its real position, on analytic ground that put the Grund
+        // landing field at 4683 m against a published 950 m.
+        assert(firstLaunch.x > 5890.0 && firstLaunch.x < 5990.0);
+        assert(firstLaunch.y < -17430.0 && firstLaunch.y > -17530.0);
+        assert(grundLanding.x > 9910.0 && grundLanding.x < 10010.0);
+        assert(grundLanding.y < -15230.0 && grundLanding.y > -15330.0);
+        assert(bodmiLanding.x > 9030.0 && bodmiLanding.x < 9130.0);
+        assert(bodmiLanding.y < -16370.0 && bodmiLanding.y > -16470.0);
+        // On surveyed ground now, so the terrain can be held to the published
+        // site elevations rather than to the proxy's arithmetic. Local z is
+        // relative to the Lehn field at 565 m.
+        assert(RouteFrame::IsInsideSurveyedBounds(firstLaunch.x, firstLaunch.y));
+        assert(RouteFrame::IsInsideSurveyedBounds(
+            grundLanding.x, grundLanding.y));
         assert(std::abs(firstGrund.landing.elevationM - 950.0) < 1.0);
-        assert(TerrainModel::HeightM(grundLanding.x, grundLanding.y) > 1000.0);
+        const double grundGroundM =
+            TerrainModel::HeightM(grundLanding.x, grundLanding.y) + 565.0;
+        assert(grundGroundM > 900.0 && grundGroundM < 1010.0);
+        const double firstGroundM =
+            TerrainModel::HeightM(firstLaunch.x, firstLaunch.y) + 565.0;
+        assert(firstGroundM > 2050.0 && firstGroundM < 2200.0);
         assert(firstBodmi.advancedLanding);
         AtmosphereModel regionalAir;
         regionalAir.SetPreset(WeatherPresetId::ThermalDay);
-        // Sample points mirrored with the terrain frame flip: the Grindelwald
-        // valley is route-right, so -Y.
-        const Atmosphere firstAir = regionalAir.Sample(
-            {1280.0, -7830.0, 1800.0}, 90.0);
-        assert(std::isfinite(firstAir.windWorldMps.x));
-        assert(std::isfinite(firstAir.windWorldMps.z));
-        // The thermal field only exists along the surveyed Interlaken
-        // corridor, so out at Grindelwald there is none - this asserted the
-        // opposite for as long as the suite was compiled with NDEBUG. Stated
-        // as it is: thermals near the route, nothing off it. That the
-        // regional routes fly through dead air is the same content gap the
-        // survey report flags as ANALYTIC.
-        assert(firstAir.thermalLiftMps == 0.0);
+        // Each surveyed region has its own convection triggers, so a route in
+        // either valley flies in air with thermals in it. This asserted the
+        // opposite until Grindelwald got real ground: the thermal field was a
+        // single Interlaken set plus a lane offset, and the two Grindelwald
+        // routes flew through air with no thermals at any time of day.
+        //
+        // Sampled over each valley's own trigger line, at a height where a
+        // thermal has developed.
+        const Atmosphere grindelwaldAir = regionalAir.Sample(
+            {7900.0, -16300.0, 1800.0}, 90.0);
+        assert(std::isfinite(grindelwaldAir.windWorldMps.x));
+        assert(std::isfinite(grindelwaldAir.windWorldMps.z));
+        assert(grindelwaldAir.thermalLiftMps > 0.1);
         const Atmosphere corridorAir = regionalAir.Sample(
             {1280.0, -760.0, 1800.0}, 90.0);
         assert(corridorAir.thermalLiftMps > 0.1);
+        // Between the two valleys there is no surveyed ground and no trigger
+        // set of its own, so the air there is still the Interlaken field seen
+        // from far away - nothing. Nobody flies there; it is asserted so that
+        // "thermals everywhere" cannot creep in as a fix.
+        const Atmosphere betweenAir = regionalAir.Sample(
+            {1280.0, -7830.0, 1800.0}, 90.0);
+        assert(betweenAir.thermalLiftMps == 0.0);
         regionalAir.SetPreset(WeatherPresetId::FoehnRotor);
         // Sampled at a fixed height ABOVE GROUND, which is the only way two
         // places compare. Local z is metres relative to the Lehn field at
@@ -948,19 +985,25 @@ int main()
         };
         // Rotor comes from the terrain gradient the wind crosses, so it lives
         // on the flanks and not over flat ground - on both sides of the route,
-        // rather than on a hardcoded one. These stations are chosen on the
-        // ANALYTIC proxy, because this suite does not load the surveyed
-        // heightfield and the flanks sit in different places on the two
-        // surfaces. TerrainSurveyTests is where the surveyed terrain's sides
-        // are checked.
-        const double westFlank = RotorAboveGround(760.0, 1000.0);
-        const double eastFlank = RotorAboveGround(760.0, -750.0);
-        const double regionalRotorStrength = RotorAboveGround(760.0, -8260.0);
+        // rather than on a hardcoded one. Both valley walls at 1250 m out,
+        // on the surveyed grid loaded above.
+        const double westFlank = RotorAboveGround(760.0, 1250.0);
+        const double eastFlank = RotorAboveGround(760.0, -1250.0);
         assert(westFlank > 0.0);
         assert(eastFlank > 0.0);
-        // Off the surveyed corridor there is no rotor field at all, which is
-        // the same content gap the survey report flags as ANALYTIC.
-        assert(regionalRotorStrength == 0.0);
+        // The authored rotor volumes move onto the region being flown, so a
+        // foehn day at Grindelwald is a foehn day rather than smooth air. They
+        // are placed in Interlaken coordinates and offset per region; without
+        // that, every authored volume in every preset sat 20 km from anyone
+        // flying there.
+        double grindelwaldRotor = 0.0;
+        for (double x = 6200.0; x <= 9800.0; x += 200.0)
+        {
+            for (double y = -17400.0; y <= -15000.0; y += 200.0)
+                grindelwaldRotor =
+                    std::max(grindelwaldRotor, RotorAboveGround(x, y));
+        }
+        assert(grindelwaldRotor > 0.1);
         std::size_t advancedLandings = 0;
         std::size_t routesOutsideRenderedTerrain = 0;
         for (std::size_t i = 0; i < RouteProfileCount(); ++i)
@@ -971,20 +1014,24 @@ int main()
             assert(std::isfinite(RouteHorizontalDistanceM(route)));
             assert(RouteHorizontalDistanceM(route) > 1500.0);
             assert(RouteLaunchHeightM(route) > 600.0);
-            // The two Grindelwald routes sit at y = -8500, well outside the
-            // rendered extent of y in [-3500, 4500] - they are selectable
-            // content that puts the pilot off the map, on analytic terrain,
-            // in air with no thermals. Counted rather than asserted away, so
-            // the number cannot quietly grow.
-            const bool insideRender =
-                launch.x >= TerrainRenderLayout::xMinM
-                && launch.x <= TerrainRenderLayout::xMaxM
-                && launch.y >= TerrainRenderLayout::yMinM
-                && launch.y <= TerrainRenderLayout::yMaxM
-                && landing.x >= TerrainRenderLayout::xMinM
-                && landing.x <= TerrainRenderLayout::xMaxM
-                && landing.y >= TerrainRenderLayout::yMinM
-                && landing.y <= TerrainRenderLayout::yMaxM;
+            // Both ends must be inside the SAME rendered region: the renderer
+            // draws one region at a time, so a route straddling two would fly
+            // off the drawn mesh half way down. This used to count the two
+            // Grindelwald routes, which sat on an invented lane at y = -8500,
+            // outside the rendered extent entirely, on analytic terrain in air
+            // with no thermals.
+            const TerrainRenderLayout launchLayout =
+                LayoutFor(launch.x, launch.y);
+            const auto inside = [](const TerrainRenderLayout& layout,
+                                   const Vec3& point)
+            {
+                return point.x >= layout.xMinM && point.x <= layout.xMaxM
+                    && point.y >= layout.yMinM && point.y <= layout.yMaxM;
+            };
+            const bool insideRender = RouteFrame::IsInsideSurveyedBounds(
+                                          launch.x, launch.y)
+                && inside(launchLayout, launch)
+                && inside(launchLayout, landing);
             if (!insideRender) ++routesOutsideRenderedTerrain;
             assert(route.sourceLabel != nullptr);
             assert(route.launchHazard != nullptr);
@@ -998,7 +1045,11 @@ int main()
             }
         }
         assert(advancedLandings == 5);
-        assert(routesOutsideRenderedTerrain == 2);
+        // Every route, both ends, on surveyed ground inside one rendered
+        // region. This counted 2 for as long as the Grindelwald pair sat on an
+        // invented lane off the map; it is the number that closes that defect,
+        // so it is asserted at zero rather than counted.
+        assert(routesOutsideRenderedTerrain == 0);
         assert(AssessRouteWind(primary, 135.0, 3.0)
             == SiteWindAssessment::Suitable);
         assert(AssessRouteWind(primary, 315.0, 3.0)

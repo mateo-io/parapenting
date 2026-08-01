@@ -39,15 +39,23 @@ void AParapentingGameMode::InitGame(
     // InitGame runs before the default pawn is spawned. Loading the
     // authoritative terrain here guarantees the pawn's BeginPlay/ResetFlight
     // queries the surveyed launch elevation rather than the analytic fallback.
-    const FString HeightfieldPath = FPaths::Combine(
-        FPaths::ProjectContentDir(), TEXT("Terrain/interlaken.asc"));
-    bLoadedSurveyedTerrain =
-        Parapenting::Physics::TerrainModel::LoadHeightfieldAscii(
-            TCHAR_TO_UTF8(*HeightfieldPath));
-    UE_LOG(LogTemp, Display, TEXT("Parapenting terrain source: %s (%s)"),
-        bLoadedSurveyedTerrain
-            ? TEXT("surveyed swissALTI3D") : TEXT("analytic fallback"),
-        *HeightfieldPath);
+    // Both surveyed regions, in one shared route frame. Loading is additive
+    // and the regions do not overlap, so which one answers for a sample is
+    // decided by position rather than by load order or by the active route.
+    bLoadedSurveyedTerrain = true;
+    for (const TCHAR* RegionFile :
+             {TEXT("Terrain/interlaken.asc"), TEXT("Terrain/grindelwald.asc")})
+    {
+        const FString HeightfieldPath = FPaths::Combine(
+            FPaths::ProjectContentDir(), RegionFile);
+        const bool bLoaded =
+            Parapenting::Physics::TerrainModel::LoadHeightfieldAscii(
+                TCHAR_TO_UTF8(*HeightfieldPath));
+        bLoadedSurveyedTerrain = bLoadedSurveyedTerrain && bLoaded;
+        UE_LOG(LogTemp, Display, TEXT("Parapenting terrain region: %s (%s)"),
+            bLoaded ? TEXT("surveyed swissALTI3D") : TEXT("MISSING"),
+            *HeightfieldPath);
+    }
 }
 
 void AParapentingGameMode::BeginPlay()

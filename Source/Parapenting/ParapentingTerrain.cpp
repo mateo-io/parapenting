@@ -36,9 +36,9 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     const float FieldBands = 0.5f + 0.5f
         * FMath::Sin(static_cast<float>(X * 0.018 + Y * 0.006));
     const float ParcelX = FMath::Frac(
-        static_cast<float>((X - Layout::xMinM) / 145.0));
+        static_cast<float>((X - Layout::xMinInterlakenM) / 145.0));
     const float ParcelY = FMath::Frac(
-        static_cast<float>((Y - Layout::yMinM) / 110.0));
+        static_cast<float>((Y - Layout::yMinInterlakenM) / 110.0));
     const float FieldBoundary =
         (ParcelX < 0.025f || ParcelY < 0.035f) ? 1.0f : 0.0f;
     const float ValleyField = FMath::Clamp(
@@ -122,12 +122,32 @@ AParapentingTerrain::AParapentingTerrain()
     PrimaryActorTick.bCanEverTick = false;
     TerrainRoot = CreateDefaultSubobject<USceneComponent>(TEXT("TerrainRoot"));
     SetRootComponent(TerrainRoot);
-    TerrainTiles.Reserve(Layout::TileCount());
+    TerrainTiles.Reserve(Layout{}.TileCount());
 }
 
 void AParapentingTerrain::BeginPlay()
 {
     Super::BeginPlay();
+    // The origin is the Amisbuehl launch, so this is the Interlaken region.
+    // A pawn starting on a Grindelwald route rebuilds on its first reset.
+    BuildForRegionAt(0.0, 0.0);
+}
+
+void AParapentingTerrain::BuildForRegionAt(double XM, double YM)
+{
+    const Layout Region = Parapenting::Physics::LayoutFor(XM, YM);
+    if (bHasBuilt && Region.xMinM == BuiltXMinM && Region.yMinM == BuiltYMinM)
+        return;
+
+    for (UProceduralMeshComponent* Tile : TerrainTiles)
+        if (Tile) Tile->DestroyComponent();
+    TerrainTiles.Reset();
+
+    ActiveLayout = Region;
+    BuiltXMinM = Region.xMinM;
+    BuiltYMinM = Region.yMinM;
+    bHasBuilt = true;
+    ++BuildSerial;
     BuildTerrainMesh();
 }
 
@@ -137,18 +157,19 @@ void AParapentingTerrain::BuildTerrainMesh()
         Parapenting::LoadVertexColourMaterial();
     const bool bBakeShading = !Parapenting::bVertexColourMaterialIsLit;
 
-    const int32 VertexSide = Layout::cellsPerTile + 1;
+    const Layout& Active = ActiveLayout;
+    const int32 VertexSide = Active.cellsPerTile + 1;
     const double TileWidth =
-        (Layout::xMaxM - Layout::xMinM) / Layout::tileCountX;
+        (Active.xMaxM - Active.xMinM) / Active.tileCountX;
     const double TileHeight =
-        (Layout::yMaxM - Layout::yMinM) / Layout::tileCountY;
+        (Active.yMaxM - Active.yMinM) / Active.tileCountY;
 
-    for (int32 TileX = 0; TileX < Layout::tileCountX; ++TileX)
+    for (int32 TileX = 0; TileX < Active.tileCountX; ++TileX)
     {
-        for (int32 TileY = 0; TileY < Layout::tileCountY; ++TileY)
+        for (int32 TileY = 0; TileY < Active.tileCountY; ++TileY)
         {
             const FName TileName(*FString::Printf(
-                TEXT("TerrainTile_%02d_%02d"), TileX, TileY));
+                TEXT("TerrainTile_%d_%02d_%02d"), BuildSerial, TileX, TileY));
             UProceduralMeshComponent* Tile =
                 NewObject<UProceduralMeshComponent>(this, TileName);
             Tile->SetupAttachment(TerrainRoot);
@@ -169,19 +190,19 @@ void AParapentingTerrain::BuildTerrainMesh()
             Colours.Reserve(VertexSide * VertexSide);
             Tangents.Reserve(VertexSide * VertexSide);
             Triangles.Reserve(
-                Layout::cellsPerTile * Layout::cellsPerTile * 6);
+                Active.cellsPerTile * Active.cellsPerTile * 6);
 
-            for (int32 LocalX = 0; LocalX <= Layout::cellsPerTile; ++LocalX)
+            for (int32 LocalX = 0; LocalX <= Active.cellsPerTile; ++LocalX)
             {
-                const double X = Layout::xMinM + TileWidth
+                const double X = Active.xMinM + TileWidth
                     * (TileX + static_cast<double>(LocalX)
-                        / Layout::cellsPerTile);
+                        / Active.cellsPerTile);
                 for (int32 LocalY = 0;
-                     LocalY <= Layout::cellsPerTile; ++LocalY)
+                     LocalY <= Active.cellsPerTile; ++LocalY)
                 {
-                    const double Y = Layout::yMinM + TileHeight
+                    const double Y = Active.yMinM + TileHeight
                         * (TileY + static_cast<double>(LocalY)
-                            / Layout::cellsPerTile);
+                            / Active.cellsPerTile);
                     const double Z =
                         Parapenting::Physics::TerrainModel::HeightM(X, Y);
                     const auto N =
@@ -206,10 +227,10 @@ void AParapentingTerrain::BuildTerrainMesh()
                 }
             }
 
-            for (int32 LocalX = 0; LocalX < Layout::cellsPerTile; ++LocalX)
+            for (int32 LocalX = 0; LocalX < Active.cellsPerTile; ++LocalX)
             {
                 for (int32 LocalY = 0;
-                     LocalY < Layout::cellsPerTile; ++LocalY)
+                     LocalY < Active.cellsPerTile; ++LocalY)
                 {
                     const int32 A = LocalX * VertexSide + LocalY;
                     const int32 B = (LocalX + 1) * VertexSide + LocalY;

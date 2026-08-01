@@ -417,6 +417,8 @@
   "dataset": "swissALTI3D",
   "officialProductPage": "https://www.swisstopo.admin.ch/en/height-model-swissalti3d",
   "outputResolutionM": 20.0,
+  "region": "interlaken",
+  "regionNote": "Eight Interlaken routes: Amisbuehl, Bergbo, Hohwald, Niederhorn south, landing at Lehn and Hoehematte.",
   "routeFrame": {
     "landing": "Lehn",
     "landingElevationM": 565.0,

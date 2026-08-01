@@ -277,22 +277,69 @@ the apparent-mass rotational terms, whose leading coefficients could not be
 checked against the source paper and which disagree with the existing estimate
 by a factor of fourteen.
 
+## Terrain
+
+Two surveyed swissALTI3D regions, both in one route frame — origin at the
+Amisbuehl launch, +X along the Amisbuehl → Lehn route, +Y route-right — so a
+coordinate means one thing everywhere regardless of which grid answers for it.
+
+| region | bounds (local m) | grid | tiles |
+|---|---|---|---|
+| `interlaken` | x [-1800, 6100], y [-3500, 4500] | 396 × 401 | 81 |
+| `grindelwald` | x [4500, 11500], y [-18500, -14000] | 351 × 226 | 50 |
+
+Two grids rather than one covering both: the valleys are 20 km apart and the
+ground between them is never flown, so a single grid would carry 250 km² of
+terrain nobody sees. `TerrainModel` loads regions additively and the first
+covering a sample answers for it; the renderer draws one region at a time and
+rebuilds when a route change crosses between them.
+
+**All ten routes now launch and land on surveyed ground.** The two Grindelwald
+routes previously sat on an invented lane at y = -8500 — their intra-valley
+geometry was right and the whole group was 20 km from the real valley, on an
+analytic proxy that put the Grund landing field at 4683 m against a published
+950 m, in air with no thermal field. Surveyed ground puts it at 948 m.
+
+Weather is anchored per region too. The thermal triggers were a single
+Interlaken set plus a `y > 5000 ? 7500 : 0` lane offset, and every authored
+weather volume in every preset was placed in Interlaken coordinates, so a foehn
+day 20 km away was smooth air over dead ground. Each region now carries its own
+triggers and an offset that moves authored volumes onto its own corridor in all
+three axes — Grindelwald's valley floor is 800 m higher, so an unshifted volume
+sat underground.
+
+Published site elevation against surveyed ground, which is an external check
+rather than a golden value:
+
+| site | error |
+|---|---|
+| Lehn | +0.4 m |
+| Bergbo | -0.3 m |
+| Niederhorn south | -1.4 m |
+| Hoehematte | -1.7 m |
+| Grindelwald Grund | -1.7 m |
+| Amisbuehl oben | +2.2 m |
+| Grindelwald Bodmi | +10.7 m |
+| Hohwald | -11.5 m |
+| Grindelwald First | **-50.3 m** |
+
 ## Known defects and gaps
 
 Ordered by how much they matter.
 
-1. **Both Grindelwald routes are off the map** — outside the surveyed
-   heightfield *and* the rendered extent. The analytic fallback puts the Grund
-   landing field at 4683 m against a published 950 m, in air with no thermal
-   field. They are selectable content.
-2. **Deep stall does not converge** in the VSM solved cold, and will not: the
+1. **Deep stall does not converge** in the VSM solved cold, and will not: the
    separated branch has a negative lift slope, which inverts the downwash
    feedback between sections, and a wing in deep stall has no stable steady
    state. Level 11's unsteady wake is the honest treatment. Locked as a
    known-failure check. Inside the coupled solve, where the separation state is
    carried between steps, the wing does walk into stall — see Level 7.
-3. **Section polars are analytic.** No XFOIL runs, no measured data. Every
+2. **Section polars are analytic.** No XFOIL runs, no measured data. Every
    flight number above rests on theory.
-4. **The apparent-mass rotational terms are disputed** (above).
+3. **The apparent-mass rotational terms are disputed** (above).
+4. **Grindelwald First's anchor is 50 m off its surveyed ground.** Published
+   2123 m is the top station; the WGS84 pair is on the launch slope below it,
+   which the survey puts at 2073 m. Every other site agrees within 12 m. The
+   terrain is the measurement and the anchor is the estimate, so it is recorded
+   rather than fitted away. `terrain_survey_tests` prints the table.
 5. **None of the geometry-driven stack flies the wing.** The legacy polar still
    does.

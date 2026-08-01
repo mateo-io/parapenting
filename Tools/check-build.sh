@@ -46,9 +46,11 @@ run_tests() {
         Data/Wings/bgd-epic-2-ml-geometry.json)
     (cd "$ROOT" && "$BUILD_DIR/parapenting_suspension_tests" \
         Data/Wings/bgd-epic-2-ml-lineplan.json)
-    # Run from the project root: the survey test reads the provenance file.
+    # Run from the project root: the survey test reads the provenance files
+    # and both surveyed heightfields. One argument per region.
     (cd "$ROOT" && "$BUILD_DIR/parapenting_terrain_survey_tests" \
-        Content/Terrain/interlaken.provenance.json)
+        Content/Terrain/interlaken.provenance.json \
+        Content/Terrain/grindelwald.provenance.json)
 }
 
 case "${1:-all}" in

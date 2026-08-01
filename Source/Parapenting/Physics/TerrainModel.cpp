@@ -2,13 +2,23 @@
 #include "HeightfieldGrid.h"
 
 #include <algorithm>
+#include <vector>
 #include <cmath>
 
 namespace Parapenting::Physics
 {
 namespace
 {
-HeightfieldGrid SurveyedTerrain;
+std::vector<HeightfieldGrid> SurveyedRegions;
+
+// True if any loaded region covers this position, and if so its elevation.
+bool SampleSurveyed(double x, double y, double& elevationM)
+{
+    for (const HeightfieldGrid& region : SurveyedRegions)
+        if (region.Sample(x, y, elevationM)) return true;
+    return false;
+}
+
 double SmoothStep(double edge0, double edge1, double x)
 {
     const double t = std::clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
@@ -21,35 +31,37 @@ double Gaussian(double x, double centre, double width)
     return std::exp(-0.5 * q * q);
 }
 
-// Route-left (negative Y) offset at which the analytic Grindelwald lane takes
-// over from the analytic Interlaken proxy. Shared with ProvenanceAt so the
-// two cannot disagree about where the boundary is.
-constexpr double GrindelwaldLaneYM = -5000.0;
 }
 
 bool TerrainModel::LoadHeightfieldAscii(const std::string& filePath)
 {
-    return SurveyedTerrain.LoadEsriAscii(filePath);
+    HeightfieldGrid region;
+    if (!region.LoadEsriAscii(filePath)) return false;
+    SurveyedRegions.push_back(std::move(region));
+    return true;
 }
 
 void TerrainModel::ClearHeightfield()
 {
-    SurveyedTerrain.Clear();
+    SurveyedRegions.clear();
 }
 
 bool TerrainModel::HasHeightfield()
 {
-    return SurveyedTerrain.IsLoaded();
+    return !SurveyedRegions.empty();
+}
+
+int TerrainModel::LoadedRegionCount()
+{
+    return static_cast<int>(SurveyedRegions.size());
 }
 
 TerrainProvenance TerrainModel::ProvenanceAt(double x, double y)
 {
     double ignored = 0.0;
-    if (SurveyedTerrain.Sample(x, y, ignored))
-        return TerrainProvenance::Surveyed;
-    return y < GrindelwaldLaneYM
-        ? TerrainProvenance::AnalyticGrindelwald
-        : TerrainProvenance::AnalyticInterlaken;
+    return SampleSurveyed(x, y, ignored)
+        ? TerrainProvenance::Surveyed
+        : TerrainProvenance::Analytic;
 }
 
 bool TerrainModel::IsSurveyed(double x, double y)
@@ -60,38 +72,13 @@ bool TerrainModel::IsSurveyed(double x, double y)
 double TerrainModel::HeightM(double x, double y)
 {
     double surveyedElevation = 0.0;
-    if (SurveyedTerrain.Sample(x, y, surveyedElevation))
-        return surveyedElevation;
-    // Grindelwald is held in a separate sparse regional lane so its verified
-    // route geometry can coexist with the detailed Interlaken heightfield
-    // without stretching that mesh over the 20 km geographic separation.
-    if (y < GrindelwaldLaneYM)
-    {
-        constexpr double RouteDxM = 4021.2845;
-        constexpr double RouteDyM = -2199.4248;
-        constexpr double FirstToGrundM = 4583.47;
-        constexpr double ForwardX = RouteDxM / FirstToGrundM;
-        constexpr double ForwardY = RouteDyM / FirstToGrundM;
-        constexpr double LeftX = -ForwardY;
-        constexpr double LeftY = ForwardX;
-        const double dx = x;
-        const double dy = y + 8500.0;
-        const double along = dx * ForwardX + dy * ForwardY;
-        const double cross = dx * LeftX + dy * LeftY;
-        const double progress = SmoothStep(0.0, FirstToGrundM, along);
-        const double valleyFloor = 385.0 + 1173.0 * (1.0 - progress);
-        const double crossValley = std::abs(cross);
-        const double wall = std::pow(
-            std::max(0.0, crossValley - 520.0) / 850.0, 1.45) * 520.0;
-        const double bodmiCorrection =
-            -52.0 * Gaussian(along, 3264.0, 360.0)
-            * Gaussian(cross, 573.0, 300.0);
-        const double northRidge =
-            180.0 * Gaussian(along, 1850.0, 720.0)
-            * Gaussian(cross, 1000.0, 420.0);
-        return std::max(360.0,
-            valleyFloor + wall + bodmiCorrection + northRidge);
-    }
+    if (SampleSurveyed(x, y, surveyedElevation)) return surveyedElevation;
+    // Grindelwald used to be a hand-shaped analytic lane here, sitting at an
+    // invented y = -8500 because there was no surveyed ground 20 km out. It is
+    // its own swissALTI3D region now, at the sites' true projected positions,
+    // and the lane is gone with it. What remains is one analytic proxy for
+    // anywhere off the surveyed regions - a shape, not a place.
+    //
     // The launch shoulder drops into the Interlaken valley and broadens into
     // the Lehn landing basin. Side walls evoke the Harder/Kulm foothills while
     // leaving the route corridor readable and safely flyable.

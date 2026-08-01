@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-"""Build a route-aligned Interlaken heightfield from official swissALTI3D COGs.
+"""Build route-aligned heightfields from official swissALTI3D COGs.
+
+    python3 build_heightfield.py interlaken
+    python3 build_heightfield.py grindelwald
+
+Every region is expressed in the SAME route frame - origin at Amisbuehl oben,
++X along the Amisbuehl -> Lehn route, +Y route-right - so a coordinate means
+one thing everywhere in the simulator regardless of which grid answers for it.
+Grindelwald is a second grid rather than an extension of the first because the
+two valleys are 20 km apart and the ground between them is not flown.
 
 Requires Pillow and NumPy. It deliberately uses only public HTTP endpoints and
-stores exact source URLs plus timestamps beside the generated terrain.
+stores exact source URLs plus hashes beside the generated terrain.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
@@ -19,8 +29,7 @@ from PIL import Image
 
 PROJECT = pathlib.Path(__file__).resolve().parents[2]
 CACHE = PROJECT / "build" / "terrain-cache"
-OUTPUT = PROJECT / "Content" / "Terrain" / "interlaken.asc"
-METADATA = PROJECT / "Content" / "Terrain" / "interlaken.provenance.json"
+TERRAIN = PROJECT / "Content" / "Terrain"
 
 CATALOGUE = (
     "https://ogd.swisstopo.admin.ch/services/swiseld/services/"
@@ -74,13 +83,30 @@ def wgs84_to_lv95(latitude_deg: float, longitude_deg: float) -> tuple[float, flo
 LAUNCH_E, LAUNCH_N = wgs84_to_lv95(LAUNCH_LAT, LAUNCH_LON)
 LANDING_E, LANDING_N = wgs84_to_lv95(LANDING_LAT, LANDING_LON)
 
-X_MIN, X_MAX = -1800.0, 6100.0
-# +Y is route-RIGHT. Y_MIN reaches past the Hoehematte landing field, which
-# sits at local y = -2685 and is the landing for four of the shipped routes.
-# The margin beyond it covers the landing circuit rather than stopping at the
-# field boundary. Y_MAX covers the Niederhorn side at y = +3323.
-Y_MIN, Y_MAX = -3500.0, 4500.0
 OUTPUT_CELL_M = 20.0
+
+# Surveyed regions, all in the one route frame. Bounds are local metres.
+REGIONS = {
+    # +Y is route-RIGHT. Y_MIN reaches past the Hoehematte landing field, which
+    # sits at local y = -2685 and is the landing for four of the shipped
+    # routes. The margin beyond it covers the landing circuit rather than
+    # stopping at the field boundary. Y_MAX covers the Niederhorn side at
+    # y = +3323.
+    "interlaken": {
+        "bounds": (-1800.0, 6100.0, -3500.0, 4500.0),
+        "note": "Eight Interlaken routes: Amisbuehl, Bergbo, Hohwald, "
+                "Niederhorn south, landing at Lehn and Hoehematte.",
+    },
+    # Grindelwald First (x 5941, y -17481) down to Grund (x 9973, y -15085)
+    # and Bodmi (x 9074, y -16614), with margin for the landing circuits and
+    # the ridges that make the local air. These are the sites' true projected
+    # positions; they were previously translated onto an invented lane at
+    # y = -8500 because there was no terrain out here to put them on.
+    "grindelwald": {
+        "bounds": (4500.0, 11500.0, -18500.0, -14000.0),
+        "note": "Grindelwald First to Grund and Bodmi.",
+    },
+}
 
 
 def local_to_lv95(x_m: float, y_m: float) -> tuple[float, float]:
@@ -124,18 +150,21 @@ def route_bounds_polygon(
     }
 
 
-def query_assets() -> list[dict]:
+def query_assets(bounds: tuple[float, float, float, float]) -> list[dict]:
+    x_min, x_max, y_min, y_max = bounds
     query = urllib.parse.urlencode(FILTERS)
-    x_mid = (X_MIN + X_MAX) * 0.5
-    y_mid = (Y_MIN + Y_MAX) * 0.5
-    regions = [
-        (X_MIN, x_mid, Y_MIN, y_mid),
-        (x_mid, X_MAX, Y_MIN, y_mid),
-        (X_MIN, x_mid, y_mid, Y_MAX),
-        (x_mid, X_MAX, y_mid, Y_MAX),
+    x_mid = (x_min + x_max) * 0.5
+    y_mid = (y_min + y_max) * 0.5
+    # Quartered: the catalogue silently returns nothing for a polygon much
+    # larger than a few square kilometres rather than reporting a limit.
+    quarters = [
+        (x_min, x_mid, y_min, y_mid),
+        (x_mid, x_max, y_min, y_mid),
+        (x_min, x_mid, y_mid, y_max),
+        (x_mid, x_max, y_mid, y_max),
     ]
     assets_by_id = {}
-    for region in regions:
+    for region in quarters:
         body = urllib.parse.urlencode(
             {
                 "geometry": json.dumps(route_bounds_polygon(*region)),
@@ -158,15 +187,53 @@ def query_assets() -> list[dict]:
     return assets
 
 
-def download(asset: dict) -> pathlib.Path:
+def readable_tile(path: pathlib.Path) -> bool:
+    """True if this file decodes as a complete 500x500 swissALTI3D tile."""
+    try:
+        with Image.open(path) as image:
+            return image.size == (500, 500)
+    except Exception:  # noqa: BLE001 - unreadable is unreadable
+        return False
+
+
+def download(asset: dict, attempts: int = 4) -> pathlib.Path:
+    """Fetch one tile, with a timeout and retries.
+
+    urlretrieve has no timeout, so a stalled connection hangs the whole build
+    indefinitely rather than failing - a fifty-tile region died silently
+    part-way through exactly that way. Partial files are never promoted, so a
+    resumed run re-fetches only what did not finish.
+    """
     CACHE.mkdir(parents=True, exist_ok=True)
     target = CACHE / asset["ass_asset_id"]
-    if target.exists() and target.stat().st_size > 100_000:
+    if target.exists() and readable_tile(target):
         return target
     temporary = target.with_suffix(target.suffix + ".partial")
-    urllib.request.urlretrieve(asset["ass_asset_href"], temporary)
-    temporary.replace(target)
-    return target
+    for attempt in range(1, attempts + 1):
+        try:
+            request = urllib.request.Request(asset["ass_asset_href"])
+            with urllib.request.urlopen(request, timeout=60) as response, \
+                    temporary.open("wb") as stream:
+                while True:
+                    chunk = response.read(1 << 16)
+                    if not chunk:
+                        break
+                    stream.write(chunk)
+            # Completeness is decided by whether it decodes at the expected
+            # shape, not by a byte count. Tiles over flat ground and water
+            # compress well - one legitimate tile here is 77 kB - so a size
+            # floor rejects real data and accepts a truncated large one.
+            if not readable_tile(temporary):
+                raise RuntimeError("tile did not decode at 500x500")
+            temporary.replace(target)
+            return target
+        except Exception as error:  # noqa: BLE001 - retry anything transient
+            temporary.unlink(missing_ok=True)
+            if attempt == attempts:
+                raise
+            print(f"    retry {attempt}/{attempts - 1} "
+                  f"{asset['ass_asset_id']}: {error}")
+    raise RuntimeError("unreachable")
 
 
 def tile_key(asset_id: str) -> tuple[int, int]:
@@ -190,8 +257,13 @@ def sample_tile(
     return float(tile[row, column])
 
 
-def main() -> None:
-    assets = query_assets()
+def build(region_name: str) -> None:
+    region = REGIONS[region_name]
+    x_min, x_max, y_min, y_max = region["bounds"]
+    output = TERRAIN / f"{region_name}.asc"
+    metadata = TERRAIN / f"{region_name}.provenance.json"
+
+    assets = query_assets(region["bounds"])
     tiles: dict[tuple[int, int], np.ndarray] = {}
     sources = []
     for index, asset in enumerate(assets, start=1):
@@ -210,32 +282,34 @@ def main() -> None:
         )
         print(f"[{index:02d}/{len(assets):02d}] {path.name}")
 
-    columns = round((X_MAX - X_MIN) / OUTPUT_CELL_M) + 1
-    rows = round((Y_MAX - Y_MIN) / OUTPUT_CELL_M) + 1
+    columns = round((x_max - x_min) / OUTPUT_CELL_M) + 1
+    rows = round((y_max - y_min) / OUTPUT_CELL_M) + 1
     grid = np.empty((rows, columns), dtype=np.float32)
-    # ESRI ASCII rows run top to bottom in descending Y, so emit Y_MAX first
+    # ESRI ASCII rows run top to bottom in descending Y, so emit y_max first
     # and let HeightfieldGrid perform the standard flip on read.
     for row in range(rows):
-        y_m = Y_MAX - row * OUTPUT_CELL_M
+        y_m = y_max - row * OUTPUT_CELL_M
         for column in range(columns):
-            x_m = X_MIN + column * OUTPUT_CELL_M
+            x_m = x_min + column * OUTPUT_CELL_M
             easting, northing = local_to_lv95(x_m, y_m)
             grid[row, column] = (
                 sample_tile(tiles, easting, northing) - LANDING_ELEVATION_M
             )
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT.open("w", encoding="ascii") as output:
-        output.write(f"ncols {columns}\n")
-        output.write(f"nrows {rows}\n")
-        output.write(f"xllcorner {X_MIN}\n")
-        output.write(f"yllcorner {Y_MIN}\n")
-        output.write(f"cellsize {OUTPUT_CELL_M}\n")
-        output.write("NODATA_value -9999\n")
-        np.savetxt(output, grid, fmt="%.3f")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="ascii") as stream:
+        stream.write(f"ncols {columns}\n")
+        stream.write(f"nrows {rows}\n")
+        stream.write(f"xllcorner {x_min}\n")
+        stream.write(f"yllcorner {y_min}\n")
+        stream.write(f"cellsize {OUTPUT_CELL_M}\n")
+        stream.write("NODATA_value -9999\n")
+        np.savetxt(stream, grid, fmt="%.3f")
 
     provenance = {
         "schemaVersion": 1,
+        "region": region_name,
+        "regionNote": region["note"],
         "dataset": "swissALTI3D",
         "catalogue": CATALOGUE,
         "officialProductPage":
@@ -250,16 +324,23 @@ def main() -> None:
             "landingLv95": [LANDING_E, LANDING_N],
             "landingElevationM": LANDING_ELEVATION_M,
         },
-        "boundsLocalM": [X_MIN, Y_MIN, X_MAX, Y_MAX],
+        "boundsLocalM": [x_min, y_min, x_max, y_max],
         "assets": sources,
         "safety": "Simulator terrain only; never use for real-world navigation.",
     }
-    METADATA.write_text(
+    metadata.write_text(
         json.dumps(provenance, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(f"Wrote {OUTPUT} ({columns} x {rows})")
-    print(f"Wrote {METADATA}")
+    print(f"Wrote {output} ({columns} x {rows})")
+    print(f"Wrote {metadata}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("region", choices=sorted(REGIONS), nargs="?",
+                        default="interlaken")
+    build(parser.parse_args().region)
 
 
 if __name__ == "__main__":

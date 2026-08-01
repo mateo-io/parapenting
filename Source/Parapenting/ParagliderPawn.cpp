@@ -1,6 +1,7 @@
 #include "ParagliderPawn.h"
 #include "ParaglidingAudioComponent.h"
 #include "ParapentingMaterials.h"
+#include "ParapentingTerrain.h"
 #include "Physics/CanopyGeometry.h"
 #include "Physics/ParagliderCoordinateSystem.h"
 #include "Physics/SuspensionSystem.h"
@@ -21,6 +22,7 @@
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
+#include "EngineUtils.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -185,6 +187,15 @@ void AParagliderPawn::ResetFlight()
     const auto Landing = Parapenting::Physics::RouteLandingLocalM(Route);
     LandingTargetXM = Landing.x;
     LandingTargetYM = Landing.y;
+    // Draw the region this route flies in. Every route change comes through
+    // here, and Interlaken and Grindelwald are 20 km apart, so the terrain
+    // actor rebuilds rather than stretching one mesh over both. It no-ops
+    // when the new route is in the region already drawn.
+    if (UWorld* World = GetWorld())
+    {
+        for (TActorIterator<AParapentingTerrain> It(World); It; ++It)
+            It->BuildForRegionAt(Launch.x, Launch.y);
+    }
     const double LaunchGround =
         Parapenting::Physics::TerrainModel::HeightM(Launch.x, Launch.y);
     auto NavigationLaunch = Launch;

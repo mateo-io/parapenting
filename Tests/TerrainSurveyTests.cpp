@@ -77,22 +77,50 @@ std::vector<double> NumbersAfter(
 }
 }
 
+namespace
+{
+// The text between "key": " and the closing quote.
+std::string StringAfter(const std::string& text, const std::string& key)
+{
+    const std::size_t at = text.find("\"" + key + "\"");
+    if (at == std::string::npos) return {};
+    const std::size_t open = text.find('"', at + key.size() + 2);
+    if (open == std::string::npos) return {};
+    const std::size_t close = text.find('"', open + 1);
+    if (close == std::string::npos) return {};
+    return text.substr(open + 1, close - open - 1);
+}
+}
+
 int main(int argc, char** argv)
 {
-    const std::string provenancePath = argc > 1
-        ? argv[1]
-        : "Content/Terrain/interlaken.provenance.json";
+    // Every surveyed region's provenance file. They share one frame, so the
+    // frame checks run against the first and the bounds check runs per file
+    // against the matching entry in RouteFrame::regions.
+    std::vector<std::string> provenancePaths;
+    for (int i = 1; i < argc; ++i) provenancePaths.push_back(argv[i]);
+    if (provenancePaths.empty())
+        provenancePaths = {"Content/Terrain/interlaken.provenance.json",
+                           "Content/Terrain/grindelwald.provenance.json"};
 
+    const auto readFile = [](const std::string& path, std::string& out)
+    {
+        std::ifstream file(path);
+        if (!file) return false;
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        out = buffer.str();
+        return true;
+    };
+
+    const std::string& provenancePath = provenancePaths.front();
     std::printf("Route frame vs %s\n", provenancePath.c_str());
-    std::ifstream file(provenancePath);
-    if (!file)
+    std::string json;
+    if (!readFile(provenancePath, json))
     {
         std::printf("  FAIL  cannot open provenance file\n");
         return 1;
     }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    const std::string json = buffer.str();
 
     const auto launch = NumbersAfter(json, "launchLv95", 2);
     const auto landing = NumbersAfter(json, "landingLv95", 2);
@@ -113,10 +141,44 @@ int main(int argc, char** argv)
               "landing northing");
     CheckNear(RouteFrame::landingElevationM, elevation[0], 1e-9,
               "landing elevation");
-    CheckNear(RouteFrame::surveyedXMinM, bounds[0], 1e-9, "surveyed x min");
-    CheckNear(RouteFrame::surveyedYMinM, bounds[1], 1e-9, "surveyed y min");
-    CheckNear(RouteFrame::surveyedXMaxM, bounds[2], 1e-9, "surveyed x max");
-    CheckNear(RouteFrame::surveyedYMaxM, bounds[3], 1e-9, "surveyed y max");
+    // Bounds, per region. Each provenance file names the region it was built
+    // for, and RouteFrame must carry the same rectangle under that name - a
+    // grid generated against different bounds would otherwise load silently
+    // and move that whole region's world.
+    std::printf("\nSurveyed regions\n");
+    int regionsChecked = 0;
+    for (const std::string& path : provenancePaths)
+    {
+        std::string regionJson;
+        if (!readFile(path, regionJson))
+        {
+            std::printf("  FAIL  cannot open %s\n", path.c_str());
+            ++Failures;
+            continue;
+        }
+        const std::string name = StringAfter(regionJson, "region");
+        const auto regionBounds = NumbersAfter(regionJson, "boundsLocalM", 4);
+        Check(!name.empty(), path + " names its region");
+        Check(regionBounds.size() == 4, path + " has boundsLocalM");
+        if (name.empty() || regionBounds.size() != 4) continue;
+
+        const RouteFrame::SurveyedRegion* declared = nullptr;
+        for (const auto& candidate : RouteFrame::regions)
+            if (name == candidate.name) declared = &candidate;
+        Check(declared != nullptr, "RouteFrame declares region " + name);
+        if (declared == nullptr) continue;
+
+        std::printf("  %-12s x [%.0f, %.0f]  y [%.0f, %.0f]\n", name.c_str(),
+            regionBounds[0], regionBounds[2], regionBounds[1],
+            regionBounds[3]);
+        CheckNear(declared->xMinM, regionBounds[0], 1e-9, name + " x min");
+        CheckNear(declared->yMinM, regionBounds[1], 1e-9, name + " y min");
+        CheckNear(declared->xMaxM, regionBounds[2], 1e-9, name + " x max");
+        CheckNear(declared->yMaxM, regionBounds[3], 1e-9, name + " y max");
+        ++regionsChecked;
+    }
+    Check(regionsChecked == RouteFrame::regionCount,
+          "every region RouteFrame declares has a provenance file");
 
     // Basis must be the normalised launch->landing direction, orthonormal.
     // Derived from the provenance numbers rather than from RouteFrame's own
@@ -198,7 +260,12 @@ int main(int argc, char** argv)
     {
         Check(TerrainModel::LoadHeightfieldAscii(
                   "Content/Terrain/interlaken.asc"),
-              "surveyed heightfield loads");
+              "surveyed Interlaken heightfield loads");
+        Check(TerrainModel::LoadHeightfieldAscii(
+                  "Content/Terrain/grindelwald.asc"),
+              "surveyed Grindelwald heightfield loads");
+        Check(TerrainModel::LoadedRegionCount() == RouteFrame::regionCount,
+              "every declared region is loaded");
         const auto TurnDirection = [](double weightShift,
                                       double leftBrake, double rightBrake)
         {
@@ -281,6 +348,52 @@ int main(int argc, char** argv)
     }
     std::printf("  %d of %zu routes have an endpoint off surveyed ground\n",
         unsurveyed, RouteProfileCount());
+    Check(unsurveyed == 0,
+          "every route flies on surveyed ground - the Grindelwald pair used to "
+          "sit on an invented lane 20 km from the real valley");
+
+    // The check the survey makes possible: published site elevation against
+    // the ground the simulator actually puts there. This is an external
+    // reference, not a golden value - swissALTI3D and the site's published
+    // altitude are independent, and a georeferencing error shows up here
+    // first. A 163 m frame error once put Bergbo 42 m below its surveyed
+    // height and was found exactly this way.
+    std::printf("\nPublished site elevation vs surveyed ground\n");
+    struct Named { const char* id; double errorM; };
+    std::vector<Named> worst;
+    for (std::size_t i = 0; i < RouteProfileCount(); ++i)
+    {
+        const auto& route = GetRouteProfileByIndex(i);
+        for (int end = 0; end < 2; ++end)
+        {
+            const GeoPoint& site = end ? route.landing : route.launch;
+            const Vec3 local = end ? RouteLandingLocalM(route)
+                                   : RouteLaunchLocalM(route);
+            if (!TerrainModel::IsSurveyed(local.x, local.y)) continue;
+            const double surveyedM = TerrainModel::HeightM(local.x, local.y)
+                + RouteFrame::landingElevationM;
+            const double errorM = surveyedM - site.elevationM;
+            bool seen = false;
+            for (const Named& already : worst)
+                if (std::string(already.id) == site.id) seen = true;
+            if (!seen) worst.push_back({site.id, errorM});
+        }
+    }
+    for (const Named& site : worst)
+        std::printf("  %-22s %+7.1f m\n", site.id, site.errorM);
+    for (const Named& site : worst)
+    {
+        // Grindelwald First is 50 m out and is the one anchor whose published
+        // altitude and WGS84 pair disagree: 2123 m is the top station, and the
+        // coordinates are on the launch slope below it. The terrain is the
+        // measurement here and the anchor is the estimate, so this is recorded
+        // as a data gap rather than fitted away by moving the terrain.
+        const double tolerance =
+            std::string(site.id) == "grindelwald-first" ? 60.0 : 15.0;
+        Check(std::fabs(site.errorM) < tolerance,
+              std::string("surveyed ground matches published elevation at ")
+                  + site.id);
+    }
 
     if (Failures)
     {

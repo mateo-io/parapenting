@@ -10,28 +10,32 @@ namespace Parapenting::Physics
 // route-right (west for the southbound primary route), and Z is height above
 // the Lehn landing field. See ParagliderCoordinateSystem.h.
 
-// Where a given height sample came from. The surveyed grid covers only part
+// Where a given height sample came from. The surveyed grids cover only part
 // of what the renderer draws, and the transition is a step rather than a
 // blend, so anything that cares whether it is standing on real ground has to
 // be able to ask.
 enum class TerrainProvenance
 {
-    // Bilinear sample of the swissALTI3D-derived heightfield.
+    // Bilinear sample of a swissALTI3D-derived heightfield.
     Surveyed,
-    // Analytic Interlaken proxy: outside the surveyed grid, below the
-    // Grindelwald lane.
-    AnalyticInterlaken,
-    // Analytic Grindelwald lane. Geographically translated, not a real
-    // position; never validate terrain-dependent behaviour here.
-    AnalyticGrindelwald,
+    // The analytic Interlaken proxy, for anywhere no surveyed region covers.
+    // It is a shape, not a place: it says nothing about real geography and
+    // nothing terrain-dependent should be validated on it.
+    Analytic,
 };
 
 class TerrainModel
 {
 public:
+    // Additive. Regions are separate grids in one shared route frame -
+    // Interlaken and Grindelwald are 20 km apart and the ground between them
+    // is not flown, so stretching one grid across both would carry 250 km2 of
+    // terrain nobody sees. Load order does not matter; the regions do not
+    // overlap, and the first one covering a sample answers for it.
     static bool LoadHeightfieldAscii(const std::string& filePath);
     static void ClearHeightfield();
     static bool HasHeightfield();
+    static int LoadedRegionCount();
     static double HeightM(double x, double y);
     // Which source HeightM would use at this position.
     static TerrainProvenance ProvenanceAt(double x, double y);

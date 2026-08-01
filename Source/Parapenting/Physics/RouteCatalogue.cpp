@@ -159,21 +159,16 @@ Vec3 GeoPointInPrimaryFrameM(const GeoPoint& point)
 
 namespace
 {
-Vec3 RoutePointLocalM(const RouteProfile& route, const GeoPoint& point)
+// Every site now projects straight from its WGS84 anchor. The Grindelwald
+// pair used to be special-cased here: their intra-valley geometry was kept but
+// the whole group was translated onto an invented lane at y = -8500, because
+// there was no surveyed ground 20 km out and the analytic proxy put the Grund
+// landing field at 4683 m against a published 950 m. Grindelwald has its own
+// swissALTI3D region now, so the translation is gone and the sites sit where
+// they actually are.
+Vec3 RoutePointLocalM(const RouteProfile&, const GeoPoint& point)
 {
-    if (route.id != RouteProfileId::GrindelwaldFirstGrund
-        && route.id != RouteProfileId::GrindelwaldFirstBodmi)
-        return GeoPointInPrimaryFrameM(point);
-    const GeoPoint first{
-        "first-frame", "First frame", 46.657450, 8.055133, 2123.0};
-    const Vec3 origin = GeoPointInPrimaryFrameM(first);
-    const Vec3 raw = GeoPointInPrimaryFrameM(point) - origin;
-    // Translated onto the route-left side, away from the surveyed Interlaken
-    // grid. Sign follows the frame flip to route-right +Y; the lane itself is
-    // still a geographically invented placement pending its own region.
-    return {
-        raw.x, -8500.0 + raw.y,
-        point.elevationM - 565.0};
+    return GeoPointInPrimaryFrameM(point);
 }
 }
 

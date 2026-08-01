@@ -1,8 +1,10 @@
 #include "AtmosphereModel.h"
+#include "RouteFrame.h"
 #include "TerrainModel.h"
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 namespace Parapenting::Physics
 {
@@ -10,6 +12,58 @@ namespace
 {
 constexpr WeatherVolume EmptyVolume{
     WeatherVolumeType::Thermal, {}, 0.0, 0.0, 0.0, 0.0};
+
+// A convection trigger: a place on the ground that reliably sets off a
+// thermal, in local route-frame metres.
+struct ThermalTrigger
+{
+    double xM;
+    double yM;
+    double radiusM;
+    double strengthScale;
+};
+
+struct ThermalTriggerSet
+{
+    std::array<ThermalTrigger, 3> triggers;
+    // Authored weather volumes in every preset are placed in Interlaken
+    // coordinates, relative to the Amisbuehl launch. A region away from that
+    // corridor shifts them onto its own, by the offset from Amisbuehl to its
+    // own launch. Both components matter: offsetting only Y left every
+    // authored volume at x = 760..2520 while Grindelwald starts at x = 4500,
+    // so a foehn day out there was smooth air.
+    double authoredVolumeOffsetXM;
+    double authoredVolumeOffsetYM;
+    // Z as well: authored centres are heights in the Lehn datum chosen for
+    // the Interlaken valley floor, and Grindelwald's floor is 800 m higher, so
+    // an unshifted volume sits underground there.
+    double authoredVolumeOffsetZM;
+};
+
+// Interlaken: unchanged from the three cells this model has always had, over
+// the sunny valley shoulder between the launches and the landing fields.
+constexpr ThermalTriggerSet InterlakenTriggers{
+    {{{1280.0, 330.0, 170.0, 1.0},
+      {1880.0, -470.0, 230.0, 0.78},
+      {2260.0, 560.0, 145.0, 1.12}}},
+    0.0, 0.0, 0.0};
+
+// Grindelwald: along the First -> Grund descent, on the south-facing flank
+// that gets the sun first. The valley runs from the First launch at
+// (5941, -17481) down to the Grund field at (9962, -15281).
+constexpr ThermalTriggerSet GrindelwaldTriggers{
+    {{{6900.0, -16900.0, 190.0, 1.0},
+      {7900.0, -16300.0, 240.0, 0.82},
+      {8900.0, -15800.0, 165.0, 1.08}}},
+    5940.8, -17480.6, 798.0};
+
+const ThermalTriggerSet& TriggersFor(double xM, double yM)
+{
+    const RouteFrame::SurveyedRegion* region = RouteFrame::RegionAt(xM, yM);
+    if (region != nullptr && std::string_view(region->name) == "grindelwald")
+        return GrindelwaldTriggers;
+    return InterlakenTriggers;
+}
 
 const std::array<WeatherPreset, 5> Presets{{
     {
@@ -384,31 +438,41 @@ Atmosphere AtmosphereModel::Sample(const Vec3& p, double timeSeconds) const
     result.windWorldMps.z += Params.ridgeLiftStrengthMps
                           * windIntoSlope * terrainLiftFade;
 
-    const double regionalY = p.y > 5000.0 ? 7500.0 : 0.0;
+    // Thermal triggers sit in the valley being flown. This used to be a single
+    // Interlaken set plus a `p.y > 5000 ? 7500 : 0` translation, which was a
+    // lane offset rather than a place; anywhere it did not reach - Grindelwald
+    // above all - was dead air with no thermals at any time of day. Each
+    // surveyed region now carries its own triggers, anchored on its own
+    // corridor, and the offsets below keep Interlaken's three exactly where
+    // they were.
+    const ThermalTriggerSet& triggers = TriggersFor(p.x, p.y);
     const double effectiveThermalStrength =
         Params.thermalStrengthMps
         * (0.08 + 0.92 * diurnal.convectiveActivity);
-    result.windWorldMps.z += ThermalCell(
-        p, timeSeconds, Params.baseWindMps, 1280.0, regionalY + 330.0, 170.0,
-        effectiveThermalStrength, Params.thermalTopMslM, result);
-    result.windWorldMps.z += ThermalCell(
-        p, timeSeconds, Params.baseWindMps, 1880.0, regionalY - 470.0, 230.0,
-        effectiveThermalStrength * 0.78, Params.thermalTopMslM, result);
-    result.windWorldMps.z += ThermalCell(
-        p, timeSeconds, Params.baseWindMps, 2260.0, regionalY + 560.0, 145.0,
-        effectiveThermalStrength * 1.12, Params.thermalTopMslM, result);
+    for (const ThermalTrigger& trigger : triggers.triggers)
+    {
+        if (trigger.radiusM <= 0.0) continue;
+        result.windWorldMps.z += ThermalCell(
+            p, timeSeconds, Params.baseWindMps, trigger.xM, trigger.yM,
+            trigger.radiusM, effectiveThermalStrength * trigger.strengthScale,
+            Params.thermalTopMslM, result);
+    }
+    const double regionalX = triggers.authoredVolumeOffsetXM;
+    const double regionalY = triggers.authoredVolumeOffsetYM;
+    const double regionalZ = triggers.authoredVolumeOffsetZM;
 
     double authoredRotor = 0.0;
     for (const WeatherVolume& volume : Volumes)
     {
         if (volume.radiusM <= 0.0 || volume.heightM <= 0.0) continue;
-        const double dx = p.x - volume.centreWorldM.x;
+        const double dx = p.x - (volume.centreWorldM.x + regionalX);
         const double dy = p.y
             - (volume.centreWorldM.y + regionalY);
         const double horizontal =
             std::sqrt(dx * dx + dy * dy) / volume.radiusM;
         const double vertical =
-            std::abs(p.z - volume.centreWorldM.z) / volume.heightM;
+            std::abs(p.z - (volume.centreWorldM.z + regionalZ))
+            / volume.heightM;
         if (horizontal >= 1.0 || vertical >= 1.0) continue;
         const double radial = 1.0 - horizontal;
         const double verticalFade = 1.0 - vertical;

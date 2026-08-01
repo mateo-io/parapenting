@@ -23,16 +23,21 @@ namespace Parapenting::Physics
 // minutes holds between 10.55 and 10.70 m/s. Internal force closure is exact
 // and energy residual stays under 4 W on a 925 N aircraft.
 //
-// One check still fails and the suite is still excluded for it: asymmetric
-// brake held for ten seconds reports a NaN turn rate. A direct probe of the
-// same case over the same duration does not reproduce it, so the suspect is
-// the test harness rather than the solver, but that is unverified and the
-// suite stays out until it is.
+// Asymmetric brake turns, and the suite runs in `Tools/check-build.sh` with
+// the rest. Right brake held for ten seconds settles at 0.094 rad of bank and
+// 0.030 rad/s, its mirror image agrees to 2e-8, and heavy brake walks the wing
+// into a fully separated 46-degree stall at 2.8 m/s of sink without the
+// numerical safety envelope having to engage at all.
 //
-// Three bugs were found and fixed getting here, all recorded below: rotational
+// Six bugs were found and fixed getting here, all recorded below: rotational
 // damping held across the aerodynamic interval, the pendulum restoring moment
-// missing entirely, and - the one that caused the stall - a pressure state
-// that started packed while the flight state started flying.
+// missing entirely, a pressure state that started packed while the flight
+// state started flying - that one caused the stall - and then the three that
+// made asymmetric brake diverge to a NaN turn rate: damping integrated
+// explicitly at a coefficient eleven times its stability limit, a damping
+// derivative measured by dividing by whatever rate the wing happened to have,
+// and an aerodynamic gate that bounded the force it accepted but not the
+// moment.
 //
 // Levels 1 to 6 built six solvers that each answer their own question well and
 // have never been asked to agree. This is the order they run in and the
@@ -120,9 +125,24 @@ struct CoupledState
     // under five seconds. The rate-dependent part is therefore re-evaluated
     // every step from a derivative measured at each full solve, which is the
     // cheap per-step interpolation the plan asks for.
+    //
+    // That derivative also has to be integrated implicitly. Roll damping runs
+    // to 3.7e3 Nm per rad/s against an inertia of 95 - a time constant of
+    // 26 ms - and yaw damping is stiffer still relative to its inertia. An
+    // explicit c*omega at 120 Hz overshoots, alternates sign and doubles every
+    // step, which is where the asymmetric-brake NaN came from.
     Vec3 heldAeroForceBodyN{};
     Vec3 heldAeroMomentBodyNm{};
     Vec3 rotationalDampingNmPerRadps{};
+    // Which axis the next full solve probes for its damping derivative. One
+    // per aerodynamic interval, round-robin, so each is refreshed every 0.3 s.
+    int dampingProbeAxis = 0;
+    // Circulation carried for the rotation-free solve and the two damping
+    // probes, so each continues from its own last answer instead of being
+    // solved cold every interval.
+    std::vector<double> stationaryCirculation;
+    std::vector<double> forwardProbeCirculation;
+    std::vector<double> backwardProbeCirculation;
     double heldPressureCoefficientMean = 1.0;
     std::vector<double> heldPressureCoefficient;
     int stepsSinceAerodynamics = 1 << 20;
@@ -213,6 +233,7 @@ private:
     double CanopyMassKg = 5.1;
     double SystemMassKg = 105.0;
     double ReferenceAreaM2 = 27.0;
+    double ReferenceSpanM = 11.8;
     double PendulumLengthM = 8.08;
     CoupledDiagnostics LastDiagnostics;
 };

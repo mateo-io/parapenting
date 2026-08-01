@@ -9,7 +9,9 @@
 #include "CanopyGeometry.h"
 #include "CoupledParagliderSolver.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <string>
 
@@ -229,39 +231,89 @@ int main()
               "and banks the wing through that load rather than a moment");
     }
 
-    // -- deep stall is refused, not faked ----------------------------------
+    // -- heavy brake stalls the wing, and the solve survives it ------------
     {
-        // Heavy brake takes the sections past stall, where a steady solve has
-        // no answer. The safety envelope must engage, must say so, and must
-        // keep the state finite - a diverged load reaching the structure is
-        // how the whole thing used to end up at NaN.
-        CoupledParagliderSolver stalling(canopy, Epic2MlLinePlan());
-        CoupledState state;
-        Fly(stalling, CoupledControls{}, 6.0, &state);
-        CoupledControls deep;
-        deep.leftBrake = 0.9;
-        deep.rightBrake = 0.9;
-        bool everRejected = false;
-        const CoupledAtmosphere air;
-        for (int step = 0; step < 120 * 5; ++step)
+        // Heavy brake takes the sections past stall. The VSM has no steady
+        // answer on the separated branch on its own - a negative lift slope
+        // inverts the downwash feedback between sections - but inside the
+        // coupled solve it is not asked for one: Level 4's separation state is
+        // carried between steps, so each solve sees a single-valued lift curve
+        // and the coupling walks the wing into stall rather than jumping onto
+        // the far branch.
+        //
+        // This check used to assert the opposite - that the numerical safety
+        // envelope engaged here - because the rotation probes were solved cold
+        // and unconverged, which put a different wing's load into the
+        // structure and made the envelope necessary. With the probes taking
+        // the wing's own separation state the envelope is no longer needed at
+        // this brake setting, so what is asserted now is the physics.
+        const auto brakedTo = [&](double brake)
         {
-            stalling.Step(state, deep, air);
-            if (stalling.Diagnostics().aerodynamicsRejected)
-                everRejected = true;
-        }
-        std::printf("Deep stall at 0.9 brake: rejected a solve %s, airspeed "
-                    "%.2f m/s, still finite %d\n",
-                    everRejected ? "yes" : "no",
-                    stalling.Diagnostics().airspeedMps,
-                    static_cast<int>(
-                        std::isfinite(stalling.Diagnostics().airspeedMps)));
-        Check(std::isfinite(stalling.Diagnostics().airspeedMps)
-              && std::isfinite(state.positionWorldM.z),
-              "deep stall stays finite - an unconverged aerodynamic solve is "
-              "refused rather than handed to the structure");
-        Check(everRejected,
-              "and the safety envelope says when it engaged, so no number "
-              "from that stretch is mistaken for flight behaviour");
+            CoupledParagliderSolver stalling(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(stalling, CoupledControls{}, 6.0, &state);
+            CoupledControls deep;
+            deep.leftBrake = brake;
+            deep.rightBrake = brake;
+            const double topM = state.positionWorldM.z;
+            const CoupledAtmosphere air;
+            bool everRejected = false;
+            for (int step = 0; step < 120 * 8; ++step)
+            {
+                stalling.Step(state, deep, air);
+                if (stalling.Diagnostics().aerodynamicsRejected)
+                    everRejected = true;
+            }
+            double separation = 0.0;
+            for (const double s : state.separation.sectionSeparation)
+                separation += s;
+            separation /= static_cast<double>(
+                std::max<std::size_t>(1, state.separation.sectionSeparation.size()));
+            struct Stalled
+            {
+                double sinkMps;
+                double separation;
+                double angleOfAttackRad;
+                double pressureCoefficient;
+                double airspeedMps;
+                bool rejected;
+                bool finite;
+            };
+            return Stalled{
+                (topM - state.positionWorldM.z) / 8.0, separation,
+                stalling.Diagnostics().angleOfAttackRad,
+                stalling.Diagnostics().meanPressureCoefficient,
+                stalling.Diagnostics().airspeedMps, everRejected,
+                std::isfinite(stalling.Diagnostics().airspeedMps)
+                    && std::isfinite(state.positionWorldM.z)};
+        };
+        const auto light = brakedTo(0.35);
+        const auto deep = brakedTo(0.9);
+        std::printf("Brake 0.35: sink %.2f m/s, alpha %.1f deg, separation "
+                    "%.2f, Cp %.2f\n",
+                    light.sinkMps, light.angleOfAttackRad * 180.0 / 3.14159265358979,
+                    light.separation, light.pressureCoefficient);
+        std::printf("Brake 0.90: sink %.2f m/s, alpha %.1f deg, separation "
+                    "%.2f, Cp %.2f, envelope engaged %s\n",
+                    deep.sinkMps, deep.angleOfAttackRad * 180.0 / 3.14159265358979,
+                    deep.separation, deep.pressureCoefficient,
+                    deep.rejected ? "yes" : "no");
+
+        Check(light.finite && deep.finite,
+              "heavy brake stays finite - the structure is never handed a "
+              "diverged aerodynamic load");
+        Check(deep.separation > 0.95 && light.separation < 0.1,
+              "heavy brake separates the sections and trim brake does not");
+        Check(deep.sinkMps > 3.0 * light.sinkMps,
+              "and a separated wing descends far faster than an attached one, "
+              "which is what deep stall is");
+        Check(deep.pressureCoefficient < 0.5
+              && light.pressureCoefficient > 0.85,
+              "the cells lose their pressure with the flow that fed them");
+        Check(!deep.rejected,
+              "and the solve holds there on its own - with the separation "
+              "state carried, the numerical safety envelope is not needed to "
+              "get through a stall");
     }
 
     // -- the coupling is converged, not budgeted ---------------------------

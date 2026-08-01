@@ -225,6 +225,17 @@ public:
         const VsmSolveInput& input, VsmSeparationState& state,
         double deltaSeconds, const VsmSettings& settings = {}) const;
 
+    // Asks a what-if question of the wing the last unsteady solve found: the
+    // same separation state, held, and a circulation the caller keeps warm,
+    // with neither advanced. A caller measuring a derivative needs exactly
+    // this - the same wing at a different rate - and calling Solve instead
+    // silently substitutes a different wing, at the equilibrium separation for
+    // whatever incidence it lands on.
+    VsmSolution SolveFrozen(
+        const VsmSolveInput& input, const VsmSeparationState& state,
+        std::vector<double>& warmCirculation,
+        const VsmSettings& settings = {}) const;
+
     const std::vector<VsmSection>& Sections() const { return SectionList; }
     double ReferenceAreaM2() const { return ReferenceArea; }
     double ReferenceSpanM() const { return ReferenceSpan; }

@@ -137,10 +137,23 @@ iterations:
 
 - **membrane:** 2.7×10⁶ N/m against 0.46 g per node puts fabric elastic waves at
   12 kHz. Nobody cares about 12 kHz. Resolving it was all the solve was doing.
-- **Level 7 damping:** roll damping has a 20 ms time constant and was being held
-  across a 100 ms aerodynamic interval — damping applied at a rate five time
-  constants stale, which is not damping but excitation. Diverged to NaN in five
-  seconds.
+- **Level 7 damping, twice.** First: roll damping has a 20 ms time constant and
+  was being held across a 100 ms aerodynamic interval — damping applied at a
+  rate five time constants stale, which is not damping but excitation. Diverged
+  to NaN in five seconds. Evaluating it every step fixed that, and left the
+  second one, which took another round of work to see: the term was still being
+  integrated *explicitly*. Yaw damping of 80 Nm per rad/s on an inertia of 150
+  needs `c·dt/I < 2` to be stable and sat at eleven times that, so it alternated
+  sign and doubled every step. Asymmetric brake reached an infinite turn rate in
+  fourteen seconds.
+
+  The fix is one divide. Backward Euler on the damping term alone —
+  `omega' = (omega + M/I·dt) / (1 + c/I·dt)` — is unconditionally stable at any
+  coefficient, and leaves everything else explicit.
+
+**Rule, sharpened:** a stiff term does not have to set the timestep. Ask which
+*term* is stiff, and integrate that one implicitly. Making the rate live is
+necessary and is not sufficient.
 
 **Rule:** compare every subsystem's own time constant against the rate you
 intend to run it at, *before* choosing that rate. Where they conflict, either
@@ -250,6 +263,66 @@ error.
 The known-failure locks are worth the pattern: `Check(!converged, "KNOWN
 FAILURE: ... delete this check when it does")`. It fails loudly when someone
 fixes it, which is exactly when you want to be told.
+
+Two of the three are now closed, and closing Level 7's told us something about
+the third kind of honesty. The excluded suite carried a written suspicion — "not
+reproducible by a direct probe, so the suspect is the test harness rather than
+the solver, but that is unverified". It was wrong, and the word doing the damage
+was *unverified*: a plausible diagnosis, recorded as a caveat, kept the bug
+parked for a whole level. A direct probe at -O0 reproduced it on the first run.
+
+**Rule:** an unverified diagnosis is not a finding, and writing it down next to
+the defect makes it look like one. Either verify it or record only the symptom.
+
+---
+
+## 13. Measuring a derivative is its own numerical problem
+
+Three separate defects in Level 7 were all one mistake: treating "measure how
+the moment changes with rotation rate" as free.
+
+- **Dividing by the state.** The estimator took the live moment difference over
+  the live rotation rate, with a guard zeroing it below 10⁻³ rad/s. Near zero
+  rate that is noise over nothing, and worse, the guard made the damping law
+  *discontinuous in the state*. Two mirror-image flights took opposite branches
+  of it in the fourth second and stopped being mirror images.
+- **A one-sided difference.** Replacing it with a fixed ±0.3 rad/s probe fixed
+  the conditioning but, probed on one side only, still measured a different
+  coefficient for a left turn than for its mirrored right turn — a one-sided
+  difference is not odd in the rate. Centring it restored mirror symmetry to
+  2×10⁻⁸ rad after ten seconds.
+- **Probing a different object.** The probes called the cold solve capped at 40
+  iterations, where cold needs ninety, and got the equilibrium separation for
+  whatever incidence they landed on rather than the wing's actual separation
+  state. So the derivative described a wing that did not exist, and moved 10%
+  between consecutive intervals. Holding the live separation state and
+  continuing each probe's own circulation made it converge in a handful of
+  iterations — the suite got about ten times faster as a side effect.
+
+**Rule:** a finite difference needs a perturbation *you* choose, centred, taken
+about the state you actually have, with both solves converged. If a solve is
+warm-started or iteration-capped for speed, a derivative built from it inherits
+that error amplified by one over the step.
+
+---
+
+## 14. Every accepted quantity needs a bound, not just the one that bit you
+
+The coupled solver rejected an aerodynamic solve whose *force* exceeded fifty
+times weight. It never bounded the moment. One step near stall returned a
+converged solve carrying 34 kNm of yaw against a `q·S·b` of 14 kNm; it was
+accepted, and then every subsequent step failed and the safety envelope
+faithfully held that number for ten seconds. 26 kNm on an inertia of 150 is a
+turn rate of 100 rad/s, and then infinity.
+
+The envelope worked exactly as designed and made things worse, because "hold the
+last value" is only safe if the last value was checked. And the check that
+mattered was missing on the quantity nobody had seen fail yet.
+
+**Rule:** a validity gate covers a *state*, not a symptom. List everything the
+gate lets through and give each one a bound with physical units behind it — here
+`q·S·b`, which was already available. And a fallback that holds a previous value
+must be as suspicious of that value as of the new one.
 
 ---
 

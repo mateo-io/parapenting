@@ -58,14 +58,15 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
-| 7 Coupled solver | **Trim on the numbers, one check failing** | 38.5 km/h vs published 39; sink 1.12; glide 9.5 vs 9.5 |
+| 7 Coupled solver | **Done** | 38.5 km/h vs published 39; glide 9.5 vs 9.5; turns mirror to 2e-8; suite green |
 | 8 Emergent collapse | Not started | — |
 | 9 Calibration | Not started | — |
 | 10 Performance and legacy removal | Not started | — |
 | 11+ | Not started | — |
 
-**Camp I is complete. Camp II is two levels short**, with Level 6 delivered at a
-reduced scope and Level 7 passing every gate but one.
+**Camp I is complete. Camp II is one level short**, with Level 7 passing every
+gate and Level 6 delivered at a reduced scope — strips rather than a full mesh,
+and no self-collision, which is what Level 8's cravats will need.
 
 ### Carried gaps, by priority
 
@@ -76,49 +77,49 @@ reduced scope and Level 7 passing every gate but one.
    surveyed geography. This blocks the **Level 0** exit gate and is the oldest
    open defect in the project. Everything from Level 9 onward that depends on
    real terrain is built on it.
-2. **One Level 7 check fails.** Asymmetric brake held for ten seconds reports a
-   NaN turn rate. A direct probe of the same case over the same duration does
-   not reproduce it, so the suspect is the test harness rather than the solver -
-   but that is unverified, and the suite stays excluded until it is understood.
-   Everything else passes: trim, ten-minute stability, energy, internal closure,
-   coupling convergence, and deep stall being refused rather than faked.
-3. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
+2. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
    measurement. Every flight number in Level 4 rests on theory. The plan calls
    for this work to begin during Level 1; it has not begun.
-4. **Both Grindelwald routes are off the surveyed heightfield and off the
+3. **Both Grindelwald routes are off the surveyed heightfield and off the
    rendered extent.** Analytic terrain puts the Grund landing at 4683 m against
    a published 950 m, in air with no thermal field. Selectable content.
-5. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
+4. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
    endpoints, no self-collision. Level 8's cravats need the self-collision.
-6. **Deep stall does not converge** in the VSM, and will not: the separated
-   branch has a negative lift slope, which inverts the downwash feedback between
-   sections. Level 11's unsteady wake is the honest treatment. Locked as a
-   known-failure check.
-7. **Apparent-mass rotational terms are disputed** — leading coefficients
+5. **Deep stall does not converge** in the VSM solved cold, and will not: the
+   separated branch has a negative lift slope, which inverts the downwash
+   feedback between sections. Level 11's unsteady wake is the honest treatment.
+   Locked as a known-failure check. Inside the coupled solve, with the
+   separation state carried between steps, the wing does reach a fully
+   separated 46-degree stall at 4.65 m/s of sink without the solve failing.
+6. **Apparent-mass rotational terms are disputed** — leading coefficients
    unverified against the source paper, and 14× the existing estimate in roll.
    Registered `Disputed`; nothing uses their magnitude.
-8. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
+7. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
    is guiding rule 11 working as intended, but it means none of Levels 1-7 has
    been exercised by a pilot.
 
 ### Recommended next steps, in order
 
-Step 1 below is **done**. The cause was not in any solver: the pressure state
-started packed while the flight state started flying, so the aerodynamics were
-correctly told the cells were empty and the wing correctly stalled. Installed
-drag was also missing from the coupled solve. Both are fixed, and the coupled
-trim now lands on the published figures.
+**Level 7 is closed.** Trim was fixed first — the pressure state started packed
+while the flight state started flying, and installed drag was missing from the
+coupled solve — and the last failing check is now fixed too. It was in the
+solver, not the harness: rotational damping integrated explicitly at eleven
+times its stability limit, a damping derivative measured by dividing by whatever
+rate the wing happened to have, and an aerodynamic validity gate that bounded
+the force it accepted but not the moment. `docs/PHYSICS_ENGINE.md` has the
+diagnosis and `docs/PHYSICS_LEARNINGS.md` sections 7, 13 and 14 have what it
+teaches.
 
-1. ~~Fix Level 7 trim.~~ **Done.** What remains of Level 7 is the single failing
-   check above, which is worth an hour rather than a session.
-2. **Resolve the terrain/flight frame disagreement.** It is a Level 0 gate, it
+1. **Resolve the terrain/flight frame disagreement.** It is a Level 0 gate, it
    is cheap relative to what it blocks, and every later level that touches
-   terrain inherits it.
-3. **Start the polar acquisition.** It is a data problem with a long lead time,
-   it can run in parallel with anything, and it is what turns Level 4's numbers
-   from plausible into defensible.
-4. **Then Level 8**, which needs a converged Level 7 and self-collision in
-   Level 6 before collapse can be emergent rather than scripted.
+   terrain inherits it. It moves every route's geometry, so it wants a clear run
+   and a careful re-validation of the terrain suite.
+2. **Start the polar acquisition.** It is a data problem with a long lead time,
+   it needs XFOIL or equivalent tooling, it can run in parallel with anything,
+   and it is what turns Level 4's numbers from plausible into defensible.
+3. **Then Level 8**, which now has its converged Level 7 and needs
+   self-collision in Level 6 before collapse can be emergent rather than
+   scripted.
 
 Levels 9 and 10 should not start before the gaps above close: calibrating an
 uncoupled model, or deleting the legacy path while the geometry-driven one
@@ -650,16 +651,18 @@ line in the original budget)*
 
 ## Level 7 — Coupled solver and convergence
 
-> **Status: trim on the published numbers, one check failing.** Hands off it
-> settles at 10.70 m/s - 38.5 km/h against a published 39 - with 1.12 m/s of
-> sink and a glide of 9.5 against a published 9.5. Ten minutes holds within
-> 0.15 m/s, internal closure is exact, energy residual stays under 4 W, and the
-> coupling is converged rather than budgeted. Deep stall is refused rather than
-> faked, with the safety envelope reported. Still excluded from the suite for
-> one check: asymmetric brake over ten seconds reports a NaN turn rate that a
-> direct probe cannot reproduce.
+> **Status: done. Every exit gate passes and the suite runs with the rest.**
+> Hands off it settles at 10.70 m/s - 38.5 km/h against a published 39 - with
+> 1.12 m/s of sink and a glide of 9.5 against a published 9.5. Ten minutes holds
+> within 0.15 m/s, internal closure is exact, energy residual stays under 4 W,
+> and the coupling is converged rather than budgeted. Asymmetric brake turns
+> without any control-to-yaw or control-to-bank term - 0.094 rad of bank and
+> 0.030 rad/s after ten seconds - and its mirror image agrees to 2e-8 rad. Heavy
+> brake walks the wing into a fully separated 46-degree stall at 4.65 m/s of
+> sink, monotone in incidence, separation, sink and cell pressure, without the
+> numerical safety envelope engaging at all.
 
-**Budget: 18 hours** *(was 10)*
+**Budget: 22 hours** *(was 10)*
 
 ### Work
 

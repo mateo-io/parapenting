@@ -302,6 +302,17 @@ VsmSolution VortexStepMethodSolver::Solve(
     return SolveHeld(input, settings, nullptr, nullptr);
 }
 
+VsmSolution VortexStepMethodSolver::SolveFrozen(
+    const VsmSolveInput& input, const VsmSeparationState& state,
+    std::vector<double>& warmCirculation, const VsmSettings& settings) const
+{
+    const bool usable = state.initialised
+        && state.sectionSeparation.size() == SectionList.size();
+    return SolveHeld(input, settings,
+                     usable ? &state.sectionSeparation : nullptr,
+                     &warmCirculation);
+}
+
 VsmSolution VortexStepMethodSolver::SolveHeld(
     const VsmSolveInput& input, const VsmSettings& settings,
     const std::vector<double>* heldSeparation,

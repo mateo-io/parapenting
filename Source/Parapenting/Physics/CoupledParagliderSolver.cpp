@@ -37,6 +37,7 @@ CoupledParagliderSolver::CoupledParagliderSolver(
     CanopyMassKg = 5.1;
     SystemMassKg = PayloadMass.TotalKg() + CanopyMassKg;
     ReferenceAreaM2 = Aerodynamics.ReferenceAreaM2();
+    ReferenceSpanM = geometry.DevelopedSpanM();
     PendulumLengthM = SuspensionPendulumLengthM(Lines);
     Harness = Lines.plan.harness;
 }
@@ -124,10 +125,20 @@ void CoupledParagliderSolver::Step(
                 return std::isfinite(v.x) && std::isfinite(v.y)
                     && std::isfinite(v.z);
             };
+            // The moment needs its own bound, and did not have one. A single
+            // step near stall returned a converged solve carrying 34 kNm of
+            // yaw - against a q S b of 14 kNm, so a moment coefficient of
+            // nearly 2.5 - which was accepted, and every step after it was
+            // rejected and held that number. Ten seconds of a held 26 kNm on
+            // an inertia of 150 is a turn rate of 100 rad/s, which is where
+            // the asymmetric-brake NaN came from.
+            const double momentScaleNm = std::max(
+                1.0, dynamicPressure * ReferenceAreaM2 * ReferenceSpanM);
             const bool usable =
                 allFinite(solved.forceBodyN)
                 && allFinite(solved.momentBodyNm)
-                && Length(solved.forceBodyN) < 50.0 * SystemMassKg * GravityMps2;
+                && Length(solved.forceBodyN) < 50.0 * SystemMassKg * GravityMps2
+                && Length(solved.momentBodyNm) < 2.0 * momentScaleNm;
             if (!usable)
             {
                 diagnostics.aerodynamicsRejected = true;
@@ -144,27 +155,25 @@ void CoupledParagliderSolver::Step(
             // damped, by solving again with the rotation removed. The
             // difference over the rate is a damping derivative that can be
             // applied at the live rate every step while the rest is held.
+            // The probes ask about the wing the unsteady solve just found, so
+            // they hold its separation state and continue its circulation
+            // rather than starting cold at the equilibrium separation for
+            // whatever incidence they land on. Cold, capped at 40 iterations
+            // where a cold solve needs about ninety, they were not converged
+            // and not even the same wing - which is why the coefficient they
+            // returned moved 10% between one interval and the next, and why
+            // two mirror-image flights measured different damping.
             VsmSolveInput still = aero;
             still.angularVelocityBodyRadps = Vec3{};
             VsmSettings stillSettings = settings;
-            stillSettings.maxIterations = state.initialised ? 40 : 300;
-            const VsmSolution stationary =
-                Aerodynamics.Solve(still, stillSettings);
+            stillSettings.maxIterations = 600;
+            const VsmSolution stationary = Aerodynamics.SolveFrozen(
+                still, state.separation, state.stationaryCirculation,
+                stillSettings);
 
             aeroTargetMoment = stationary.momentBodyNm;
-            const Vec3 rate = state.angularVelocityBodyRadps;
-            const Vec3 difference = solved.momentBodyNm - stationary.momentBodyNm;
-            const auto derivative = [](double delta, double omega)
-            {
-                // Below this the measurement is noise divided by nothing.
-                return std::fabs(omega) > 1.0e-3 ? delta / omega : 0.0;
-            };
-            const bool probeUsable = allFinite(stationary.momentBodyNm);
-            const Vec3 measured = probeUsable
-                ? Vec3{derivative(difference.x, rate.x),
-                       derivative(difference.y, rate.y),
-                       derivative(difference.z, rate.z)}
-                : Vec3{};
+            const bool probeUsable = allFinite(stationary.momentBodyNm)
+                && Length(stationary.momentBodyNm) < 2.0 * momentScaleNm;
             if (!probeUsable)
             {
                 // The rotation-free probe is a second solve and can fail on
@@ -173,15 +182,70 @@ void CoupledParagliderSolver::Step(
                 diagnostics.aerodynamicsRejected = true;
                 aeroTargetMoment = exchangedMomentBody;
             }
-            // Keep the previous derivative on any axis that was not turning
-            // enough to measure one.
-            state.rotationalDampingNmPerRadps = Vec3{
-                measured.x != 0.0 ? measured.x
-                    : state.rotationalDampingNmPerRadps.x,
-                measured.y != 0.0 ? measured.y
-                    : state.rotationalDampingNmPerRadps.y,
-                measured.z != 0.0 ? measured.z
-                    : state.rotationalDampingNmPerRadps.z};
+
+            // The damping derivative, measured against a rate the solver
+            // chooses rather than the one the wing happens to have.
+            //
+            // Dividing the live moment difference by the live rate is an
+            // ill-posed estimator: near zero rate it is noise over nothing, and
+            // the guard that suppressed it below 1e-3 rad/s made the whole
+            // damping law discontinuous in the state. Two mirror-image flights
+            // took different branches of that guard within four seconds and
+            // stopped being mirror images, and the coefficient itself swung
+            // between -2.3e4 and +2.5e3 Nm per rad/s between one aerodynamic
+            // interval and the next.
+            //
+            // A fixed perturbation removes both problems. One axis is probed
+            // per aerodynamic interval - each axis refreshed every 0.3 s, far
+            // slower than the coefficient changes with airspeed - at a rate
+            // typical of a real turn, so the difference is always well above
+            // the solve's own noise and never divided by a small number.
+            //
+            // The probe is centred, +p and -p rather than +p against zero.
+            // A one-sided probe is not odd in the rate, so the same wing
+            // braked left and braked right measures two different damping
+            // coefficients, and two flights that should be mirror images of
+            // each other stop being so in the fourth second.
+            if (probeUsable)
+            {
+                constexpr double ProbeRateRadps = 0.3;
+                const int axis = state.dampingProbeAxis % 3;
+                const auto component = [](const Vec3& v, int which)
+                {
+                    return which == 0 ? v.x : which == 1 ? v.y : v.z;
+                };
+                const auto setComponent = [](Vec3& v, int which, double value)
+                {
+                    if (which == 0) v.x = value;
+                    else if (which == 1) v.y = value;
+                    else v.z = value;
+                };
+                const auto probeAt = [&](double rate,
+                                         std::vector<double>& warm)
+                {
+                    VsmSolveInput probe = still;
+                    Vec3 probeRate{};
+                    setComponent(probeRate, axis, rate);
+                    probe.angularVelocityBodyRadps = probeRate;
+                    return Aerodynamics.SolveFrozen(
+                        probe, state.separation, warm, stillSettings);
+                };
+                const VsmSolution forward =
+                    probeAt(ProbeRateRadps, state.forwardProbeCirculation);
+                const VsmSolution backward =
+                    probeAt(-ProbeRateRadps, state.backwardProbeCirculation);
+                if (allFinite(forward.momentBodyNm)
+                    && allFinite(backward.momentBodyNm)
+                    && Length(forward.momentBodyNm) < 2.0 * momentScaleNm
+                    && Length(backward.momentBodyNm) < 2.0 * momentScaleNm)
+                {
+                    const double delta = component(forward.momentBodyNm, axis)
+                        - component(backward.momentBodyNm, axis);
+                    setComponent(state.rotationalDampingNmPerRadps, axis,
+                                 delta / (2.0 * ProbeRateRadps));
+                }
+                state.dampingProbeAxis = (axis + 1) % 3;
+            }
 
             diagnostics.vsmResidual = solved.residual;
             diagnostics.vsmConverged = solved.converged;
@@ -344,10 +408,14 @@ structureSolve:
     // wing actually has right now, plus the payload's weight acting through
     // the carabiners. No control term appears here.
     const Vec3 rate = state.angularVelocityBodyRadps;
-    const Vec3 damped{
-        std::min(0.0, state.rotationalDampingNmPerRadps.x) * rate.x,
-        std::min(0.0, state.rotationalDampingNmPerRadps.y) * rate.y,
-        std::min(0.0, state.rotationalDampingNmPerRadps.z) * rate.z};
+    // The damping coefficients, as positive resistances. Only a moment that
+    // opposes the rotation is damping; a measured derivative of the other sign
+    // is the aerodynamic solve being asked a question it cannot answer, and it
+    // is dropped rather than fed back as excitation.
+    const Vec3 dampingNmPerRadps{
+        -std::min(0.0, state.rotationalDampingNmPerRadps.x),
+        -std::min(0.0, state.rotationalDampingNmPerRadps.y),
+        -std::min(0.0, state.rotationalDampingNmPerRadps.z)};
     // The pendulum. The payload's weight does not act at the canopy - it acts
     // at a centre of mass eight metres below it, on the end of the lines. Any
     // rotation of the canopy away from having that mass directly beneath it
@@ -364,12 +432,10 @@ structureSolve:
     const Vec3 pendulumMoment = Cross(
         payloadOffsetBody, state.attitude.InverseRotate(payloadWeightWorld));
 
-    const Vec3 momentBody{
-        exchangedMomentBody.x + damped.x + pendulumMoment.x
-            + payloadLoads.rollMomentNm,
-        exchangedMomentBody.y + damped.y + pendulumMoment.y
-            + payloadLoads.pitchMomentNm,
-        exchangedMomentBody.z + damped.z + pendulumMoment.z};
+    const Vec3 undampedMomentBody{
+        exchangedMomentBody.x + pendulumMoment.x + payloadLoads.rollMomentNm,
+        exchangedMomentBody.y + pendulumMoment.y + payloadLoads.pitchMomentNm,
+        exchangedMomentBody.z + pendulumMoment.z};
     // Inertia about the canopy, with the payload on its arm - m L^2 dominates
     // anything the canopy contributes on its own, and it is what sets the
     // pendulum period the Level 3 tests measured.
@@ -379,11 +445,31 @@ structureSolve:
         95.0 + payloadArmInertia,
         120.0 + payloadArmInertia,
         150.0};
+    // Damping is integrated implicitly, the rest explicitly. The measured yaw
+    // damping runs to 2e5 Nm per rad/s against an inertia of 150, which is a
+    // time constant of under a millisecond - an explicit c*omega at 120 Hz
+    // overshoots it by a factor of eleven, alternates sign and doubles every
+    // step. That is what sent asymmetric brake to an infinite turn rate in
+    // fourteen seconds. Backward Euler on the damping term alone is
+    // unconditionally stable at any coefficient and costs one divide:
+    //   omega' = (omega + M/I dt) / (1 + c/I dt)
     const Vec3 angularAcceleration{
-        momentBody.x / inertia.x,
-        momentBody.y / inertia.y,
-        momentBody.z / inertia.z};
-    state.angularVelocityBodyRadps += angularAcceleration * dt;
+        undampedMomentBody.x / inertia.x,
+        undampedMomentBody.y / inertia.y,
+        undampedMomentBody.z / inertia.z};
+    const Vec3 unrelaxedRate =
+        state.angularVelocityBodyRadps + angularAcceleration * dt;
+    state.angularVelocityBodyRadps = Vec3{
+        unrelaxedRate.x / (1.0 + dampingNmPerRadps.x * dt / inertia.x),
+        unrelaxedRate.y / (1.0 + dampingNmPerRadps.y * dt / inertia.y),
+        unrelaxedRate.z / (1.0 + dampingNmPerRadps.z * dt / inertia.z)};
+    // The damping moment actually applied, at the rate it was applied to, so
+    // the reported net moment is the one the state integrated.
+    const Vec3 damped{
+        -dampingNmPerRadps.x * state.angularVelocityBodyRadps.x,
+        -dampingNmPerRadps.y * state.angularVelocityBodyRadps.y,
+        -dampingNmPerRadps.z * state.angularVelocityBodyRadps.z};
+    const Vec3 momentBody = undampedMomentBody + damped;
     // Structural damping: the wing is not a rigid body and its rotations are
     // resisted by the lines it hangs on. Without this the pendulum rings.
     const double damping = std::clamp(1.0 - 1.6 * dt, 0.0, 1.0);

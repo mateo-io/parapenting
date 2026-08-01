@@ -38,7 +38,7 @@ CanopyGeometry ──┬─→ SuspensionGraph ──→ TensionCableSolver
            HarnessGeometry → PayloadRigidBody   (Level 3)
            ApparentMassTensor                   (Level 4)
 
-           CoupledParagliderSolver              (Level 7, trim on the numbers)
+           CoupledParagliderSolver              (Level 7, complete)
 ```
 
 ## Level 1 — geometry
@@ -166,8 +166,8 @@ endpoints, no self-collision.
 
 ## Level 7 — coupled solver
 
-`CoupledParagliderSolver`. **Trim works and matches the published wing.** One
-test still fails, so the suite stays excluded.
+`CoupledParagliderSolver`. **Complete.** Trim matches the published wing, turns
+emerge, and the suite is green and runs with the rest.
 
 The schedule runs all six solvers in order at fixed 120 Hz with staggered
 aero/structure coupling, the VSM at a reduced rate with the rate-dependent part
@@ -186,21 +186,64 @@ Internal force closure is exact and the energy residual stays under 4 W on a
 925 N aircraft. Taking a coupling iteration away changes airspeed by 0.002 m/s,
 so the staggered solve is converged rather than tuned to its budget.
 
-**Deep stall is refused rather than faked.** Heavy brake takes the sections past
-stall, where a steady solve has no answer, so a non-finite or implausible
-aerodynamic solve is rejected and the previous load held. This is a numerical
-safety envelope in the sense of guiding rule 12 — reported in the diagnostics,
-separate from flight behaviour, and asserted to engage at 0.9 brake while
-keeping the state finite.
+**Turns emerge and mirror.** Right brake at 0.35 held for ten seconds settles at
+0.094 rad of bank and 0.030 rad/s of yaw, with no control-to-bank or
+control-to-yaw term anywhere in the file. The same case braked left agrees with
+it to 2×10⁻⁸ rad after ten seconds of coupled flight.
 
-**Still failing:** asymmetric brake held for ten seconds reports a NaN turn
-rate. A direct probe of the same case over the same duration does not reproduce
-it, which points at the test harness rather than the solver — but that is
-unverified.
+**Heavy brake stalls the wing rather than breaking the solve.** The brake sweep,
+each case flown for eight seconds from trim:
+
+| brake | alpha | separation | sink | Cp |
+|---|---|---|---|---|
+| 0.35 | 6.3° | 0.00 | 0.82 m/s | 0.90 |
+| 0.60 | 14.9° | 0.38 | 1.56 m/s | 0.85 |
+| 0.75 | 29.6° | 0.90 | 3.77 m/s | 0.67 |
+| 0.90 | 46.1° | 1.00 | 4.65 m/s | 0.32 |
+
+Monotone in every column, and the numerical safety envelope does not engage
+anywhere in it. That envelope still exists — a non-finite or implausible
+aerodynamic solve is rejected and the previous load held, reported separately in
+the diagnostics under guiding rule 12 — but the coupled solve no longer needs it
+to get through a stall. Level 4's separation memory is what makes the separated
+branch well posed here; the VSM asked for a cold steady solve in deep stall
+still has no answer, and that stays a locked known-failure check.
+
+**What was wrong, and it was in this file rather than in the harness.** The NaN
+turn rate reproduced at once in an unoptimized build, having hidden at -O2:
+
+1. **Damping was integrated explicitly.** Measured roll damping is 3.7×10³ Nm
+   per rad/s against an inertia of 95, and yaw damping 80 against 150. Explicit
+   `c·omega` at 120 Hz needs `c·dt/I < 2`; yaw sat at eleven times that, so the
+   damping term alternated sign and doubled every step. It is now backward Euler
+   on the damping term alone — one divide, unconditionally stable at any
+   coefficient.
+2. **The damping derivative was ill-posed.** It divided the live moment
+   difference by the live rotation rate, with a guard that zeroed it below
+   10⁻³ rad/s. Near zero rate that is noise over nothing, and the guard made the
+   damping law discontinuous in the state: two mirror-image flights took
+   different branches of it within four seconds and stopped being mirror images.
+   It is now a centred finite difference at a fixed ±0.3 rad/s, one axis per
+   aerodynamic interval, each refreshed every 0.3 s. Centred matters — a
+   one-sided probe is not odd in the rate, so left and right measure different
+   coefficients.
+3. **The probes solved a different wing.** They called the cold `Solve` capped
+   at 40 iterations, where a cold solve needs about ninety, and got the
+   equilibrium separation for whatever incidence they landed on rather than the
+   separation state the wing actually had. The coefficient moved 10% between
+   consecutive intervals. `SolveFrozen` now holds the live separation state and
+   continues each probe's own circulation, which converges in a handful of
+   iterations — the suite got roughly ten times faster as a side effect.
+4. **The aerodynamic gate bounded force but not moment.** One step near stall
+   returned a *converged* solve carrying 34 kNm of yaw against a `q·S·b` of
+   14 kNm. It was accepted, every step after it was rejected, and the envelope
+   dutifully held that number for ten seconds — 26 kNm on an inertia of 150 is
+   a turn rate of 100 rad/s, and then infinity. The gate now bounds the moment
+   at twice `q·S·b`, on the accepted solve and on both probes.
 
 ## Test suites
 
-`Tools/check-build.sh` builds the Unreal module and runs nine suites. All green.
+`Tools/check-build.sh` builds the Unreal module and runs ten suites. All green.
 
 | suite | covers |
 |---|---|
@@ -212,10 +255,15 @@ unverified.
 | `aerodynamics_tests` | Level 4 |
 | `pressure_tests` | Level 5 |
 | `membrane_tests` | Level 6 |
+| `coupled_tests` | Level 7 |
 | `terrain_survey_tests` | terrain georeferencing |
 
-`coupled_tests` exists and is excluded: one of its checks, asymmetric brake over
-ten seconds, still reports a NaN turn rate.
+`coupled_tests` is the slow one: ten minutes of flight at 120 Hz plus a brake
+sweep, all six solvers running. Run it unoptimized as well as in Release
+occasionally. The NaN it used to report was invisible at -O2 and reproduced on
+the first try at -O0 — the divergence was there in both, but the optimized build
+took a different enough path through the same marginal instability to survive
+the ten seconds the test measures.
 
 ## Coefficient registry
 
@@ -239,19 +287,18 @@ Ordered by how much they matter.
    0.82 route-left and 0.15 route-right, so lee rotor lands on the wrong side of
    the ridge relative to the surveyed geography. This blocks the Level 0 exit
    gate and is the oldest open defect in the project.
-2. **One Level 7 check fails** — asymmetric brake over ten seconds, NaN turn
-   rate, not reproducible by direct probe. The suite stays excluded until it is
-   understood.
-3. **Both Grindelwald routes are off the map** — outside the surveyed
+2. **Both Grindelwald routes are off the map** — outside the surveyed
    heightfield *and* the rendered extent. The analytic fallback puts the Grund
    landing field at 4683 m against a published 950 m, in air with no thermal
    field. They are selectable content.
-4. **Deep stall does not converge** in the VSM, and will not: the separated
-   branch has a negative lift slope, which inverts the downwash feedback between
-   sections, and a wing in deep stall has no stable steady state. Level 11's
-   unsteady wake is the honest treatment. Locked as a known-failure check.
-5. **Section polars are analytic.** No XFOIL runs, no measured data. Every
+3. **Deep stall does not converge** in the VSM solved cold, and will not: the
+   separated branch has a negative lift slope, which inverts the downwash
+   feedback between sections, and a wing in deep stall has no stable steady
+   state. Level 11's unsteady wake is the honest treatment. Locked as a
+   known-failure check. Inside the coupled solve, where the separation state is
+   carried between steps, the wing does walk into stall — see Level 7.
+4. **Section polars are analytic.** No XFOIL runs, no measured data. Every
    flight number above rests on theory.
-6. **The apparent-mass rotational terms are disputed** (above).
-7. **None of the geometry-driven stack flies the wing.** The legacy polar still
+5. **The apparent-mass rotational terms are disputed** (above).
+6. **None of the geometry-driven stack flies the wing.** The legacy polar still
    does.

@@ -40,9 +40,13 @@ enum class CalibrationManeuver
     HandsUpTrim,
     // Full accelerator, held. The other end of the speed system.
     AcceleratorStep,
-    // Symmetric brake to 40%, held. Speed and sink at a known brake setting.
+    // Symmetric brake to 25%, held. Speed and sink at a known brake setting.
     BrakeStep,
-    // Symmetric brake to 70% for 2 s, then released. This is the pitch
+    // Symmetric brake to 40%, held. The same manoeuvre a real EN-B wing flies
+    // all day, run deliberately because this model cannot: it is the cleanest
+    // single demonstration of what the analytic section polars cost.
+    DeepBrakeStep,
+    // Symmetric brake to 30% for 2 s, then released. This is the pitch
     // identification manoeuvre: the wing swings back, then surges, and the
     // period and damping of that oscillation are what the pendulum and the
     // line stiffness together produce.
@@ -132,13 +136,33 @@ struct CalibrationSettings
 {
     // Seconds of settling before the input is applied. The wing must be at
     // trim, or the response contains the initial transient as well.
-    double settleSeconds = 15.0;
-    // Seconds of recording after it.
-    double recordSeconds = 20.0;
+    //
+    // Sixty, not fifteen. The aircraft's slow pitch-and-speed mode has a
+    // period near eleven seconds and a damping ratio around a fifth, so
+    // fifteen seconds is not two periods and the wing is still visibly
+    // oscillating when the input arrives. It showed up honestly - every
+    // manoeuvre reported NOT SETTLED - rather than being averaged away.
+    double settleSeconds = 90.0;
+    // Seconds of recording after it. Forty-five, for the same reason the
+    // settle is ninety: a step response on an aircraft whose slow mode has an
+    // eleven second period is not over in twenty.
+    double recordSeconds = 45.0;
     // Rows per second in the exported series. The solver still runs at 120 Hz;
     // this only decimates the output.
     double sampleRateHz = 20.0;
+    // The all-up weight to fly at, kilograms, made up by ballasting the
+    // default payload. A published envelope is quoted at ONE weight and trim
+    // speed goes as the square root of wing loading, so identifying against
+    // the published numbers means flying the published configuration. The
+    // EPIC 2 ML's figures are 105 kg ones against a 90-110 kg certified
+    // range; this solver's unballasted payload comes to 94.3, which is 5.5%
+    // of speed on its own.
+    double allUpMassKg = 105.0;
 };
+
+// The payload that makes `allUpMassKg` up, ballast in the reserve pocket.
+PayloadMassProperties CalibrationPayload(
+    double allUpMassKg, double canopyMassKg = 5.1);
 
 ManeuverResult RunCalibrationManeuver(
     CalibrationManeuver maneuver, const CanopyGeometry& geometry,

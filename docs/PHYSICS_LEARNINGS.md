@@ -517,6 +517,108 @@ unnoticed through two levels of gates.
 
 ---
 
+## 21. Removing a wrong term can expose a second wrong term that was hiding behind it
+
+The rigid motion counted gravity's restoring torque twice: once as a lumped
+body's weight moment, once in the payload swing degree of freedom on the same
+hinge. The wing carried roughly 14000 N·m/rad of pitch stiffness where the
+lines provide 6300. This was written up, understood, and correct.
+
+Fixing it worked, exactly as predicted — trim went from 31.9 km/h to about 40
+against a published 39. And the wing then stalled at 35 seconds and stayed
+stalled, from cold, hands off, in still air.
+
+Not because the fix was wrong. Because with the double count gone, incidence is
+set by the line spring alone, and the first attempt froze that spring at its 1 g
+value while the aerodynamic moment it answers scales with dynamic pressure. A
+spring that does not scale with anything loses to one that does.
+
+**Rule:** a term that is provably wrong can still be load-bearing, and its load
+is not always the one you removed it for. Before deleting a compensating error,
+work out what ELSE is leaning on it.
+
+**And the corollary that actually closed it:** when the replacement misbehaves,
+measure the replacement rather than tuning it. Three of the four things that
+made this work were measurements taken *after* the first attempt failed, and
+none of them was guessable:
+
+- the spring is proportional to LOAD, not constant — 3306, 6317, 11512 and
+  15393 N·m/rad at ½, 1, 2 and 4 g;
+- the probe that measures it needs 12000 iterations, returning 19849 at 120 and
+  6371 at 48000, which is why the "just ask the live network" idea returned
+  noise;
+- the canopy pivots about a virtual hinge 6.62 m below itself, which is where
+  its rotational inertia comes from.
+
+The first attempt was reverted and written up. The second used those four
+numbers and worked. The revert was not wasted; it was the measurement.
+
+---
+
+## 22. A simulation that starts mid-flight has to start trimmed
+
+The canopy's pitch equilibrium is not its hang pose. This wing carries a 327 N·m
+nose-down camber couple, so it sits about 3.3 degrees below where the lines
+alone would hold it — and starting it at the hang pose is a 3.3 degree step
+input into a spring with a damping ratio near 0.14.
+
+That rings to twice the offset, which takes incidence from 6 degrees to 0.3,
+which takes the LOAD off the lines. And because the line spring is geometric
+rather than elastic, an unloaded wing has almost no pitch stiffness, so it
+pitches further. Measured: 976 N and 5727 N·m/rad at a tenth of a second, 207 N
+and 989 N·m/rad two seconds later, and the wing never came back.
+
+None of that was the trim being wrong — the wing settles within half a km/h of
+the published number either side of the excursion. It was a startup transient
+with enough energy to knock the aircraft out of its own envelope.
+
+**Rule:** the same reasoning that made this solver seed an inflated canopy
+applies to every other state. An initial condition of zeros is not a wing, and
+on a stiff, lightly damped axis it is not a small error either — it is an
+impulse. This file already recorded the pressure version of this lesson
+("the solvers were all right; the initial condition was not a wing") and it
+took a second, more expensive instance to notice it was the same lesson.
+
+---
+
+## 23. Compare against the configuration the number was published in
+
+The model was 9 km/h short of a published 39. About 2 of those km/h were not in
+the model at all: the EPIC 2 ML's envelope is quoted at 105 kg all-up against a
+90–110 kg certified range, and the solver's unballasted payload comes to 94.3.
+Trim speed goes as the square root of wing loading, so that is 5.5% of speed
+built into the *comparison* rather than into the physics.
+
+**Rule:** a published performance number is a statement about an aircraft in a
+configuration, and the configuration is part of the number. Before treating a
+gap as a modelling error, check that the model is flying the same aeroplane at
+the same weight in the same air. The calibration runner now ballasts to the
+published weight and says so in its own output.
+
+---
+
+## 24. Check the sign against the world, not against the convention
+
+The turn tests asserted that turn rate and bank carry opposite signs, on the
+stated grounds that "positive bank is right tip up, which is a left turn". That
+is backwards. The code says so plainly — `bankRad` is `asin(-span.z)`, so a
+right tip *below* the horizon reads positive — and the assertion had been
+passing because the old model banked the wrong way.
+
+Two errors agreeing again, in the one place this project has explicitly warned
+itself about twice ("it is the trap that convention has set twice before").
+
+What settled it was refusing to reason about it: fly the wing, read the ground
+track and the tip height as world vectors, and print them. Right brake turns the
+track +1.217 rad toward +Y with the right tip 0.030 below the horizon; left
+brake mirrors it to four digits.
+
+**Rule:** a handedness claim written in a comment is a hypothesis. The only
+reliable check is a quantity with no convention in it — where did it actually
+go, in the world — and it costs about twenty lines to ask.
+
+---
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -533,7 +635,16 @@ unnoticed through two levels of gates.
 | coupled trim incidence | 9.1 deg | it was 4.5 pinned, 11.8 before the Cm fixes |
 | section Cm at 3.5% camber | -0.110 | -pi h/c; the code had -pi h/4c |
 | incidence for the published trim CL | 5.30 deg | the lift curve is close to right |
-| line pitch stiffness | 5723 N·m/rad | measured off the graph, not assumed |
+| line pitch stiffness at 1 g | 6317 N·m/rad | and PROPORTIONAL TO LOAD - §21 |
+| line stiffness per newton | 6.13 m | 3306/6317/11512/15393 at ½/1/2/4 g |
+| pitch hinge arm | 6.62 m | the canopy pivots below itself, not about itself |
+| line roll stiffness at 1 g | 8204 N·m/rad | replaced a `W L sin` term |
+| trim speed, 105 kg | 10.95 m/s | 39.4 km/h against a published 39.0 |
+| trim incidence | 5.02 deg | against the 5.30 the published CL needs |
+| camber couple at trim | 327 N·m | scales with q; drives the pitch loop gain |
+| pitch loop gain at trim | 0.32 | passes 1 at CL 0.35; full bar is CL 0.31 |
+| polar's max lift coefficient | 0.866 at 11 deg | wing's profile carries 1.32 |
+| usable envelope | hands-up to 25% brake | set by the two numbers above |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |
 | canopy lead at trim | 0.77 m | and 1.85 m at the top of a surge |
 | brake slack take-up | 19% of handle travel | below it the trailing edge does not move |

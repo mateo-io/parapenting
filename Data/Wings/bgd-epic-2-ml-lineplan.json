@@ -16,8 +16,9 @@
   "assumed": {
     "_comment": "Not published. Each carries the reason it exists and what would replace it. Rest lengths are not listed here: they are measured from the Level 1 geometry at the design pose, so the wing hangs where its own shape puts it.",
     "designIncidenceRad": {
-      "value": 0.0873,
-      "why": "Root chord incidence in the harness frame at the unloaded design pose, 5 deg nose-up. Sets where the rest lengths are cut, so it fixes hands-up trim incidence. Replace with the manufacturer's rigging angle, or by fitting Level 4 trim speed."
+      "value": 0.0768,
+      "why": "Root chord incidence in the harness frame at the unloaded design pose, 4.4 deg nose-up. Sets where the rest lengths are cut, so it fixes hands-up trim incidence.",
+      "identified": "Fitted to the published 39 km/h hands-up trim at the published 105 kg all-up weight, which is the identification this entry always named as its replacement. Residual: trim 39.1 km/h against 39.0, and the three numbers it was NOT fitted to come out at sink 1.13 m/s against a published 1.14, glide 9.6 against 9.5, and incidence 5.18 deg against the 5.30 the published trim CL of 0.580 requires. Was 0.0873 (5 deg), a round guess, worth 2.4 km/h. Still replaceable by the manufacturer's rigging angle, which would make this Measured rather than Identified."
     },
     "cascadeSplitFraction": {
       "value": 0.62,

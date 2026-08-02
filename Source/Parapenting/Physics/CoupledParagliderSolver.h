@@ -129,18 +129,23 @@ struct CoupledState
     CellPressureState pressure;
     VsmSeparationState separation;
     SuspensionWarmStart suspension;
-    // Where the pilot is hanging, relative to straight below the canopy.
-    // Radians, positive when the pilot is AHEAD of the wing - which is what
-    // pulling brake does, and the surge is the wing coming back past it.
+    // The line link, canopy to payload, as a unit vector in WORLD axes, with
+    // the link's own angular velocity about the canopy.
     //
-    // This was not a degree of freedom at all until now: the payload was
-    // pinned straight below the canopy in body axes, so the wing could pitch
-    // but it could never swing. A paraglider is two masses on a 7 m line and
-    // almost everything a pilot feels in pitch is the angle between them -
-    // the dive on release, the surge out of a collapse, the pendulum that
-    // makes a brake input arrive late. None of that could happen.
-    double payloadSwingRad = 0.0;
-    double payloadSwingRateRadps = 0.0;
+    // This used to be a single angle in CANOPY BODY axes, and that was the
+    // whole of PHYSICS_TODO item 10. A body-frame angle is not a degree of
+    // freedom of the pilot: rotating the canopy carried the pilot round with
+    // it, so gravity's restoring torque appeared once in the swing equation
+    // and once again as the lumped body's weight moment, and the wing had
+    // roughly 14000 Nm/rad of pitch stiffness where the lines provide 6300.
+    //
+    // Held in world axes the link knows nothing about the canopy except
+    // through the lines. It hangs along apparent gravity, the canopy hangs off
+    // it through the measured line springs, and each restoring torque is
+    // written exactly once. The body-relative angles the lines actually see
+    // are read back out of it every step.
+    Vec3 payloadDirWorld{0.0, 0.0, -1.0};
+    Vec3 linkRateWorldRadps{};
 
     // Level 8. Stepped every physics step, because a fold takes about a tenth
     // of a second and the aerodynamic interval is a tenth of a second.
@@ -244,6 +249,11 @@ struct CoupledDiagnostics
     // the pilot, which is what a pilot means by the word.
     double payloadSwingRad = 0.0;
     double payloadSwingRateRadps = 0.0;
+    // The same angle in the roll plane: positive when the pilot hangs out to
+    // the RIGHT of the canopy's own down. In a coordinated turn this is what
+    // goes to zero - the link lies along apparent gravity - which is why a
+    // banked wing has no gravity spring trying to level it.
+    double payloadSwingLateralRad = 0.0;
     // How far ahead of the pilot the canopy is, metres along track. The same
     // angle in the units the rendering needs, and the one a pilot can see.
     double canopyLeadM = 0.0;
@@ -251,10 +261,19 @@ struct CoupledDiagnostics
     // pilot hangs where the lines are unstressed, and the wing's entire pitch
     // stiffness otherwise.
     double linePitchMomentNm = 0.0;
-    // The payload's weight acting on its arm. Near zero at equilibrium by
-    // construction - the line hangs along apparent gravity, so the weight acts
-    // through the attachment - and reported so that "near zero" is checked
-    // rather than assumed.
+    // Its roll-plane counterpart, off the same graph by the same probe.
+    double lineRollMomentNm = 0.0;
+    // The stiffnesses those two moments were computed at, this step. Not
+    // constants: the line spring is a geometric one, so it scales with the
+    // load the wing is carrying, and reporting it is how that stays visible.
+    double linePitchStiffnessNmPerRad = 0.0;
+    double lineRollStiffnessNmPerRad = 0.0;
+    // The payload's weight acting on its arm about the canopy. Reported and
+    // NOT applied: the link carries the payload's weight along its own axis,
+    // so the only thing the canopy feels from the pilot is line tension
+    // through the attachments, which is the spring above. Kept as a
+    // diagnostic because "the term we removed is small at equilibrium" is a
+    // claim worth measuring rather than asserting.
     double pendulumWeightMomentNm = 0.0;
     double aeroPitchMomentNm = 0.0;
     // Power leaving through the pendulum's damper. A real sink rather than a
@@ -274,9 +293,18 @@ struct CoupledDiagnostics
 class CoupledParagliderSolver
 {
 public:
+    // The payload is a parameter, not a constant, and Level 9 is why. A wing's
+    // published envelope is quoted at ONE all-up weight - the EPIC 2 ML's
+    // 39 km/h is a 105 kg figure against a 90-110 kg certified range - and
+    // this solver's default payload comes to 94.3 kg. Comparing the two
+    // without saying so is a 5.5% speed error built into the comparison
+    // rather than into the model, because trim speed goes as the square root
+    // of wing loading. Flying the configuration the numbers were published at
+    // is part of the measurement.
     CoupledParagliderSolver(
         const CanopyGeometry& geometry, const LinePlanSpec& linePlan,
-        const CoupledSchedule& schedule = {});
+        const CoupledSchedule& schedule = {},
+        const PayloadMassProperties& payload = {});
 
     void Step(CoupledState& state, const CoupledControls& controls,
               const CoupledAtmosphere& atmosphere);
@@ -293,21 +321,81 @@ public:
     const std::vector<double>& TrimLoadDistributionN() const
         { return SectionTrimLoadN; }
 
-    // The wing's pitch stiffness, measured off the built suspension graph by
-    // rotating the canopy either side of its free equilibrium and reading the
-    // moment the lines exert. Newton-metres per radian.
-    double PitchStiffnessNmPerRad() const { return LinePitchStiffnessNmPerRad; }
-    // The incidence the wing hangs at with no aerodynamic moment, from the
-    // same solve. The zero of that spring.
+    // What the lines do to the canopy at a given load, measured off the built
+    // graph by rotating the canopy either side of its free equilibrium at that
+    // load and reading the moment back.
+    //
+    // The load is the whole point. This spring is not elastic - the lines
+    // stretch by 0.2% under a 0.02 rad rotation and the canopy's origin moves
+    // 0.13 m, so what is happening is the wing pivoting about a virtual hinge
+    // roughly six metres below itself, and the restoring moment is a tension
+    // times an arm. Measured across half a g to three g the stiffness runs
+    // 3306, 6317, 11512 and 15393 Nm/rad: proportional to load to within the
+    // slow droop of the arm.
+    //
+    // Freezing it at its 1 g value, which is what this solver did, is what
+    // made the wing's pitch diverge once the double-counted gravity spring of
+    // item 10 was removed. The aerodynamic moment scales with dynamic pressure;
+    // a spring that does not scale with anything loses to it at speed, and the
+    // incidence runs away. Load-proportional, the two scale together and the
+    // trim incidence depends on lift coefficient alone, which is what makes a
+    // fixed-incidence glider speed-stable.
+    struct LineStiffness
+    {
+        double pitchNmPerRad = 0.0;
+        double rollNmPerRad = 0.0;
+        double hangIncidenceRad = 0.0;
+        // How far the canopy's origin travels per radian it rotates through.
+        // The wing does not spin about itself: the network holds it on a
+        // virtual hinge 6.6 m below, so rotating it also SWINGS it, and both
+        // the inertia that resists the rotation and the relative wind the
+        // sections see follow from that arm.
+        double pitchHingeArmM = 0.0;
+        double rollHingeArmM = 0.0;
+    };
+    LineStiffness LineStiffnessAt(double loadN) const;
+
+    // At one g, which is the number to compare against anything published and
+    // the one the tests read.
+    double PitchStiffnessNmPerRad() const
+        { return LineStiffnessAt(SystemMassKg * 9.80665).pitchNmPerRad; }
+    // The same measurement in the roll plane. A wing hanging from a single
+    // point would have none; this one has the two carabiners' lateral spread
+    // and the whole span of attachments above them.
+    double RollStiffnessNmPerRad() const
+        { return LineStiffnessAt(SystemMassKg * 9.80665).rollNmPerRad; }
+    // The incidence the wing hangs at with no aerodynamic moment. The zero of
+    // that spring.
     double TrimIncidenceRad() const { return TrimLineIncidenceRad; }
 
 private:
-    double LinePitchStiffnessNmPerRad = 0.0;
+    // Measured stiffness against line load, in ascending load order.
+    struct StiffnessSample
+    {
+        double loadN = 0.0;
+        LineStiffness stiffness;
+    };
+    std::vector<StiffnessSample> StiffnessCurve;
+    // The virtual hinge arms, which are geometry rather than load, so they are
+    // taken once off the built graph and used everywhere.
+    double PitchHingeArmM = 0.0;
+    double RollHingeArmM = 0.0;
     double TrimLineIncidenceRad = 0.0;
     double TrimSwingRad = 0.0;
     double AcceleratedSwingRad = 0.0;
+    // How far brake rotates the wing on its lines, against handle travel.
+    // Sampled at explicit stations rather than evenly, because the sewn-in
+    // slack puts a corner in this curve at 19% of travel and an even spacing
+    // interpolates straight across it.
+    struct BrakeSwingSample
+    {
+        double travel = 0.0;
+        double offsetRad = 0.0;
+    };
+    std::vector<BrakeSwingSample> BrakeSwingCurve;
+    double BrakeSwingOffsetRad(double travel) const;
     void SolveTrimLoadDistribution();
-    void MeasureLinePitchStiffness();
+    void MeasureLineStiffness();
 
     CoupledSchedule ScheduleValue;
     VortexStepMethodSolver Aerodynamics;

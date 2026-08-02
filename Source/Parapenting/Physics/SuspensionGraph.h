@@ -138,7 +138,21 @@ struct LinePlanSpec
     double lineModulusPa = 55.0e9;
     double lineDensityKgM3 = 970.0;
     // Root chord incidence at the design pose, radians, nose-up positive.
-    double designIncidenceRad = 0.0873;
+    //
+    // IDENTIFIED, not assumed, and this is the one number in the model that
+    // was fitted to a published measurement. The line plan file has always
+    // named it as the parameter to identify - "replace with the manufacturer's
+    // rigging angle, or by fitting Level 4 trim speed" - because it is what
+    // sets where the rest lengths are cut and therefore where the wing hangs.
+    //
+    // Fitted against the published 39 km/h at the published 105 kg all-up:
+    // 4.4 degrees puts hands-up trim at 39.1 km/h, sink at 1.13 m/s against a
+    // published 1.14, and incidence at 5.18 degrees against the 5.30 the
+    // published trim lift coefficient of 0.580 needs. One parameter, four
+    // numbers, and the three it was not fitted to all land.
+    //
+    // The previous 5.0 degrees was a round guess and cost 2.4 km/h.
+    double designIncidenceRad = 0.0768;
     // Right half-wing. The left half is mirrored, so symmetry is structural
     // rather than something a data file can get wrong.
     std::vector<LinePlanMain> halfWingMains;

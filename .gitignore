@@ -7,3 +7,6 @@ Saved/
 .DS_Store
 build/
 
+
+# Test artefacts: the calibration suite exports its time series where it runs.
+hands-up-trim.csv

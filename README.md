@@ -14,6 +14,9 @@ restart point are in
 - Fixed 120 Hz simulation stepping
 - Symmetric/asymmetric brake and weight-shift controls
 - Aerodynamic lift, induced/profile/brake drag, stall degradation and moments
+- Geometry-driven pitch: the wing and the pilot are two bodies on a measured,
+  load-proportional line spring, with hands-up trim at 39.4 km/h against a
+  published 39.0
 - Stateful, technique-sensitive flare reserve and span-aware ground effect
 - Continuous post-touchdown runout, fall and canopy-deflation simulation
 - Headless CMake tests
@@ -52,6 +55,15 @@ restart point are in
 This is a playable physics-first simulator prototype with a surveyed
 swissALTI3D terrain base. Its wing models remain research calibrations rather
 than manufacturer-validated certified models.
+
+The geometry-driven solver now agrees with the published envelope on four
+independent numbers at the weight they were published at — trim speed, sink,
+glide and incidence — from one identified parameter. It also has a measured and
+narrow envelope: hands-up to about a quarter brake. Both are in
+[`docs/CALIBRATION_REPORT.md`](docs/CALIBRATION_REPORT.md), with the handling
+review that has not been run in
+[`docs/PILOT_REVIEW_PROTOCOL.md`](docs/PILOT_REVIEW_PROTOCOL.md). The
+geometry-driven stack still does not fly the game; that is Level 10.
 
 ## Run the physics tests
 

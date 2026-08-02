@@ -2,6 +2,7 @@
 
 #include "BillowRelaxation.h"
 #include "ParagliderDynamics.h"
+#include "SectionProfile.h"
 
 #include <string>
 #include <vector>
@@ -70,6 +71,10 @@ struct CanopyGeometrySpec
     // wing is about 65 Pa.
     double internalPressurePa = 65.0;
     FabricProperties fabric{};
+    // The rib profile. One shape for the whole model: the ribs are drawn from
+    // it, the cell volume is integrated over it, and the section polars are
+    // solved on it.
+    SectionProfileSpec section{};
 };
 
 // A rib station on the developed wing.

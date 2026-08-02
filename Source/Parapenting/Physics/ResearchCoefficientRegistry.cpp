@@ -24,6 +24,7 @@ const LinePlanSpec& Lines = Epic2MlLinePlan();
 constexpr HarnessGeometry Harness3{};
 constexpr PayloadMassProperties Payload{};
 constexpr AnalyticPolarSpec Polar{};
+constexpr SectionProfileSpec Section{};
 constexpr CellPressureSpec Cell{};
 constexpr MembraneSpec Membrane{};
 
@@ -273,35 +274,62 @@ const CoefficientRecord Records[] = {
      "is the mass being moved, so the effort scales with load while the "
      "strength available does not. No measurement behind the rate.", 9},
     // --- Level 4 section polars -------------------------------------------
-    // Every one of these is theory, not measurement. The whole table is
-    // Provisional: XFOIL runs over the digitised profiles replace it wholesale.
-    {"sectionCamberFraction", "1", Polar.camberFraction, 0.0, 0.08,
+    // These are the SHAPE of the section. They were the inputs to a
+    // thin-airfoil formula; they are now the inputs to a contour that gets
+    // panelled and a boundary layer that gets marched over it, so the same
+    // numbers now decide where the section stalls, what its maximum lift is
+    // and how its moment varies - none of which used to be consequences of
+    // anything. `sectionStallMarginRad` is gone from this list because there
+    // is no longer a stall margin to state.
+    {"sectionCamberFraction", "1", Section.maxCamberFraction, 0.0, 0.08,
      S::Estimated, C::Provisional,
-     "Section camber. Sets the zero-lift angle through thin-airfoil theory, "
-     "so it sets trim incidence. Assumed from the profile family, not "
-     "digitised.", 9},
-    {"sectionThicknessFraction", "1", Polar.thicknessFraction, 0.05, 0.25,
+     "Section camber. Assumed from the profile family, not digitised. The "
+     "single most influential number in the geometry-driven stack: it sets "
+     "the zero-lift angle, and therefore trim.", 9},
+    {"sectionCamberPosition", "1", Section.maxCamberPosition, 0.15, 0.55,
      S::Estimated, C::Provisional,
-     "Section thickness. Only enters as the lift-slope correction here.", 9},
-    {"flapChordFraction", "1", Polar.flapChordFraction, 0.5, 0.95,
+     "Where the camber peaks. Assumed. It moves maximum lift and the moment "
+     "together, which is why it was worth naming separately once the polars "
+     "stopped being thin-airfoil.", 9},
+    {"sectionThicknessFraction", "1", Section.maxThicknessFraction, 0.05, 0.25,
      S::Estimated, C::Provisional,
-     "Where the brake starts. Feeds thin-airfoil flap effectiveness, which is "
-     "derived rather than fitted - this fraction is the only assumption in "
-     "the brake model.", 9},
-    {"sectionStallMarginRad", "rad", Polar.stallMarginRad, 0.12, 0.40,
+     "Section thickness. Sets the nose radius through the NACA distribution, "
+     "and the nose radius is what decides when the flow lets go - so this "
+     "used to be a lift-slope correction and is now the stall.", 9},
+    {"sectionThicknessPosition", "1", Section.maxThicknessPosition, 0.15, 0.50,
      S::Estimated, C::Provisional,
-     "Where the section stalls above its zero-lift angle. 14 deg is typical "
-     "for a thick cambered section; nothing here measures it.", 9},
+     "Where the thickness peaks. Assumed. Scales the nose radius by 0.30 over "
+     "its value.", 9},
+    {"brakeChordFraction", "1", Section.brakeChordFraction, 0.5, 0.95,
+     S::Estimated, C::Provisional,
+     "Where the brake starts taking the trailing edge. The camber line is "
+     "bent from here aft and the panel solver reads the bent shape, so there "
+     "is no flap-effectiveness term anywhere any more.", 9},
+    {"brakeBlendChordFraction", "1", Section.brakeBlendChordFraction,
+     0.02, 0.30, S::Estimated, C::Provisional,
+     "How far ahead of the brake attachment the fabric starts to curve. A "
+     "hinge would be a corner and fabric is not one; it also keeps the panel "
+     "solver off a spurious suction peak.", 9},
+    {"inletChordFraction", "1", Section.inletChordFraction, 0.0, 0.10,
+     S::Estimated, C::Provisional,
+     "Where the cell opening sits. The surface the flow reaches by crossing "
+     "it has no laminar run, which is roughly half this section's profile "
+     "drag. A photograph of the wing replaces it.", 9},
+    {"fullBrakeDeflectionRad", "rad", Section.fullBrakeDeflectionRad,
+     0.15, 0.80, S::Estimated, C::Provisional,
+     "Trailing edge deflection at full brake. It no longer sets where the "
+     "wing stalls - the solved section does that - so it is no longer a "
+     "calibration hook for stall onset, only the travel of the control.", 9},
     {"stallBlendWidthRad", "rad", Polar.stallBlendWidthRad, 0.02, 0.30,
      S::Estimated, C::Provisional,
-     "Angular width of the stall transition. Zero below stall and one beyond, "
-     "so attached flow carries none of the post-stall branch. Real polars "
-     "make this a measurement rather than a shape.", 9},
-    {"fullBrakeDeflectionRad", "rad", Polar.fullBrakeDeflectionRad, 0.15, 0.80,
-     S::Estimated, C::Provisional,
-     "Trailing edge deflection at full brake. With the derived flap "
-     "effectiveness this is what sets where on the brake travel the wing "
-     "stalls, so it is the calibration hook for stall onset.", 9},
+     "Angular width over which the table hands off to the post-stall branch "
+     "past the SOLVED lift peak. Narrower than it was, because the peak is "
+     "now a measurement rather than a stated angle with error around it.", 9},
+    {"sectionReynoldsNumber", "1", ComputedPolarSpec{}.reynoldsNumber,
+     3.0e5, 3.0e6, S::Estimated, C::Provisional,
+     "Chord times airspeed over kinematic viscosity at trim. The wing runs "
+     "0.5 to 3 million across its span and speed range and this is one value "
+     "for all of it, which is what makes Reynolds not an axis yet.", 9},
     {"lineProjectedFraction", "1", 0.35, 0.15, 0.60, S::Estimated,
      C::Unvalidated,
      "How much of the manufactured line length is normal to the flow. "

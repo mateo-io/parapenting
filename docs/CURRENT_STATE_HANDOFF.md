@@ -165,40 +165,79 @@ still says nothing about `Source/Parapenting/*.cpp`, which is why
 ## Where the physics stands
 
 **Levels 0–9 of the geometry-driven stack are built.** Level 9 closed the two
-oldest open items in `PHYSICS_TODO`:
+oldest open items in `PHYSICS_TODO`, and the section-polar work after it closed
+the third and oldest of all, item 1:
 
 - **Item 10** — the rigid motion counted gravity's restoring torque twice. The
   payload is now a link with its own direction in world axes, the canopy
   carries its own inertia, and the line spring is measured off the built graph
   at four loads because it is geometric and scales with load.
-- **Item 0** — trim was 18% slow. It is now **39.4 km/h against a published
-  39.0** at the published 105 kg all-up, with sink 1.15 against 1.14, glide
-  9.43 against 9.5, and incidence 5.02° against the 5.30° the published trim
-  lift coefficient needs. One parameter was identified, three were not.
+- **Item 0** — trim was 18% slow. It closed at 39.4 km/h against a published
+  39.0, on the analytic polars and with the design incidence fitted to that
+  speed. It has since been re-identified against the wing's own polar rather
+  than the published number, and it still lands: see below.
 
 `docs/CALIBRATION_REPORT.md` is the full Level 9 report.
 `docs/PILOT_REVIEW_PROTOCOL.md` is the other half of the exit gate and has not
 been run — the handling of this model has never been flown by anyone who flies.
 
-**Two measured limits define a narrow envelope: hands-up to about a quarter
-brake.**
+**The section polars are now solved on the section, not stated**
+(`PHYSICS_TODO` item 1, closed). `SectionProfile` generates the contour the ribs
+are cut to — a real nose radius, brake as a bend in the camber line — and
+`SectionViscousSolver` solves it: Hess-Smith panels for the potential flow,
+Thwaites/Michel/Head for the boundary layer, Squire-Young for drag, and a
+Kirchhoff dead-air region aft of separation iterated to a fixed point. Maximum
+lift is where that stops having a solution; nothing states it. The same contour
+now draws the ribs, so the wing has one section rather than two.
 
-- The analytic section polars peak at CL 0.866 at 11° where this wing's profile
-  carries 1.32, so 40% brake — an ordinary EN-B input — takes the wing past its
-  own stall, and past it there is no steady state to return to.
-- The pitch loop gain passes one at CL 0.35 and full bar is a CL 0.31
-  condition, so the wing is statically pitch-divergent at its published top
-  speed.
+Validated on NACA 2412 from its own coordinates: zero-lift angle **−2.12°
+against a published −2.1**, quarter-chord moment **−0.055 against −0.05**,
+minimum drag **0.0062 against 0.006**, maximum lift 1.96 at 16° against 1.6–1.7
+at 16 (the angle lands, the value is 18% high, which is the method's known
+direction of error).
 
-Both point at real section polars (`PHYSICS_TODO` item 1, blocked on XFOIL),
-which is now the highest-value unblocked-by-money item in the project.
+**Trim was re-identified against the wing rather than against the brochure.**
+The design incidence used to be fitted directly to the published 39 km/h; it is
+now set by the design rule a rigging angle exists to satisfy — hands up, with no
+brake and no bar, the wing sits at its own best glide. At the published 105 kg
+that gives **trim 39.6 km/h against 39.0**, incidence **5.24° against the 5.30°
+the published trim lift coefficient needs**, sink **1.08 against 1.14**, and
+glide **10.18 against 9.5**. Three of the four land inside 6% and none of them
+was fitted.
+
+**The envelope is still hands-up to about a quarter brake — and that is now one
+problem, not two.**
+
+- The lift ceiling is gone. The section carries **1.59 hands up and 2.40 at 40%
+  brake** where the analytic table gave 0.87 at every brake setting, and the
+  wing's own lift coefficient rises monotonically to 1.20 at 40% brake where
+  the analytic polars peaked at 0.82 and fell off a cliff.
+- What stops 40% brake now is **pitch**. Ramped in over twelve seconds, the
+  incidence *falls* as the first fifth of brake goes on and the airspeed
+  *rises*: brake is speeding this wing up, because the section's nose-down
+  moment rotates the canopy on its lines faster than the camber it adds buys
+  lift back. Past a quarter of engaged travel it runs away.
+- Full bar reaches **15.6 m/s, 56 km/h against a published 53**, before it
+  diverges — better than before, where it departed on the way there.
+
+Both are now `PHYSICS_TODO` item 11, the pitch axis, whose two remaining levers
+are the specific stiffness of 6.13 m and the swing damping ratio. Item 1 was
+one of them and it has been measured out.
+
+**Two new open items came out of the work.** Item 12: glide is 8.6% optimistic
+and the two candidates are the shear layer off the cell mouth (deliberately not
+modelled — its coefficient would swing section drag by five times) and the
+VSM's induced drag, which reports a span efficiency of **1.29** against its own
+reference span and cannot. Item 13: the solved stall angle is not smooth across
+the brake axis.
 
 **Nothing geometry-driven flies the game yet.** `ParagliderDynamics` — one
 six-degree-of-freedom body with a fitted polar — is still what the pawn uses.
 Retiring it is Level 10, and it should not start until the envelope above is
 wider, because Level 10's exit gate is "no legacy direct-control force remains
 active" and swapping in a model that cannot hold 40% brake would be a
-regression a pilot would feel immediately.
+regression a pilot would feel immediately. That is unchanged — but the thing to
+fix before Level 10 is now the pitch axis rather than the section data.
 
 ## Work in progress at interruption
 

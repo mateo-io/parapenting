@@ -25,13 +25,22 @@ CoupledControls ControlsAt(CalibrationManeuver maneuver, double t)
         break;
     case CalibrationManeuver::BrakeStep:
         // 25% of handle travel, which after the 19% of sewn-in slack is 7% of
-        // brake at the trailing edge. It used to be 40%, and 40% no longer
-        // identifies anything: the model's analytic section polars peak at
-        // CL 0.866 at 11 degrees of incidence where this wing's own profile
-        // carries 1.32, so trim at 5.1 degrees leaves barely 6 degrees of
-        // brake before the wing is past its own stall - and past it there is
-        // no steady state to come back to (limitation 6). A step to 40%
-        // overshoots into that on the transient and stays.
+        // brake at the trailing edge. It used to be 40%, and 40% still does
+        // not identify anything - but the reason has changed and the old one
+        // is worth keeping because it is no longer true.
+        //
+        // It used to be lift: the analytic section polars peaked at CL 0.866
+        // at 11 degrees where this wing's own profile carries 1.32, so trim
+        // left barely six degrees of brake before the wing was past its own
+        // stall, with no steady state to come back to (limitation 6). The
+        // computed polars closed that - the section carries 2.36 at 40% brake
+        // and there is a steady state there.
+        //
+        // What stops 40% now is pitch, not lift: the section's nose-down
+        // moment under brake rotates the canopy on its lines faster than the
+        // camber buys lift back, so the wing accelerates into the first fifth
+        // of the travel and departs past a quarter of it. PHYSICS_TODO item
+        // 11.
         //
         // So the step was moved to where the model can hold it, and the
         // manoeuvre that cannot is kept and reported: see the deep-brake

@@ -139,20 +139,32 @@ struct LinePlanSpec
     double lineDensityKgM3 = 970.0;
     // Root chord incidence at the design pose, radians, nose-up positive.
     //
-    // IDENTIFIED, not assumed, and this is the one number in the model that
-    // was fitted to a published measurement. The line plan file has always
-    // named it as the parameter to identify - "replace with the manufacturer's
-    // rigging angle, or by fitting Level 4 trim speed" - because it is what
-    // sets where the rest lengths are cut and therefore where the wing hangs.
+    // IDENTIFIED against the wing's own aerodynamics, from a design rule:
+    // a paraglider's risers are cut so that hands-up, with no brake and no
+    // bar, the wing sits at its own best glide. That is what "hands up" is
+    // for. It is the rule the rigging angle exists to satisfy, and unlike the
+    // published trim speed it is a statement about the design rather than
+    // about the manufacturer's brochure.
     //
-    // Fitted against the published 39 km/h at the published 105 kg all-up:
-    // 4.4 degrees puts hands-up trim at 39.1 km/h, sink at 1.13 m/s against a
-    // published 1.14, and incidence at 5.18 degrees against the 5.30 the
-    // published trim lift coefficient of 0.580 needs. One parameter, four
-    // numbers, and the three it was not fitted to all land.
+    // Swept on the coupled solver against the wing's own polar, whole-aircraft
+    // glide peaks at 4.75 degrees of design incidence, where hands-up trim
+    // settles at 4.66 degrees of incidence and 10.78 m/s at 94.3 kg. The peak
+    // is flat - 4.5 and 5.0 are both within 0.1 of it - so this is pinned to
+    // about a quarter of a degree, and the residuals below should be read
+    // against that.
     //
-    // The previous 5.0 degrees was a round guess and cost 2.4 km/h.
-    double designIncidenceRad = 0.0768;
+    // What it then gives, none of it fitted: glide 10.32 against a published
+    // 9.5, trim 10.78 m/s against the 10.27 the published 39 km/h implies at
+    // this weight, sink 1.04 against 1.08, incidence 4.66 against the 5.30 the
+    // published trim lift coefficient of 0.580 needs.
+    //
+    // It was 4.4 degrees, fitted directly to the published 39 km/h. That fit
+    // was made against the analytic section polars, and it does not survive
+    // them being replaced: on the computed polars 4.4 degrees trims the wing
+    // at 11.96 m/s. A number fitted to one model's error is a number that
+    // moves when the error does, which is the argument for the design rule
+    // over the fit rather than the other way round.
+    double designIncidenceRad = 0.0829;
     // Right half-wing. The left half is mirrored, so symmetry is structural
     // rather than something a data file can get wrong.
     std::vector<LinePlanMain> halfWingMains;

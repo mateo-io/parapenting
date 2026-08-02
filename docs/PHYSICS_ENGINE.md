@@ -95,7 +95,8 @@ measured off the built graph. It replaced three separate hardcoded 7.3s.
 
 ## Level 4 — aerodynamics
 
-`VortexStepMethodSolver`, `SectionPolarTable`, `ApparentMassTensor`.
+`VortexStepMethodSolver`, `SectionPolarTable`, `SectionProfile`,
+`SectionViscousSolver`, `ApparentMassTensor`.
 
 A spanwise circulation solve coupled to 2D section polars. Validated against
 classical lifting-line theory, which is exact and needs no external data:
@@ -111,16 +112,52 @@ On the EPIC 2 it converges in 88 iterations, symmetric input gives exactly zero
 roll and yaw, left and right mirror exactly, and roll damping falls out of the
 spanwise incidence change with no damping coefficient anywhere.
 
-**Section polars are analytic, not measured.** Thin-airfoil lift with the
-circular-arc zero-lift angle, brake as a trailing-edge flap through thin-airfoil
-flap effectiveness, Viterna-Corrigan post-stall. All derived, all registered
-Provisional. XFOIL runs over digitised profiles replace them.
+**Section polars are solved on the section.** `SectionProfile` generates the
+contour the ribs are cut to — a NACA thickness distribution with a real nose
+radius over a mean line, with brake applied as a *bend in the camber line*
+distributed over 14% of chord ahead of the attachment rather than as a hinged
+flap. The same contour draws the rib stations in `CanopyGeometry`, so the wing
+has one section rather than two. `SectionViscousSolver` then solves it:
+
+- Hess-Smith panels — one constant source per panel plus a shared vortex, with
+  the Kutta condition. Exact potential flow on that contour. The system is
+  linear in (cos α, sin α), so an incidence sweep costs two solves in total;
+- Thwaites laminar from the stagnation point, Michel transition, a laminar
+  separation bubble treated as immediate transition, Head's entrainment method
+  with Ludwieg-Tillmann friction, Squire-Young at the trailing edge;
+- a **Kirchhoff dead-air region** aft of separation, iterated to a fixed point.
+  The wake unloads the section, the unloaded section has a weaker suction peak,
+  the separation point moves back until the two agree. **Maximum lift is where
+  that stops having a solution** — nothing states it;
+- the **cell opening**: the contour is panelled closed, because potential flow
+  does not care about a hole at the stagnation point, but the surface the flow
+  reaches by crossing the mouth has no laminar run. That is roughly half this
+  section's profile drag.
+
+Validated on NACA 2412 from its own coordinates: zero-lift angle −2.12° against
+a published −2.1, lift slope 0.121/° against 0.11, quarter-chord moment −0.055
+against −0.05, minimum drag 0.0062 against 0.006, maximum lift 1.96 at 16°
+against 1.6–1.7 at 16 — the angle lands, the value is 18% high.
+
+Still Provisional, and for a reason that has moved: the *method* is no longer
+the weak part, the *profile* is. Thickness, camber and their positions are
+assumed from the family rather than digitised, and camber is the single most
+influential number in the geometry-driven stack.
+
+What it replaced: thin-airfoil lift with a **stated stall margin**, which meant
+maximum lift that could not change with brake at all — 0.87 at every setting.
+The computed section carries 1.59 hands up and 2.40 at 40% brake, and its
+pitching moment varies with incidence instead of being a constant.
 
 **Installed drag** - lines, risers, harness, pilot - is 47% of the canopy's own
-drag, and with it whole-aircraft glide is **9.46 against a published 9.5**. That
-comes from the line plan's own 254 m and a literature harness area, not a fitted
-polar, and it is the only published performance figure this level can hold
-itself to before real section data exists.
+drag, and comes from the line plan's own 254 m and a literature harness area
+rather than a fitted polar. With the analytic polars whole-aircraft glide was
+9.46 against a published 9.5, but that agreement rested on a *stated* minimum
+section drag of 0.0125. On the computed polars the section's own drag is what
+it is, and glide comes out **10.18 against 9.5** — 7% optimistic, recorded as
+`PHYSICS_TODO` item 12 with two named candidates, one of which is this level's
+own induced drag reporting a span efficiency of 1.29 against its reference
+span.
 
 **Stall has memory.** Separation is a state carried between solves, spreading at
 12/s and clearing at 4/s, reattaching about 5 degrees below where it began.
@@ -558,13 +595,16 @@ because the old model banked the wrong way.
    its published top speed. Half bar departs too, more slowly. No amount of
    damping fixes a gain above one; the two levers are the section pitching
    moment and the specific stiffness of 6.13 m.
-3. **The polar's lift ceiling costs the envelope.** Swept on the VSM the
-   analytic polars peak at **CL 0.866 at 11°** where this wing's profile
-   carries 1.32. Trim at 5.0° leaves barely six degrees of brake before the
-   wing is past its own stall, and past it there is no steady state to return
-   to. **The usable envelope is hands-up to about 25% brake.** This is item 1 —
-   analytic thin-airfoil polars, blocked on XFOIL — arriving where a pilot
-   would feel it, and the single most valuable thing real section data buys.
+3. **40% brake is unholdable — and it is no longer the polar.** It used to be:
+   the analytic polars peaked at CL 0.866 at 11° where this wing's profile
+   carries 1.32, so trim left barely six degrees of brake before the stall.
+   The computed polars closed that (the section carries 2.40 at 40% brake) and
+   there is a steady state there. What stops the wing reaching it is pitch:
+   ramped in slowly, the incidence *falls* as the first fifth of brake goes on
+   and the airspeed *rises* — the section's nose-down moment rotates the canopy
+   on its lines faster than the camber it adds buys lift back. Past a quarter
+   of engaged travel it runs away. **The usable envelope is still hands-up to
+   about 25% brake, and both ends of it are now item 11.**
 
 Energy: 1.1 W at trim and 1.2 W under weight shift on a 1030 N aircraft; up to
 38.8 W through a pitch transient, attributed to the pendulum's own energy
@@ -665,13 +705,17 @@ Ordered by how much they matter.
    state. Level 11's unsteady wake is the honest treatment. Locked as a
    known-failure check. Inside the coupled solve, where the separation state is
    carried between steps, the wing does walk into stall — see Level 7.
-2. **Section polars are analytic, and Level 9 measured what that costs.** No
-   XFOIL runs, no measured data. Swept on the VSM they peak at CL 0.866 at 11°
-   of incidence where this wing's profile carries 1.32, which puts the stall
-   six degrees above trim and makes 40% brake — an ordinary EN-B input —
-   unholdable. **The usable envelope is hands-up to about a quarter brake.**
-   The same sweep gives Cm near 0.10 across the range, which is half of the
-   pitch loop gain that costs the other end of the envelope.
+2. **Section polars are computed from the section, not measured on it.**
+   Panels plus an integral boundary layer plus a Kirchhoff dead-air region,
+   solved on a contour generated from assumed design parameters. Validated on
+   NACA 2412 to within 5% on zero-lift angle, moment and minimum drag, and 18%
+   high on maximum lift — which is the method's known direction of error, since
+   with no inverse-mode boundary layer the branch runs until it ends rather
+   than being solved through the separation. The profile itself is assumed from
+   the family rather than digitised, and camber is the most influential number
+   in the stack. Two consequences are open items: profile drag is optimistic
+   (item 12, glide 10.18 against 9.5) and the solved stall angle is not smooth
+   across the brake axis (item 13).
 3. **The wing is statically pitch-divergent below CL 0.35**, and full bar is a
    CL 0.31 condition. The loop gain `a·c·Cm/(k·CL²)` is 0.32 at trim. Neither
    input to it is tunable: both were measured, one off the VSM and one off the

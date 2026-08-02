@@ -37,13 +37,14 @@ CoupledParagliderSolver::CoupledParagliderSolver(
     const CanopyGeometry& geometry, const LinePlanSpec& linePlan,
     const CoupledSchedule& schedule, const PayloadMassProperties& payload)
     : ScheduleValue(schedule),
-      Aerodynamics(geometry, SectionPolarTable::Analytic(),
+      Aerodynamics(geometry,
+                   SectionPolarTable::ForSection(geometry.Spec().section),
                    geometry.Spec().cellCount),
       Pressure(geometry.Spec().cellCount),
       Membrane(geometry.CellSpacingM()),
       Lines(BuildSuspensionGraph(geometry, linePlan)),
       Collapse(SectionSpanFractions(Aerodynamics.Sections())),
-      Polars(SectionPolarTable::Analytic()),
+      Polars(SectionPolarTable::ForSection(geometry.Spec().section)),
       ApparentMass(CanopyApparentMass(geometry)),
       PayloadMass(payload)
 {

@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <vector>
 
+#include "SectionProfile.h"
+
 namespace Parapenting::Physics
 {
 // Level 4 of the master plan: 2D section data, tabulated.
@@ -31,6 +33,13 @@ enum class PolarProvenance
 {
     // Generated from theory by AnalyticSectionPolar. Not measurement.
     Analytic,
+    // Solved on the section's own coordinates by SectionViscousSolver:
+    // potential flow by panels, the boundary layer by integral methods, and
+    // the stall where the two stop agreeing. Still not measurement - but the
+    // stall angle, the maximum lift coefficient and the pitching moment are
+    // consequences of the shape rather than numbers in a struct, which is the
+    // whole difference between this and Analytic.
+    Computed,
     // Loaded from a viscous 2D solver or wind tunnel run.
     Measured,
 };
@@ -90,16 +99,66 @@ struct AnalyticPolarSpec
     double reattachmentHysteresisRad = 0.09;
 };
 
+// What the computed generator needs that the analytic one did not: the
+// section's coordinates, and the Reynolds number to solve the boundary layer
+// at.
+struct ComputedPolarSpec
+{
+    SectionProfileSpec section{};
+    // Chord times airspeed over kinematic viscosity, at trim: 1.4 m of mean
+    // chord at 11 m/s in 1.46e-5 m2/s of air. The wing runs 0.5 to 3 x 10^6
+    // across its span and its speed range, and the section polars change
+    // slowly enough across that to make one value defensible - which is why
+    // Reynolds is still not an axis.
+    double reynoldsNumber = 1.05e6;
+    // Aspect ratio the post-stall flat-plate branch is built for.
+    double aspectRatioForPostStall = 5.2;
+    // Angular width over which the solve hands off to the post-stall branch,
+    // past the incidence where the computed lift peaks. Narrower than the
+    // analytic table's 0.10, because there the stall angle was a stated
+    // number with a stated margin of error around it and the blend absorbed
+    // some of that; here the peak is solved, and a blend wide enough to carry
+    // the attached branch several degrees past it would put the equilibrium
+    // curve's maximum above the maximum lift the section was found to have.
+    double stallBlendWidthRad = 0.06;
+    // How far below the stall the flow reattaches. Separation and
+    // reattachment do not happen at the same incidence.
+    double reattachmentHysteresisRad = 0.09;
+    // Incidence range solved on the real contour, either side of zero. Past
+    // it the section is fully separated and the post-stall branch is what
+    // applies, so solving further buys nothing.
+    double sweepLowRad = -0.35;   // -20 deg
+    double sweepHighRad = 0.44;   // 25 deg
+    std::size_t brakeSamples = 21;
+};
+
 // A table over angle of attack and brake deflection. Reynolds number is a
 // single declared value rather than an axis: the operating range of this wing
-// is 0.5-3 x 10^6 and the analytic generator has no Reynolds dependence to
-// interpolate. The axis is where it belongs when real polars arrive.
+// is 0.5-3 x 10^6, and the section data changes slowly enough across it that
+// one value is defensible. The axis is where it belongs when the wing is
+// solved span station by span station.
 class SectionPolarTable
 {
 public:
     SectionPolarTable() = default;
 
     static SectionPolarTable Analytic(const AnalyticPolarSpec& spec = {});
+
+    // Solved on the section's own coordinates. This is what the solver above
+    // gets by default; `Analytic` is kept because the two are compared in
+    // `aerodynamics_tests`, and because a disagreement between them is the
+    // cheapest check that either is right.
+    //
+    // Building one costs a panel factorisation and an incidence sweep per
+    // brake station, so the default spec's table is built once and shared.
+    static const SectionPolarTable& Default();
+    static SectionPolarTable Computed(const ComputedPolarSpec& spec);
+
+    // The table for a given rib profile, built once and kept. A canopy hands
+    // in its own section here, so changing the profile changes the polars the
+    // wing flies on without anything else being touched - and building the
+    // same wing twice does not solve it twice.
+    static const SectionPolarTable& ForSection(const SectionProfileSpec& spec);
 
     // alphaRad is measured from the chord line, brake runs 0 to 1. Samples
     // the section at its equilibrium separation, which is what a steady solve
@@ -147,17 +206,34 @@ public:
     double ZeroLiftAngleRad(double brake) const;
     double StallAngleRad(double brake) const;
 
+    // Maximum lift coefficient at a brake setting, and where it happens. On
+    // the analytic table these were a restatement of `stallMarginRad`; on the
+    // computed one they are read off the solved curve, and they move with
+    // brake because the section does.
+    double MaximumLiftCoefficient(double brake) const;
+
     PolarProvenance Provenance() const { return Source; }
     const AnalyticPolarSpec& Spec() const { return SpecValue; }
+    const ComputedPolarSpec& ComputedSpec() const { return ComputedValue; }
     std::size_t AlphaSampleCount() const { return AlphaCount; }
 
 private:
     AnalyticPolarSpec SpecValue{};
+    ComputedPolarSpec ComputedValue{};
     PolarProvenance Source = PolarProvenance::Analytic;
     std::size_t AlphaCount = 0;
     std::size_t BrakeCount = 0;
     double AlphaMinRad = 0.0;
     double AlphaMaxRad = 0.0;
+    // Per-brake summaries. On the analytic table these are closed forms; on
+    // the computed one they are measured off the solved curve, which is why
+    // they became arrays.
+    std::vector<double> ZeroLiftByBrake;
+    std::vector<double> SlopeByBrake;
+    std::vector<double> StallByBrake;
+    std::vector<double> MaximumLiftByBrake;
+    double BlendWidthRad = 0.10;
+    double ReattachmentRad = 0.09;
     std::vector<SectionPolarSample> Samples;
     // The two branches, kept apart so a caller can blend them by a separation
     // state that has memory rather than by incidence alone.

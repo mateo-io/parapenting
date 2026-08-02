@@ -89,9 +89,12 @@ lift curve it was first blamed on tests out close to right.
 
 **What that exposed is a narrow envelope**, and both ends of it are measured:
 
-- the analytic section polars peak at CL 0.866 at 11 degrees where this wing's
-  profile carries 1.32, so 40% brake is unholdable and past the stall there is
-  no steady state to return to;
+- 40% brake is unholdable. This used to be the analytic section polars, which
+  peaked at CL 0.866 at 11 degrees where this wing's profile carries 1.32;
+  those are now solved on the section and carry 2.40 at 40% brake, so the
+  ceiling is closed and the reason is pitch instead - the section's nose-down
+  moment under brake rotates the canopy faster than the camber buys lift back,
+  and brake makes this wing FASTER over the first fifth of its travel;
 - the pitch loop gain `a c Cm / (k CL^2)` passes one at CL 0.35 and full bar is
   a CL 0.31 condition, so the wing is statically pitch-divergent at its
   published top speed.

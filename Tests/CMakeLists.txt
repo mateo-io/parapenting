@@ -105,6 +105,7 @@ add_executable(parapenting_geometry_tests
     GeometryTests.cpp
     ../Source/Parapenting/Physics/CanopyLoadPose.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/PanelUnfolder.cpp
     ../Source/Parapenting/Physics/SuspensionSystem.cpp
@@ -119,6 +120,7 @@ target_compile_options(parapenting_geometry_tests PRIVATE
 add_executable(parapenting_suspension_tests
     SuspensionTests.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
     ../Source/Parapenting/Physics/HarnessGeometry.cpp
@@ -161,9 +163,12 @@ target_compile_options(parapenting_payload_tests PRIVATE
 add_executable(parapenting_aerodynamics_tests
     AerodynamicsTests.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
+    ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
     ../Source/Parapenting/Physics/PayloadRigidBody.cpp
@@ -184,8 +189,11 @@ add_executable(parapenting_pressure_tests
     PressureTests.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
+    ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
     ../Source/Parapenting/Physics/PayloadRigidBody.cpp
@@ -226,6 +234,8 @@ add_executable(parapenting_calibration_tests
     ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
+    ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
     ../Source/Parapenting/Physics/CanopyMembraneSolver.cpp
@@ -233,6 +243,7 @@ add_executable(parapenting_calibration_tests
     ../Source/Parapenting/Physics/TensionCableSolver.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/PayloadRigidBody.cpp
     ../Source/Parapenting/Physics/HarnessGeometry.cpp
@@ -254,6 +265,8 @@ add_executable(parapenting_coupled_tests
     ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
+    ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
     ../Source/Parapenting/Physics/CanopyMembraneSolver.cpp
@@ -261,6 +274,7 @@ add_executable(parapenting_coupled_tests
     ../Source/Parapenting/Physics/TensionCableSolver.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/PayloadRigidBody.cpp
     ../Source/Parapenting/Physics/HarnessGeometry.cpp
@@ -285,6 +299,7 @@ add_executable(parapenting_determinism_tests
     ../Source/Parapenting/Physics/ParagliderSolverClock.cpp
     ../Source/Parapenting/Physics/ResearchCoefficientRegistry.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/SolverStateHash.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
@@ -347,6 +362,7 @@ add_executable(parapenting_collapse_tests
     ../Source/Parapenting/Physics/CanopyCollapseSolver.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
+    ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp
     ../Source/Parapenting/Physics/SuspensionGraph.cpp
     ../Source/Parapenting/Physics/HarnessGeometry.cpp

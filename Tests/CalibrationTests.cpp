@@ -299,10 +299,20 @@ int main()
         // wing is statically pitch-divergent at exactly its published top
         // speed, and no amount of damping fixes a gain above one.
         //
-        // The two candidates are the analytic section pitching moment
+        // The two candidates were the analytic section pitching moment
         // (item 1: Cm near 0.10 across the whole range, thin-airfoil, no
-        // XFOIL) and the specific stiffness of 6.13 m. Both are single
-        // numbers, both are measurable, and either would move the boundary.
+        // XFOIL) and the specific stiffness of 6.13 m.
+        //
+        // The first has been measured and it is not the answer. On the
+        // computed polars the section's moment is no longer a constant: it
+        // runs -0.090 at zero incidence to -0.041 at the stall, so the wing
+        // finally has an aerodynamic centre that moves, and it is close to
+        // the analytic -0.110 where it matters. Bar is better for it - the
+        // wing now reaches 15.6 m/s, 56 km/h against a published 53, before
+        // it lets go, where before it departed on the way. But it still lets
+        // go, and with the section side measured, what is left is the
+        // suspension side: the specific stiffness of 6.13 m and the swing
+        // damping ratio.
         std::printf("KNOWN DISAGREEMENT: full bar settles at %.2f m/s and "
                     "%.0f deg of incidence\n",
                     bar.settledAirspeedMps, bar.settledIncidenceRad * Degrees);
@@ -316,31 +326,54 @@ int main()
               "published top speed, not hidden as a number");
     }
 
-    // -- KNOWN DISAGREEMENT: the polar's lift ceiling ----------------------
+    // -- KNOWN DISAGREEMENT: 40% brake, and it is no longer the polar ------
     {
-        // 40% of brake travel is an ordinary EN-B input and this model cannot
-        // hold it. The reason is a single measured number: swept on the VSM,
-        // the analytic section polars give the wing a maximum lift coefficient
-        // of 0.866 at 11 degrees of incidence, where this wing's own profile
-        // carries 1.32. Trim sits at 5.0 degrees, so there is barely six
-        // degrees of brake before the wing is past its own stall - and past it
-        // the separated branch has no steady state to return to (limitation
-        // 6), so a transient overshoot is permanent.
+        // This block used to say that 40% brake failed because the analytic
+        // section polars gave the wing a maximum lift coefficient of 0.866 at
+        // 11 degrees, against the 1.32 its own profile carries, so an ordinary
+        // EN-B input walked it off the top of a curve that never rose.
         //
-        // This is item 1 - analytic thin-airfoil polars, blocked on XFOIL -
-        // arriving where a pilot would feel it, and it is the single most
-        // valuable thing real section data would buy.
+        // That reason is gone. The polars are now solved on the section's own
+        // coordinates (PHYSICS_TODO item 1, closed), and the ceiling closed
+        // with them: the section carries 1.76 hands up and 2.36 at 40% brake,
+        // because a real trailing edge deflection raises maximum lift instead
+        // of only sliding the curve sideways. Swept on the VSM the wing's own
+        // lift coefficient now rises monotonically to 1.20 at 40% brake where
+        // the analytic polars peaked at 0.82 and then fell off a cliff. There
+        // is a steady state at 40% brake and it is nowhere near the stall.
+        //
+        // The wing still cannot get there, and the measurement of why is the
+        // useful part. Ramped in over twelve seconds - slowly enough that no
+        // overshoot is involved - the incidence FALLS as the first fifth of
+        // brake goes on, from 5.8 to 4.9 degrees, and the airspeed RISES from
+        // 10.16 to 10.62 m/s. Brake is speeding this wing up. Past about a
+        // quarter of engaged travel it turns over and runs away nose-up.
+        //
+        // Brake making a wing faster is a pitch-axis result, not a polar one:
+        // the section's own nose-down moment under brake rotates the canopy on
+        // its lines faster than the added camber can buy lift back. The moment
+        // itself checks out - thin-airfoil theory gives a 22% flap about
+        // -0.55 per radian and the solved section gives -0.61, where the
+        // analytic table had -0.34 because it multiplied the moment by the
+        // flap effectiveness a second time. So the section is right and the
+        // response to it is wrong, which puts this on the two levers item 11
+        // already names: the specific stiffness of 6.13 m, and the swing
+        // damping ratio.
         std::printf("KNOWN DISAGREEMENT: 40%% brake settles at %.2f m/s and "
                     "%.0f deg of incidence\n",
                     deepBrake.settledAirspeedMps,
                     deepBrake.settledIncidenceRad * Degrees);
-        std::printf("  the analytic polar peaks at CL 0.866 at 11 deg where "
-                    "the wing's profile carries 1.32\n");
+        std::printf("  the lift ceiling that used to explain this is closed - "
+                    "the section carries 2.36 at 40%% brake against 0.87 - and "
+                    "what is left is the pitch axis, item 11\n");
         Check(deepBrake.settledIncidenceRad > 0.5,
-              "KNOWN DISAGREEMENT: 40% brake - an ordinary EN-B input - takes "
-              "this wing past the stall its analytic polars give it, and the "
-              "deep-stall attractor keeps it there. Bounded so that real "
-              "section data closing it registers here");
+              "KNOWN DISAGREEMENT: 40% brake - an ordinary EN-B input - still "
+              "takes this wing out of its envelope, but no longer because it "
+              "runs out of lift. It runs out of pitch: brake rotates the "
+              "canopy nose-down on its lines faster than the camber it adds "
+              "buys lift back, so the wing accelerates into the first fifth "
+              "of the travel and departs past a quarter of it. Bounded so "
+              "that closing the pitch axis registers here");
     }
 
     // -- the stall approach ------------------------------------------------

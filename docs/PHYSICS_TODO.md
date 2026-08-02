@@ -5,8 +5,9 @@ like. The specification and per-level detail live in
 `agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md`; what is built lives in
 `docs/PHYSICS_ENGINE.md`; what it cost is in `docs/PHYSICS_LEARNINGS.md`.
 
-Status as of Level 8. Levels 0-8 are done, all eleven test suites green, and
-nothing geometry-driven flies the wing yet.
+Status as of Level 9 starting. Levels 0-8 are done, Level 9's manoeuvre runner
+and still-air gates are in, all twelve test suites green, and nothing
+geometry-driven flies the wing yet.
 
 ## Blocked on things this environment does not have
 
@@ -45,7 +46,35 @@ themselves provide 5723.
 - Done when: pitch stiffness is the measured line stiffness and nothing else,
   and item 0's remaining incidence gap can be re-measured against it.
 
-**1. Section polars are analytic.****1. Section polars are analytic.** Thin-airfoil lift with the circular-arc
+**0b. The wing turns roughly twenty times too slowly.** 0.015 rad/s at 2
+degrees of bank on 35% brake, where an EN-B wing does about 0.3 rad/s at 20-30
+degrees. Found by Level 9's coordinated-turn manoeuvre.
+
+- Not a calibration error at that magnitude - a mechanism is missing or
+  overwhelmed. Direction and ordering are right: both right-hand inputs turn
+  the same way, the wing banks into its turn, and brake outranks weight shift.
+- Candidates, none tested: the doubled stiffness of item 10 applies to roll as
+  well as pitch; the yaw damping the VSM measures by centred probe; and the
+  only path from bank to turn is the sideslip the circulation solve sees.
+- Bounded in `calibration_tests` so closing it registers.
+- This is the largest disagreement in the model and probably the one a pilot
+  would notice first.
+
+**1. Section polars are analytic.****0b. The wing turns roughly twenty times too slowly.** 0.015 rad/s at 2
+degrees of bank on 35% brake, where an EN-B wing does about 0.3 rad/s at 20-30
+degrees. Found by Level 9's coordinated-turn manoeuvre.
+
+- Not a calibration error at that magnitude - a mechanism is missing or
+  overwhelmed. Direction and ordering are right: both right-hand inputs turn
+  the same way, the wing banks into its turn, and brake outranks weight shift.
+- Candidates, none tested: the doubled stiffness of item 10 applies to roll as
+  well as pitch; the yaw damping the VSM measures by centred probe; and the
+  only path from bank to turn is the sideslip the circulation solve sees.
+- Bounded in `calibration_tests` so closing it registers.
+- This is the largest disagreement in the model and probably the one a pilot
+  would notice first.
+
+**1. Section polars are analytic.** Thin-airfoil lift with the circular-arc
 zero-lift angle, brake as a trailing-edge flap, Viterna-Corrigan post-stall.
 All derived, all registered `Provisional`. Every flight number in Level 4 rests
 on theory rather than measurement.

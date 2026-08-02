@@ -670,6 +670,24 @@ structureSolve:
         netForceBody.z / effectiveMass.z};
     const Vec3 accelerationWorld = state.attitude.Rotate(accelerationBody);
 
+    // The pendulum's own energy is NOT in these books, and that is a stated
+    // limitation rather than an oversight. It was tried: the pilot swinging
+    // fore and aft carries real kinetic energy - 900 J at the top of a surge -
+    // and its height under the canopy is real potential energy, so both belong
+    // in an energy audit of a paraglider.
+    //
+    // They do not belong in an energy audit of THIS model, because the rigid
+    // motion below still integrates one lumped body with all its mass at the
+    // canopy. The payload's height changes in the bookkeeping and not in the
+    // dynamics, so adding the term makes the books disagree with the solver
+    // they are auditing - measured, and it took hands-off trim from 4 W of
+    // residual to 19. The energy that the swing carries therefore shows up as
+    // residual during a pitch transient, 154 W at the peak of a surge, and
+    // that is reported by the Level 9 manoeuvres as a known gap.
+    //
+    // It closes with PHYSICS_TODO item 10, which is the same rewrite: two
+    // bodies with their own states, at which point the payload has a height
+    // the dynamics uses and the books can audit it.
     const double kineticBefore = 0.5 * SystemMassKg
         * Dot(state.velocityWorldMps, state.velocityWorldMps);
     const double potentialBefore =
@@ -878,6 +896,10 @@ structureSolve:
         * Dot(state.velocityWorldMps, state.velocityWorldMps);
     const double potentialAfter =
         SystemMassKg * GravityMps2 * state.positionWorldM.z;
+    const double swingDampingPowerW =
+        2.0 * SwingDampingRatio * swingFrequency * payloadArmInertiaKgM2
+            * state.payloadSwingRateRadps * state.payloadSwingRateRadps;
+    diagnostics.swingDampingPowerW = swingDampingPowerW;
     const double workDone = Dot(aeroWorld, state.velocityWorldMps * dt);
     diagnostics.kineticEnergyJ = kineticAfter;
     diagnostics.potentialEnergyJ = potentialAfter;

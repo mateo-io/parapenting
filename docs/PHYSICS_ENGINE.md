@@ -465,9 +465,60 @@ fold clears, where a real one dives forward and then pitches back.
    reference is now each section's own load in clean trim, solved once at
    construction.
 
+## Level 9 — calibration
+
+`CalibrationManeuver`, and the `calibration_tests` suite. **Started.**
+
+Seven repeatable still-air manoeuvres on the coupled solver, each settled for
+15 s before its input so the response has no initial transient in it, each with
+one input so it identifies something. The time series exports as CSV.
+
+| manoeuvre | settled result |
+|---|---|
+| hands-up trim | 8.80 m/s (31.7 km/h), sink 0.97, glide 9.04, α 9.3° |
+| accelerator step | 11.40 m/s (41.0 km/h), glide 9.06, α 3.2° |
+| brake step 40% | 7.72 m/s, glide 7.55, α 10.6° |
+| brake pulse and release | pitch period **4.34 s**, damping ratio **0.14** |
+| weight shift step | 0.004 rad/s at 0.9° of bank |
+| coordinated turn 35% | 0.015 rad/s at −2.0° of bank |
+| stall approach | minimum 7.22 m/s, no collapse |
+
+**What agrees.** Glide 9.04 against a published 9.5 and sink 0.97 against a
+published minimum of 1.0 — both within a few per cent. The speed *range* ratio
+is 1.296 against a published 1.359, which is the quantity that tests the lift
+curve's slope while being blind to its offset. The pitch oscillation is a real
+identification against a closed form: 4.34 s over three swings where a simple
+pendulum on the same 8.08 m lines would be 5.70 s, faster because the line
+geometry adds stiffness a bob does not have, and damped at 0.14 so it settles
+in a few swings. Brake slows the wing and costs glide; bar speeds it up by
+lowering incidence; the stall approach stalls the wing without folding it.
+
+**Three disagreements, each bounded so it cannot drift and cannot close by
+accident.**
+
+1. **Trim is 19% slow**, 31.7 km/h against 39. Diagnosed as far as the pitch
+   stiffness — see the section above.
+2. **The wing turns roughly twenty times too slowly.** 0.015 rad/s at 2° of
+   bank on 35% brake, where an EN-B wing does about 0.3 rad/s at 20–30°. This
+   is the largest disagreement the level has found and it is not a calibration
+   error: it is a mechanism that is missing or overwhelmed. Not yet diagnosed.
+   The direction and ordering are right — both right-hand inputs turn the same
+   way, the wing banks into its turn, brake outranks weight shift.
+3. **Pitch transients leave an energy residual**, up to 154 W in a surge where
+   steady flight closes to 0.1 W. Attributed: the pendulum between wing and
+   pilot carries about 900 J at the top of a surge, and that energy is outside
+   books that still describe one lumped body. Adding the term without the body
+   it belongs to was tried and makes the audit disagree with the solver it is
+   auditing — hands-off went from 4 W to 19 W. It closes with the two-body
+   rewrite.
+
+All three trace to the same place or to work not yet done, which is the useful
+thing about running the manoeuvres: they turned "the model feels off" into
+three numbers with bounds.
+
 ## Test suites
 
-`Tools/check-build.sh` builds the Unreal module and runs eleven suites. All
+`Tools/check-build.sh` builds the Unreal module and runs twelve suites. All
 green.
 
 | suite | covers |
@@ -481,6 +532,7 @@ green.
 | `pressure_tests` | Level 5 |
 | `membrane_tests` | Level 6 |
 | `collapse_tests` | Level 8's criterion |
+| `calibration_tests` | Level 9's still-air manoeuvres |
 | `coupled_tests` | Level 7, and Level 8's incident benchmarks |
 | `terrain_survey_tests` | terrain georeferencing |
 

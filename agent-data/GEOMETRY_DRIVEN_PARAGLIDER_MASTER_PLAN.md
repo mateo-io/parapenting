@@ -60,7 +60,7 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
 | 7 Coupled solver | **Done, with a trim gap** | turns mirror to 2e-8, books balance, suite green; trim 31.9 km/h vs published 39, bar 41.3 vs 53 - see the note below |
 | 8 Emergent collapse | **Done, with gaps** | fold 0.70 vs 0.08 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
-| 9 Calibration | Not started | — |
+| 9 Calibration | **Started** | seven still-air manoeuvres with CSV export; glide 9.04 vs 9.5, sink 0.97 vs 1.0, pitch period 4.34 s identified against a closed form; three disagreements bounded |
 | 10 Performance and legacy removal | Not started | — |
 | 11+ | Not started | — |
 

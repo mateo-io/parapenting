@@ -43,6 +43,11 @@ run_tests() {
     # Level 7. Ten minutes of flight at 120 Hz plus a brake sweep, so this one
     # takes minutes rather than seconds - it is the whole stack running.
     "$BUILD_DIR/parapenting_coupled_tests"
+    # Level 9. Seven still-air manoeuvres on the coupled solver, each settled
+    # before its input, so this one is slow for the same reason as Level 7's.
+    # Writes its CSV into the working directory, so it runs from the scratch
+    # build dir rather than the project root.
+    (cd "$BUILD_DIR" && "$BUILD_DIR/parapenting_calibration_tests")
     (cd "$ROOT" && "$BUILD_DIR/parapenting_geometry_tests" \
         Data/Wings/bgd-epic-2-ml-geometry.json)
     (cd "$ROOT" && "$BUILD_DIR/parapenting_suspension_tests" \

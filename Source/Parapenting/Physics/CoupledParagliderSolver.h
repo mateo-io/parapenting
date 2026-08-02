@@ -257,6 +257,10 @@ struct CoupledDiagnostics
     // rather than assumed.
     double pendulumWeightMomentNm = 0.0;
     double aeroPitchMomentNm = 0.0;
+    // Power leaving through the pendulum's damper. A real sink rather than a
+    // solver artefact, so the energy accounting subtracts it instead of
+    // reporting it as energy that went missing.
+    double swingDampingPowerW = 0.0;
 
     // Flight numbers, for the tests to read.
     double airspeedMps = 0.0;

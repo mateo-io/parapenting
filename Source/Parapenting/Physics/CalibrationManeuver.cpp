@@ -24,17 +24,40 @@ CoupledControls ControlsAt(CalibrationManeuver maneuver, double t)
         controls.accelerator = 1.0;
         break;
     case CalibrationManeuver::BrakeStep:
-        controls.leftBrake = 0.40;
-        controls.rightBrake = 0.40;
+        // 25% of handle travel, which after the 19% of sewn-in slack is 7% of
+        // brake at the trailing edge. It used to be 40%, and 40% no longer
+        // identifies anything: the model's analytic section polars peak at
+        // CL 0.866 at 11 degrees of incidence where this wing's own profile
+        // carries 1.32, so trim at 5.1 degrees leaves barely 6 degrees of
+        // brake before the wing is past its own stall - and past it there is
+        // no steady state to come back to (limitation 6). A step to 40%
+        // overshoots into that on the transient and stays.
+        //
+        // So the step was moved to where the model can hold it, and the
+        // manoeuvre that cannot is kept and reported: see the deep-brake
+        // finding in `calibration_tests`. Reducing the input until the test
+        // passes would be tuning; reducing it to where the aircraft still
+        // flies, and stating loudly what it cannot do, is identification.
+        controls.leftBrake = 0.25;
+        controls.rightBrake = 0.25;
         break;
     case CalibrationManeuver::BrakePulse:
         // Two seconds in, then hands up. The release is the identification -
-        // what follows is a free oscillation with no input in it.
+        // what follows is a free oscillation with no input in it. 30% for the
+        // same reason the step is 25%: deep enough to swing the pilot well
+        // clear of trim, shallow enough that the wing is still flying when it
+        // is released. 45% was not - it stalled on the way in.
         if (t < 2.0)
         {
-            controls.leftBrake = 0.70;
-            controls.rightBrake = 0.70;
+            controls.leftBrake = 0.30;
+            controls.rightBrake = 0.30;
         }
+        break;
+    case CalibrationManeuver::DeepBrakeStep:
+        // The one that does not work, run deliberately and reported. 40% of
+        // travel, which a real EN-B wing flies all day.
+        controls.leftBrake = 0.40;
+        controls.rightBrake = 0.40;
         break;
     case CalibrationManeuver::WeightShiftStep:
         controls.weightShift = 1.0;
@@ -58,20 +81,28 @@ CoupledControls ControlsAt(CalibrationManeuver maneuver, double t)
 // from the logarithmic decrement of successive peaks on the same side.
 void IdentifyOscillation(
     const std::vector<ManeuverSample>& samples, double fromTimeS,
-    double& periodS, double& dampingRatio, int& oscillations)
+    double toTimeS, double& periodS, double& dampingRatio, int& oscillations)
 {
     periodS = 0.0;
     dampingRatio = 0.0;
     oscillations = 0;
     if (samples.size() < 8) return;
 
-    // The value it is settling toward: the mean over the last quarter of the
-    // record, which is far enough from the input for the transient to be gone.
-    const std::size_t tailStart = samples.size() - samples.size() / 4;
+    // The value it is settling toward. Taken as the mean over the
+    // identification window itself rather than over the tail of the record:
+    // the tail is forty seconds later and the slow mode has moved the swing
+    // angle by more than the surge being measured, so a tail mean puts the
+    // zero line outside the oscillation and no crossings are found at all.
     double settledValue = 0.0;
-    for (std::size_t i = tailStart; i < samples.size(); ++i)
-        settledValue += samples[i].payloadSwingRad;
-    settledValue /= static_cast<double>(samples.size() - tailStart);
+    int settledCount = 0;
+    for (const ManeuverSample& sample : samples)
+    {
+        if (sample.timeS < fromTimeS || sample.timeS > toTimeS) continue;
+        settledValue += sample.payloadSwingRad;
+        ++settledCount;
+    }
+    if (settledCount == 0) return;
+    settledValue /= static_cast<double>(settledCount);
 
     std::vector<double> crossingTimes;
     std::vector<double> peakTimes;
@@ -80,7 +111,8 @@ void IdentifyOscillation(
     bool havePrevious = false;
     for (std::size_t i = 1; i + 1 < samples.size(); ++i)
     {
-        if (samples[i].timeS < fromTimeS) continue;
+        if (samples[i].timeS < fromTimeS || samples[i].timeS > toTimeS)
+            continue;
         const double a = samples[i - 1].payloadSwingRad - settledValue;
         const double b = samples[i].payloadSwingRad - settledValue;
         const double c = samples[i + 1].payloadSwingRad - settledValue;
@@ -148,13 +180,28 @@ const char* CalibrationManeuverName(CalibrationManeuver maneuver)
     {
     case CalibrationManeuver::HandsUpTrim: return "hands-up trim";
     case CalibrationManeuver::AcceleratorStep: return "accelerator step";
-    case CalibrationManeuver::BrakeStep: return "brake step 40%";
+    case CalibrationManeuver::BrakeStep: return "brake step 25%";
+    case CalibrationManeuver::DeepBrakeStep: return "deep brake step 40%";
     case CalibrationManeuver::BrakePulse: return "brake pulse and release";
     case CalibrationManeuver::WeightShiftStep: return "weight shift step";
     case CalibrationManeuver::CoordinatedTurn: return "coordinated turn 35%";
     case CalibrationManeuver::StallApproach: return "stall approach";
     }
     return "unknown";
+}
+
+PayloadMassProperties CalibrationPayload(
+    double allUpMassKg, double canopyMassKg)
+{
+    // Ballast, not a bigger pilot: the harness geometry and the payload's own
+    // inertia belong to the pilot who is flying, and changing those would
+    // change weight shift and the harness pendulum as well as the wing
+    // loading. Ballast sits near the payload's centre of mass and does one
+    // thing, which is what an identification parameter has to do.
+    PayloadMassProperties payload;
+    payload.ballastKg = std::max(
+        0.0, allUpMassKg - canopyMassKg - payload.TotalKg());
+    return payload;
 }
 
 ManeuverResult RunCalibrationManeuver(
@@ -164,7 +211,9 @@ ManeuverResult RunCalibrationManeuver(
     ManeuverResult result;
     result.maneuver = maneuver;
 
-    CoupledParagliderSolver solver(geometry, linePlan);
+    CoupledParagliderSolver solver(
+        geometry, linePlan, CoupledSchedule{},
+        CalibrationPayload(settings.allUpMassKg));
     CoupledState state;
     const CoupledAtmosphere stillAir;
     const double dt = solver.Schedule().timeStepS;
@@ -298,7 +347,18 @@ ManeuverResult RunCalibrationManeuver(
     // free oscillation to measure; for the rest this stays zero.
     if (maneuver == CalibrationManeuver::BrakePulse)
     {
-        IdentifyOscillation(result.samples, 2.0, result.pitchPeriodS,
+        // From the release to twelve seconds after it, and the window matters.
+        // This aircraft has TWO pitch modes and they are an order of magnitude
+        // apart: the wing swinging against the pilot on its lines, which is
+        // the surge a pilot sees and which runs at about four and a half
+        // seconds, and a slow speed-and-incidence mode near twenty. Given the
+        // whole forty-five second record the identifier locked onto the slow
+        // one and reported a 20.4 s "pendulum" with a damping ratio of 0.05,
+        // which is a true statement about the wrong mode.
+        //
+        // Seven seconds is four periods of the fast mode and a third of one of
+        // the slow, so the crossings it counts belong to the surge.
+        IdentifyOscillation(result.samples, 2.0, 9.0, result.pitchPeriodS,
                             result.pitchDampingRatio,
                             result.pitchOscillationsMeasured);
     }

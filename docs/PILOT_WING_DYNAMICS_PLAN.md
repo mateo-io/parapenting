@@ -1,6 +1,11 @@
 # Pilot–wing dynamics plan
 
-Updated 2026-07-30.
+Updated 2026-07-30. **Stage 2 below is delivered as of the Level 9 work** — the
+canopy and payload are separate bodies, weight shift is lateral payload-CG
+displacement rather than a roll moment, and all four of its acceptance tests
+pass. What was built is in `docs/PHYSICS_ENGINE.md` §"Pitch: the wing and the
+pilot are two bodies"; what it measures against the published wing is in
+`docs/CALIBRATION_REPORT.md`.
 
 ## Target
 

@@ -45,7 +45,7 @@ an outstanding result.
 
 ## Build status
 
-Updated at the end of the Level 7 work. The engine as built is documented in
+Updated at the end of the Level 9 work. The engine as built is documented in
 `docs/PHYSICS_ENGINE.md`; what it cost to build is in
 `docs/PHYSICS_LEARNINGS.md`.
 
@@ -58,40 +58,57 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
-| 7 Coupled solver | **Done, with a trim gap** | turns mirror to 2e-8, books balance, suite green; trim 31.9 km/h vs published 39, bar 41.3 vs 53 - see the note below |
-| 8 Emergent collapse | **Done, with gaps** | fold 0.70 vs 0.08 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
-| 9 Calibration | **Started** | seven still-air manoeuvres with CSV export; glide 9.04 vs 9.5, sink 0.97 vs 1.0, pitch period 4.34 s identified against a closed form; three disagreements bounded |
+| 7 Coupled solver | **Done** | turns mirror to 2e-8, books balance, suite green; trim gap closed at Level 9 |
+| 8 Emergent collapse | **Done, with gaps** | fold 0.669 vs 0.018 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
+| 9 Calibration | **Done, pilot review outstanding** | trim 39.4 km/h vs published 39.0, sink 1.15 vs 1.14, glide 9.43 vs 9.5, incidence 5.02 vs 5.30 - one parameter identified, three not fitted; three disagreements bounded; `docs/CALIBRATION_REPORT.md` |
 | 10 Performance and legacy removal | Not started | — |
 | 11+ | Not started | — |
 
-**Camp I is complete. Camp II is two levels short**, with Levels 7 and 8
-passing their gates and Level 6 delivered at a reduced scope — strips rather
-than a full mesh. Self-collision turned out not to be Level 8's blocker: it was
-built, measured to be incapable of firing on a one-dimensional strip, and
-removed, and cravats were built instead from fabric-to-*line* contact, which is
-what a cravat physically is.
+**Camp I is complete. Camp II is one level short**, with Levels 7, 8 and 9
+passing their quantitative gates and Level 6 delivered at a reduced scope —
+strips rather than a full mesh. Self-collision turned out not to be Level 8's
+blocker: it was built, measured to be incapable of firing on a one-dimensional
+strip, and removed, and cravats were built instead from fabric-to-*line*
+contact, which is what a cravat physically is.
 
-**The wing and the pilot are now two bodies.** The payload was pinned straight
-below the canopy in body axes, so the angle between wing and pilot - most of
-what a pilot feels in pitch - did not exist. There was no surge, the
-accelerator changed the airspeed by nothing at all, and the wing's pitch
-stiffness was a lumped pendulum term standing in for the line geometry. The
-stiffness is now measured off the built graph (5723 Nm/rad, linear to 3%), the
-swing is a real degree of freedom, and bar works through the mechanism it
-actually works through.
+**The wing and the pilot are two bodies, and the pitch axis is now measured
+end to end.** The payload is a link with its own direction in world axes; the
+canopy carries its own inertia; the line spring is probed off the built graph
+at four loads because it is **geometric rather than elastic** — 3306, 6317,
+11512 and 15393 Nm/rad at ½, 1, 2 and 4 g, the lines stretching 0.2% while the
+canopy's origin moves 0.13 m about a virtual hinge 6.62 m below itself. Roll
+got the same treatment, 8204 Nm/rad, replacing a `W L sin` term referenced to
+the world vertical that a coordinated turn should never have had.
 
-That broke the model's agreement with the published trim speed, and the break
-is the finding: the old agreement was two errors cancelling. Pinned level, the
-wing flew at 4.5 degrees of incidence, which is not what a paraglider does.
+That closed the trim gap. **39.4 km/h against a published 39.0**, at the
+published 105 kg all-up, with sink, glide and incidence following from one
+identified parameter — the line plan's design incidence, which the line plan
+file has always named as the quantity to fit. The old 18% shortfall was the
+doubled pitch stiffness, exactly as the gap description predicted, and the
+lift curve it was first blamed on tests out close to right.
 
-Chasing the resulting gap found two more defects, both in the wing's pitching
-moment: the section value was four times too small - a dropped factor of four
-in the camber line's Fourier coefficient, against a closed-form result - and it
-was never applied to the wing at all. Trim went from 29.5 to 31.9 km/h against
-a published 39 and incidence from 11.8 to 9.1 degrees. The lift curve itself
-tests out close to right against the published envelope, so gap 1 is NOT what
-is holding trim back; the leading suspect is a doubled pitch stiffness from
-lumping the canopy and payload into one body, which is now gap 10.
+**What that exposed is a narrow envelope**, and both ends of it are measured:
+
+- the analytic section polars peak at CL 0.866 at 11 degrees where this wing's
+  profile carries 1.32, so 40% brake is unholdable and past the stall there is
+  no steady state to return to;
+- the pitch loop gain `a c Cm / (k CL^2)` passes one at CL 0.35 and full bar is
+  a CL 0.31 condition, so the wing is statically pitch-divergent at its
+  published top speed.
+
+The usable envelope is hands-up to about a quarter brake. Both limits point at
+gap 1 below, which is now the highest-value item in the plan and the one thing
+holding Level 10 back — swapping the geometry-driven stack in for the legacy
+polar while it cannot hold ordinary brake would be a regression a pilot feels
+in the first minute.
+
+**Level 9's remaining deliverable is people.** The quantitative half of its
+exit gate is closed; the qualitative half — experienced pilots confirming
+direction, control progression, pitch timing, pendulum timing and stall
+approach — is written up as `docs/PILOT_REVIEW_PROTOCOL.md` and has not been
+run. Until it has, the handling is unvalidated in the registry's sense: self
+consistent, agreeing with four published numbers, and never flown by anyone
+who flies.
 
 ### Carried gaps, by priority
 

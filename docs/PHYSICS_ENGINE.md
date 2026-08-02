@@ -1,7 +1,7 @@
 # The physics engine as built
 
 What exists, what it is checked against, and what it cannot yet do. Written
-against the tree at the end of the Level 7 work; the master plan
+against the tree at the end of the Level 9 work; the master plan
 (`agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md`) is the specification
 and carries the per-level status.
 
@@ -18,8 +18,11 @@ wing in the game. It is a single six-degree-of-freedom body with a fitted
 polar, now driven by a real payload body and real carabiner loads (Level 3) but
 still using tuned coefficients for most of its handling.
 
-**The geometry-driven stack** (Levels 1-8) is built, tested and not yet wired
-into flight. It is exercised by its own suites and by the debug views.
+**The geometry-driven stack** (Levels 1-9) is built, tested and not yet wired
+into flight. It is exercised by its own suites and by the debug views. It now
+agrees with the published envelope on four independent numbers at the weight
+they were published at, and has a measured and narrow envelope: hands-up to
+about a quarter brake. Both are in `docs/CALIBRATION_REPORT.md`.
 
 ```
 CanopyGeometry ──┬─→ SuspensionGraph ──→ TensionCableSolver
@@ -255,122 +258,142 @@ turn rate reproduced at once in an unoptimized build, having hidden at -O2:
 ## Pitch: the wing and the pilot are two bodies
 
 Added after Level 8, because Level 8's exit gate asks for a reopening surge and
-there was nothing in the model that could surge.
+there was nothing in the model that could surge. Completed at Level 9, because
+the first version of it was still counting one thing twice.
 
 The payload was pinned straight below the canopy in body axes. The wing could
 pitch, but it could never *swing*, and the angle between wing and pilot — which
 is most of what a pilot feels in pitch — did not exist as a quantity. Three
-things followed from that, none of them visible until the degree of freedom was
-added:
+things followed, none visible until the degree of freedom was added: no surge;
+an accelerator that changed the airspeed by nothing at all; and a fictitious
+pitch spring, a lumped "pendulum moment" restoring the canopy toward level,
+when a mass hanging from a single point has no pitch stiffness whatsoever.
 
-- **No surge.** A brake release could not send the wing out ahead of the pilot,
-  because there was no "ahead".
-- **The accelerator did nothing.** Bar shortens the A and B risers by 120 and
-  80 mm, which rotates the wing nose-down on its lines. The line network
-  modelled that correctly and always had; the flight model never read the pitch
-  it produced, so pulling full bar changed the airspeed by *nothing at all*.
-- **The wing had a fictitious pitch spring.** A lumped "pendulum moment"
-  restored the canopy toward level. A mass hanging from a single point has no
-  pitch stiffness whatsoever — it is free to rotate about the attachment.
+### The link, in world axes
 
-What actually holds a paraglider at its incidence is the line geometry: A, B
-and C attach at different stations along the chord, so rotating the canopy
-lengthens one row and shortens another. That is measurable, and it is now
-measured rather than asserted — `TensionCableSolver` gained a mode that holds
-the canopy at an imposed attitude and reports the moment the lines exert there,
-and the solver probes ±0.02 rad either side of the free equilibrium at
-construction:
+The pilot is a link — a unit vector from canopy to payload, held in **world**
+axes with its own angular velocity — driven by
+
+```
+a_rel = g − a_pivot + harness drag / m
+a_t   = a_rel − e (e · a_rel)
+alpha = (e × a_t) / L
+```
+
+and by nothing else. The line spring does not appear in it: a moment is not
+something you can apply to a bob on a string, and the lines' reaction to the
+canopy's spring lands on the harness, whose inertia about its own centre of
+mass is 5 kg·m² rather than the swing coordinate's 6200.
+
+Holding the link in world axes is the whole point. As a body-frame angle,
+rotating the canopy carried the pilot with it, so gravity's restoring torque
+appeared once in the swing equation and again as the lumped body's weight
+moment — 14000 N·m/rad of pitch stiffness where the lines provide 6300. In
+world axes the link knows nothing about the canopy except through the lines,
+each restoring torque is written exactly once, and a wing banked at 45° with
+its pilot swung out under it has no line stress and no restoring moment, which
+is what a coordinated turn is.
+
+### The spring is geometric, and scales with load
+
+`TensionCableSolver` holds the canopy at an imposed attitude and reports the
+moment the lines exert there. Probed ±0.02 rad either side of the free
+equilibrium, at four loads:
+
+| load | pitch stiffness | roll stiffness |
+|---|---|---|
+| 0.5 g | 3306 N·m/rad | |
+| 1.0 g | **6317** | **8204** |
+| 2.0 g | 11512 | |
+| 4.0 g | 15393 | |
+
+Proportional to load, because the spring is **geometric rather than elastic**:
+the lines stretch 0.2% while the canopy's origin moves 0.13 m, so the wing is
+pivoting about a virtual hinge **6.62 m below itself** and the restoring moment
+is a tension times an arm.
+
+Freezing it at its one-g value — which the first attempt at this rewrite did —
+makes the pitch axis diverge, because the aerodynamic moment it answers scales
+with dynamic pressure and a constant spring loses to it at speed. The wing
+stalled at 35 s and stayed there.
+
+Two consequences of the same hinge:
+
+- **Inertia.** Rotating the canopy drags its own mass and its apparent mass
+  through a 6.62 m arc, so pitch inertia is 120 + (m + m_apparent)·h², not 120.
+- **Not the relative wind.** The canopy really does travel through that arc,
+  but adding the arc velocity to the relative wind while moments are still
+  summed about the canopy's *origin* is not a half-measure, it is the wrong
+  sign — the extra speed raises dynamic pressure and lowers incidence, both of
+  which increase the moment that produced the rotation. Measured: negative
+  damping, and the wing left the envelope at 250 m/s. Summed about the hinge
+  instead, the aerodynamic force's arm is cancelled by the line tension's.
+
+The probe needs its 12000 iterations. Held at 0.02 rad it returns 19849 N·m/rad
+at 120 iterations, 9228 at 2000 and 6371 at 48000 — which is why the warm
+started in-flight solve cannot be asked this question, and why "just read the
+live network's moment" returns noise.
+
+### Brake and bar both rotate the wing on its lines
+
+Bar shortens the A and B risers; brake pulls the trailing edge down and rotates
+the canopy nose-**up**. Both move the spring's unstressed angle and both are
+measured off the network rather than asserted.
+
+Brake had exactly the bug the accelerator had before Level 7 found it, in the
+other direction: the section camber change reached the aerodynamics as a large
+nose-down couple while the rotation that answers it was missing, so 40% brake
+pitched the wing down into a fully separated stall. The brake curve is sampled
+at explicit stations rather than evenly, because the 120 mm of sewn-in slack in
+a 620 mm travel puts a corner in it at 19% and an even spacing interpolates
+straight across — worth 0.83 against 0.30 of fold on a wing at the edge of one.
+Inside the slack the offset is **exactly** zero, not merely small.
+
+### A simulation that starts mid-flight starts trimmed
+
+The canopy's pitch equilibrium is not its hang pose: the wing carries a 327 N·m
+nose-down camber couple, so it sits about 3.3° below where the lines alone
+would hold it. Starting at the hang pose is a 3.3° step input into a spring
+with a damping ratio near 0.14, which rings to twice the offset, which takes
+incidence from 6° to 0.3°, which takes the **load** off the lines — and a
+geometric spring with no load has almost no stiffness left. Measured: 976 N and
+5727 N·m/rad at a tenth of a second, 207 N and 989 N·m/rad two seconds later.
+
+Same reasoning as seeding an inflated canopy. An initial condition of zeros is
+not a wing, and on a stiff lightly damped axis it is an impulse.
+
+### What it produces
+
+Hands-off, brake to 0.30 for three seconds and release, canopy ahead of the
+pilot **along track** — measured in the world, because the body-axis version
+mixed in the canopy's own attitude and cancelled the pilot's swing exactly once
+brake started rotating the canopy:
 
 | | |
 |---|---|
-| line pitch stiffness | 5723 N·m/rad, linear to within 3% over ±0.06 rad |
-| free hang angle | 4.75° nose-up |
-| zero of the spring | at that hang angle, to 0.8 N·m |
+| trim | 0.34 m |
+| under brake | −0.53 m (the wing comes back over the pilot) |
+| top of the surge | 1.16 m |
+| surge period | 3.87 s, against 5.70 s for a simple pendulum on the same lines |
 
-The pilot is then a bob on a 7 m line whose pivot is being accelerated by the
-air, with the spring acting once — written from the potential so the canopy's
-moment and the pilot's reaction cannot double-count.
+The aircraft has **two** pitch modes an order of magnitude apart — the wing
+swinging against the pilot near four seconds, and a speed-and-incidence mode
+near twenty — and any identification has to say which one it is measuring.
 
-Measured, hands-off, brake to 0.7 for three seconds and release:
+### One number holds this up, and it is stated rather than derived
 
-| | canopy ahead of pilot |
-|---|---|
-| trim | 0.77 m |
-| under brake | 0.00 m (the wing comes back over the pilot) |
-| top of the surge | 1.85 m, at 0.16 rad/s |
+`swingDampingRatio` is 0.35. At 0.20 — what a wing settling in three swings
+implies — the pitch axis diverges. What it is really doing is not damping but
+**tracking**: the pendulum has to follow apparent gravity, which in a pull-up
+swings round with the flight path, and a lightly damped one follows late. At
+0.20 the link tracked 10.7° of a 14.6° flight-path change and the missing 3.9°
+went into incidence.
 
-and the accelerator now does something: 8.21 m/s at 11.8° hands-up, 9.58 m/s at
-6.9° on full bar. A gust that does nothing to the wing hands-up folds it on
-bar, which is the collapse-proneness of accelerated flight arriving on its own.
-
-**One defect fixed on the way in, one introduced and caught:** the harness drag
-was being applied as a moment on the canopy *and* as a force on the pilot once
-the pendulum existed — the same force pitching the wing twice. It acts on the
-pilot and reaches the wing through the lines, so only the lines' own drag
-moment stays on the canopy.
-
-### The trim disagreement this exposed, and what was behind it
-
-Trim is **8.86 m/s (31.9 km/h) against a published 39**, full bar 41.3 against
-a published 53, glide 9.04 against 9.5.
-
-The previous model agreed with the published 39 km/h almost exactly, and that
-agreement was two errors cancelling: the canopy was pinned level, which forced
-the wing to fly at 4.5° of incidence, and 4.5° is not what a paraglider flies
-at.
-
-**The first diagnosis of the remaining gap was wrong and is recorded as such.**
-It blamed the analytic lift curve. Testing that against the published envelope
-says otherwise:
-
-| | |
-|---|---|
-| CL the published trim speed requires | 0.580 |
-| incidence at which this model makes it | **5.30°** |
-| CL the published top speed requires | 0.314 |
-| incidence at which this model makes it | **0.54°** |
-| incidence change the published speed range demands | 4.76° |
-| incidence change the risers geometrically produce | **4.06°** |
-
-The lift curve is close to right — it produces the published CLs at sensible
-incidences, and the riser geometry spans most of the incidence range the
-published speed range demands. The bar-to-trim speed ratio comes out 1.294
-against a published 1.359. What was wrong was the wing's **pitching moment**,
-and two defects were behind it:
-
-1. **The section pitching moment was four times too small.** For a circular-arc
-   camber line the Fourier coefficients of the camber slope are A1 = 4h/c and
-   A2 = 0, giving `Cm_c/4 = (π/4)(A2 − A1) = −π h/c` — which is −0.110 at 3.5%
-   camber. The code had `−(π/4)(h/c)` = −0.0275, which is what taking A1 = h/c
-   gives: the factor of four in the Fourier coefficient dropped while the π/4
-   prefactor was kept. The *same* A1 gives the zero-lift angle −2h/c, which was
-   right, so one camber line was being described two ways.
-2. **It was never applied to the wing at all.** The VSM's moment was only the
-   cross product of the section forces about their quarter-chord positions. A
-   section's own camber couple — which survives where the section makes no lift
-   and is precisely what sets a wing's trim incidence — was computed by the
-   polar table, stored, and discarded.
-
-Neither could be caught before, and for the same reason as everything else on
-this page: with the canopy pinned, its incidence was set by the pin. A wing
-whose pitching moment is missing entirely flies exactly as well as one whose
-pitching moment is right, as long as nothing is free to pitch.
-
-Fixing both moved trim from 29.5 to 31.9 km/h and incidence from 11.8° to 9.1°,
-and dropped the spurious turn in a symmetric frontal from 1.055 rad/s to 0.017.
-`aerodynamics_tests` now checks the moment against the closed-form thin-airfoil
-result and against the zero-lift angle it must share a camber line with.
-
-**The remaining gap is most likely pitch stiffness, not aerodynamics.** The
-wing still flies at 9.1° where the published CL implies 5.3°. The rigid motion
-section integrates canopy and payload as one body whose centre of mass is eight
-metres below the reference point, so gravity's restoring torque appears there
-*and* in the swing degree of freedom — about 14000 N·m/rad of pitch stiffness
-where the lines themselves provide 5723. Too stiff in pitch is exactly an
-incidence that will not come down under an aerodynamic moment. Deleting the
-lumped term is not the fix (measured: the wing goes to 157° of incidence,
-because that term is load-bearing for the lumped body); giving the canopy and
-the payload their own bodies is. Written up in `PHYSICS_TODO.md`.
+That matters because this wing's pitch feedback has a loop gain of
+`a·c·Cm/(k·CL²)` — measured off its own polar and its own suspension — which is
+0.32 at trim and passes **one** at CL 0.35. Estimated from what physically
+damps the swing, the ratio should be nearer 0.06. Registered Tuned/Unvalidated;
+`PHYSICS_TODO` item 11.
 
 ## Level 8 — emergent collapse
 
@@ -467,54 +490,85 @@ fold clears, where a real one dives forward and then pitches back.
 
 ## Level 9 — calibration
 
-`CalibrationManeuver`, and the `calibration_tests` suite. **Started.**
+`CalibrationManeuver`, and the `calibration_tests` suite. **Built.** The full
+report is `docs/CALIBRATION_REPORT.md`; the half of the exit gate that needs
+people is `docs/PILOT_REVIEW_PROTOCOL.md` and has not been run.
 
-Seven repeatable still-air manoeuvres on the coupled solver, each settled for
-15 s before its input so the response has no initial transient in it, each with
-one input so it identifies something. The time series exports as CSV.
+Eight repeatable still-air manoeuvres on the coupled solver, each settled 90 s
+before its input and recorded for 45 s — long, because the aircraft's slow mode
+has an eleven second period and a fifteen second settle left every manoeuvre
+reporting NOT SETTLED, honestly. Each applies one input. The series exports as
+CSV.
+
+**Flown at the published 105 kg all-up**, made up by ballasting the default
+payload. This is not a detail: trim speed goes as the square root of wing
+loading, the EPIC 2 ML's envelope is a 105 kg figure against a 90–110 kg range,
+and the solver's unballasted payload is 94.3 kg — 5.5% of speed built into the
+comparison rather than into the model.
+
+### Against the published envelope
+
+| | model | published | |
+|---|---|---|---|
+| trim speed | **39.4 km/h** | 39.0 | +0.4 |
+| sink at trim | 1.15 m/s | 1.14 | +0.01 |
+| glide at trim | 9.43 | 9.5 | −0.07 |
+| incidence | 5.02° | 5.30° for the published trim CL of 0.580 | −0.28° |
+
+**One parameter was identified and three numbers were not.** The fitted one is
+the line plan's design incidence — where the rest lengths are cut — which
+`bgd-epic-2-ml-lineplan.json` has always named as the quantity to identify
+("replace with the manufacturer's rigging angle, or by fitting Level 4 trim
+speed"). It moved from a round 5.0° to 4.4°. Sink, glide and incidence follow
+without being fitted, which is the test; trim speed on its own is a restatement
+of the fit.
+
+This number was 31.9 km/h for most of the project's life, and the 18% shortfall
+was the doubled pitch stiffness above — not the lift curve, which the first
+diagnosis blamed and which tests out close to right.
+
+### The manoeuvre set
 
 | manoeuvre | settled result |
 |---|---|
-| hands-up trim | 8.80 m/s (31.7 km/h), sink 0.97, glide 9.04, α 9.3° |
-| accelerator step | 11.40 m/s (41.0 km/h), glide 9.06, α 3.2° |
-| brake step 40% | 7.72 m/s, glide 7.55, α 10.6° |
-| brake pulse and release | pitch period **4.34 s**, damping ratio **0.14** |
-| weight shift step | 0.004 rad/s at 0.9° of bank |
-| coordinated turn 35% | 0.015 rad/s at −2.0° of bank |
-| stall approach | minimum 7.22 m/s, no collapse |
+| hands-up trim | 10.95 m/s, sink 1.15, glide 9.43, α 5.0° |
+| accelerator step | **departs** — α 88° |
+| brake step 25% | 8.82 m/s, sink 0.78, α 9.7° |
+| deep brake step 40% | **departs** — α 95° |
+| brake pulse and release | surge period 3.87 s, damping 0.06, 1.7 m of travel |
+| weight shift step | 0.014 rad/s at 1.5° of bank |
+| coordinated turn 35% | 0.045 rad/s at 1.5° of bank |
+| stall approach | minimum 6.31 m/s, separated |
 
-**What agrees.** Glide 9.04 against a published 9.5 and sink 0.97 against a
-published minimum of 1.0 — both within a few per cent. The speed *range* ratio
-is 1.296 against a published 1.359, which is the quantity that tests the lift
-curve's slope while being blind to its offset. The pitch oscillation is a real
-identification against a closed form: 4.34 s over three swings where a simple
-pendulum on the same 8.08 m lines would be 5.70 s, faster because the line
-geometry adds stiffness a bob does not have, and damped at 0.14 so it settles
-in a few swings. Brake slows the wing and costs glide; bar speeds it up by
-lowering incidence; the stall approach stalls the wing without folding it.
+Direction, mirroring and ordering of the controls are correct and were checked
+against **world vectors** rather than a sign convention: right brake turns the
+ground track +1.217 rad toward +Y with the right tip 0.030 below the horizon,
+and left brake mirrors it to four digits. The suite previously asserted that
+turn rate and bank carry opposite signs; that was backwards, and it passed
+because the old model banked the wrong way.
 
-**Three disagreements, each bounded so it cannot drift and cannot close by
-accident.**
+### Three disagreements, each bounded
 
-1. **Trim is 19% slow**, 31.7 km/h against 39. Diagnosed as far as the pitch
-   stiffness — see the section above.
-2. **The wing turns roughly twenty times too slowly.** 0.015 rad/s at 2° of
-   bank on 35% brake, where an EN-B wing does about 0.3 rad/s at 20–30°. This
-   is the largest disagreement the level has found and it is not a calibration
-   error: it is a mechanism that is missing or overwhelmed. Not yet diagnosed.
-   The direction and ordering are right — both right-hand inputs turn the same
-   way, the wing banks into its turn, brake outranks weight shift.
-3. **Pitch transients leave an energy residual**, up to 154 W in a surge where
-   steady flight closes to 0.1 W. Attributed: the pendulum between wing and
-   pilot carries about 900 J at the top of a surge, and that energy is outside
-   books that still describe one lumped body. Adding the term without the body
-   it belongs to was tried and makes the audit disagree with the solver it is
-   auditing — hands-off went from 4 W to 19 W. It closes with the two-body
-   rewrite.
+1. **The wing turns several times too slowly.** 0.045 rad/s at 1.5° of bank on
+   35% brake against an EN-B's 0.3 at 20–30°. Was 0.015; removing the payload's
+   `m L²` from the canopy's roll inertia and the world-referenced roll spring
+   tripled it. The largest one left.
+2. **It cannot hold full bar.** The pitch loop gain passes one at CL 0.35 and
+   full bar is a CL 0.31 condition, so the wing is statically pitch-divergent at
+   its published top speed. Half bar departs too, more slowly. No amount of
+   damping fixes a gain above one; the two levers are the section pitching
+   moment and the specific stiffness of 6.13 m.
+3. **The polar's lift ceiling costs the envelope.** Swept on the VSM the
+   analytic polars peak at **CL 0.866 at 11°** where this wing's profile
+   carries 1.32. Trim at 5.0° leaves barely six degrees of brake before the
+   wing is past its own stall, and past it there is no steady state to return
+   to. **The usable envelope is hands-up to about 25% brake.** This is item 1 —
+   analytic thin-airfoil polars, blocked on XFOIL — arriving where a pilot
+   would feel it, and the single most valuable thing real section data buys.
 
-All three trace to the same place or to work not yet done, which is the useful
-thing about running the manoeuvres: they turned "the model feels off" into
-three numbers with bounds.
+Energy: 1.1 W at trim and 1.2 W under weight shift on a 1030 N aircraft; up to
+38.8 W through a pitch transient, attributed to the pendulum's own energy
+sitting outside books that still track one lumped translation.
 
 ## Test suites
 
@@ -611,25 +665,39 @@ Ordered by how much they matter.
    state. Level 11's unsteady wake is the honest treatment. Locked as a
    known-failure check. Inside the coupled solve, where the separation state is
    carried between steps, the wing does walk into stall — see Level 7.
-2. **Section polars are analytic.** No XFOIL runs, no measured data. Every
-   flight number above rests on theory.
-3. **The apparent-mass rotational terms are disputed** (above).
-4. **Grindelwald First's anchor is 50 m off its surveyed ground.** Published
+2. **Section polars are analytic, and Level 9 measured what that costs.** No
+   XFOIL runs, no measured data. Swept on the VSM they peak at CL 0.866 at 11°
+   of incidence where this wing's profile carries 1.32, which puts the stall
+   six degrees above trim and makes 40% brake — an ordinary EN-B input —
+   unholdable. **The usable envelope is hands-up to about a quarter brake.**
+   The same sweep gives Cm near 0.10 across the range, which is half of the
+   pitch loop gain that costs the other end of the envelope.
+3. **The wing is statically pitch-divergent below CL 0.35**, and full bar is a
+   CL 0.31 condition. The loop gain `a·c·Cm/(k·CL²)` is 0.32 at trim. Neither
+   input to it is tunable: both were measured, one off the VSM and one off the
+   suspension graph.
+4. **`swingDampingRatio` is stated, not derived, and hands-off stability
+   depends on it.** 0.35 where the physics suggests 0.06. It is standing in for
+   a stabilising mechanism the model does not have. `PHYSICS_TODO` item 11.
+5. **The apparent-mass rotational terms are disputed** (above).
+6. **Grindelwald First's anchor is 50 m off its surveyed ground.** Published
    2123 m is the top station; the WGS84 pair is on the launch slope below it,
    which the survey puts at 2073 m. Every other site agrees within 12 m. The
    terrain is the measurement and the anchor is the estimate, so it is recorded
    rather than fitted away. `terrain_survey_tests` prints the table.
-5. **None of the geometry-driven stack flies the wing.** The legacy polar still
+7. **None of the geometry-driven stack flies the wing.** The legacy polar still
    does. Level 8's deliverable of a collapse/reopening *debug view* is blocked
    on this and nothing else: the pawn draws collapse from the legacy
    telemetry, because that is what is flying. The per-section state the view
    would draw — margin, external Cp, fold, propagation flag, fold reach past
    the line, cravat — is already reported by `SectionCollapseDiagnostics`.
-6. **The reopening surge is not modelled.** A section recovers its lift as the
-   fold clears, smoothly. A real wing dives forward as the nose catches air and
-   then pitches back, and that needs the collapsed section's shape rather than
-   only its state.
-7. **A cravat has never formed in the coupled solve.** It forms in
+8. **The LOCAL part of the reopening surge is not modelled.** The whole-wing
+   part now is — the wing and the pilot are two bodies on a real spring, so a
+   recovery swings the wing forward the way a brake release does. What is
+   missing is the *shape*: a real frontal recovery has the nose catching air
+   and scooping forward, which needs the membrane's fold geometry read back
+   into the aerodynamics.
+9. **A cravat has never formed in the coupled solve.** It forms in
    `collapse_tests`, from the built graph's real 0.178 m tip line gap against a
    fold deep enough to reach past it. In flight the strip's fold depth stays
    short of that gap, so the contact test correctly returns nothing. Whether

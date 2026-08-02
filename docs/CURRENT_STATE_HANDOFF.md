@@ -141,52 +141,74 @@ The detailed checklist is `docs/V1_V4_ROADMAP.md`.
 
 ## Latest verified test state
 
-Before the sensory-feedback work described below:
+One command builds the Unreal module **and** runs every headless suite, in that
+order, in under a minute:
 
 ```sh
-cmake -S Tests -B build/tests
-cmake --build build/tests -j 8
-./build/tests/parapenting_physics_tests
-./build/tests/parapenting_regression_matrix
+Tools/check-build.sh
 ```
 
-Results:
+Results at the end of the Level 9 work:
 
-- all physics tests passed;
-- all 60 ten-minute deterministic matrix runs passed;
-- matrix scope is 6 wings × 5 weather cases × 2 identical repetitions;
-- no run spent time above 5 g;
-- all state remained finite and repeated runs matched exactly.
+- `ParapentingEditor` builds clean;
+- all twelve physics suites pass, including `calibration_tests`;
+- the 60-run ten-minute deterministic matrix passes, 6 wings × 5 weather cases
+  × 2 identical repetitions, no run above 5 g, all state finite and repeatable.
+
+Note the CMake suites do not compile a single line of engine code — they build
+each `Physics/*.cpp` as its own translation unit, which is exactly the
+configuration where a unity-build name collision is invisible. Suites passing
+still says nothing about `Source/Parapenting/*.cpp`, which is why
+`check-build.sh` builds the module first and should be the gate rather than
+`--tests`.
+
+## Where the physics stands
+
+**Levels 0–9 of the geometry-driven stack are built.** Level 9 closed the two
+oldest open items in `PHYSICS_TODO`:
+
+- **Item 10** — the rigid motion counted gravity's restoring torque twice. The
+  payload is now a link with its own direction in world axes, the canopy
+  carries its own inertia, and the line spring is measured off the built graph
+  at four loads because it is geometric and scales with load.
+- **Item 0** — trim was 18% slow. It is now **39.4 km/h against a published
+  39.0** at the published 105 kg all-up, with sink 1.15 against 1.14, glide
+  9.43 against 9.5, and incidence 5.02° against the 5.30° the published trim
+  lift coefficient needs. One parameter was identified, three were not.
+
+`docs/CALIBRATION_REPORT.md` is the full Level 9 report.
+`docs/PILOT_REVIEW_PROTOCOL.md` is the other half of the exit gate and has not
+been run — the handling of this model has never been flown by anyone who flies.
+
+**Two measured limits define a narrow envelope: hands-up to about a quarter
+brake.**
+
+- The analytic section polars peak at CL 0.866 at 11° where this wing's profile
+  carries 1.32, so 40% brake — an ordinary EN-B input — takes the wing past its
+  own stall, and past it there is no steady state to return to.
+- The pitch loop gain passes one at CL 0.35 and full bar is a CL 0.31
+  condition, so the wing is statically pitch-divergent at its published top
+  speed.
+
+Both point at real section polars (`PHYSICS_TODO` item 1, blocked on XFOIL),
+which is now the highest-value unblocked-by-money item in the project.
+
+**Nothing geometry-driven flies the game yet.** `ParagliderDynamics` — one
+six-degree-of-freedom body with a fitted polar — is still what the pawn uses.
+Retiring it is Level 10, and it should not start until the envelope above is
+wider, because Level 10's exit gate is "no legacy direct-control force remains
+active" and swapping in a model that cannot hold 40% brake would be a
+regression a pilot would feel immediately.
 
 ## Work in progress at interruption
 
-The current unfinished pass is improving the sensory moment when collapsed
-cells reopen.
+None. The tree is green and there is no half-finished pass.
 
-Already edited but **not yet rebuilt or regression-tested**:
-
-- `Telemetry` gained left/right/frontal reinflation rates per second;
-- `ParagliderDynamics.cpp` computes those rates from each 120 Hz step;
-- `CameraFeedback.cpp` uses reinflation rate for a short vertical/pitch/FOV
-  kick and side-specific roll/yaw;
-- `HapticFeedback.cpp` adds side-specific reopening texture and a frontal cue.
-
-Still required to finish this pass:
-
-1. Add reinflation-rate inputs/outputs to `AudioFeedback`.
-2. Route them through `UParaglidingAudioComponent` and add a short localized
-   fabric-opening envelope.
-3. Add reinflation-rate columns to telemetry CSV export.
-4. Add deterministic tests proving:
-   - no reopening cue during stable flight;
-   - left reopening produces stronger left haptics/audio;
-   - frontal reopening produces a symmetric cue;
-   - reduced-motion accessibility scales camera kick;
-   - repeated inputs return identical cues.
-5. Rebuild headless tests and rerun the full 60-flight matrix.
-6. Update audio/camera/collapse documentation.
-
-Do not assume this interrupted sensory pass compiles until those checks pass.
+An earlier handoff described an unfinished reinflation sensory pass
+(`Telemetry` reinflation rates, camera and haptic cues). That work is in the
+tree and the suites cover it; the remaining items from it were audio routing,
+CSV columns and documentation, and they are listed under the next order below
+rather than as an interruption.
 
 ## Mac build state
 
@@ -255,11 +277,21 @@ The v1–v4 goal is not complete until these are addressed:
 
 ## Recommended next order
 
-1. Finish and validate the interrupted reinflation sensory pass.
-2. Accept the user's new feedback and translate it into concrete physics/UI/
-   world tasks.
-3. Improve terrain fidelity and streaming around the selected routes.
-4. Perform the latest Unreal compile and Mac runtime smoke test.
-5. Iterate handling from actual pilot feedback and recorded telemetry.
-6. Produce release-quality Mac and Windows builds only after validation.
+1. **Widen the envelope before Level 10.** Real section polars are the single
+   change that moves both limits, and they need XFOIL or equivalent over
+   digitised EPIC 2 ML profiles. Everything else in the pitch axis is now
+   measured; this is the one input that is not.
+2. Retire `swingDampingRatio` by finding the stabilising mechanism it stands in
+   for, rather than by measuring it more precisely (`PHYSICS_TODO` item 11).
+3. Run `docs/PILOT_REVIEW_PROTOCOL.md` with experienced pilots. It is the half
+   of Level 9's exit gate that cannot be closed from a keyboard, and the surge
+   timing question is the only external reference available for item 11.
+4. Perform the Unreal runtime smoke test owed after rig/terrain changes — fly
+   Amisbühl → Lehn, weight-shift hard both ways, and `[`/`]` to a Grindelwald
+   route and back.
+5. Finish the reinflation sensory pass: audio routing, telemetry CSV columns,
+   documentation.
+6. Level 10 — profiling, solver levels of detail, research visualisation
+   toggles, and removal of the legacy path.
+7. Produce release-quality Mac and Windows builds only after validation.
 

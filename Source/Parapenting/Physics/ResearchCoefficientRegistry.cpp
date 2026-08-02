@@ -197,10 +197,15 @@ const CoefficientRecord Records[] = {
      "line stretch and therefore the trim shift under load. A pull test on a "
      "real line replaces it.", 9},
     {"designIncidenceRad", "rad", Lines.designIncidenceRad, 0.0, 0.20,
-     S::Estimated, C::Unvalidated,
+     S::Published, C::Validated,
      "Root chord incidence at the unloaded design pose, where the line rest "
-     "lengths are cut. Fixes hands-up trim incidence, so Level 4 will want it "
-     "fitted to trim speed rather than assumed.", 4},
+     "lengths are cut. IDENTIFIED at Level 9 against the published 39 km/h "
+     "hands-up trim at the published 105 kg all-up, which is the fit this "
+     "entry always called for. Residual 0.4 km/h. Three numbers it was NOT "
+     "fitted to follow: sink 1.15 m/s against 1.14, glide 9.43 against 9.5, "
+     "and incidence 5.02 deg against the 5.30 the published trim CL of 0.580 "
+     "needs. Was 0.0873, a round 5 degrees, worth 2.4 km/h. The "
+     "manufacturer's rigging angle would still be better.", 4},
     {"cascadeSplitFraction", "1", Lines.cascadeSplitFraction, 0.3, 0.9,
      S::Estimated, C::Unvalidated,
      "Height of the cascade junctions along the riser-to-canopy run. Sets how "
@@ -209,6 +214,36 @@ const CoefficientRecord Records[] = {
     {"brakeSlackM", "m", Lines.brakeSlackM, 0.0, 0.35, S::Estimated, C::Unvalidated,
      "Slack sewn into the brake line at hands-up. Without it the trailing edge "
      "loads at trim.", 0},
+
+    {"swingDampingRatio", "1", 0.35, 0.0, 1.0, S::Tuned, C::Unvalidated,
+     "Damping ratio on the pilot's swing about the canopy. THE MODEL'S LEAST "
+     "DEFENSIBLE NUMBER AND THE MOST LOAD-BEARING: hands-off pitch stability "
+     "depends on it, and at 0.20 - which is what a wing settling in three "
+     "swings implies, and what this solver used to use - the aircraft "
+     "diverges and is fully separated inside a minute. Estimated from what "
+     "physically damps the swing, the pilot's own drag on an 8 m arm plus the "
+     "lines sweeping, it should be nearer 0.06. So it is standing in for a "
+     "stabilising mechanism the model does not have rather than for friction "
+     "it does: the pendulum has to TRACK apparent gravity through a phugoid "
+     "and a lightly damped one follows late, which matters because this "
+     "wing's pitch loop gain passes one below CL 0.35. Retire it by finding "
+     "the missing mechanism, not by measuring it better. PHYSICS_TODO item "
+     "11.", 11},
+    {"linePitchStiffnessSpecificM", "m", 6.13, 3.0, 12.0, S::Physical,
+     C::Validated,
+     "Line pitch stiffness per newton of load, measured off the built "
+     "suspension graph by holding the canopy either side of its free "
+     "equilibrium at four loads: 3306, 6317, 11512 and 15393 Nm/rad at half a "
+     "g, one, two and four. Proportional to load because the spring is "
+     "GEOMETRIC - the lines stretch 0.2% while the canopy origin moves "
+     "0.13 m, so the wing pivots about a virtual hinge 6.6 m below itself. "
+     "Not a coefficient so much as a property of the graph; listed because "
+     "freezing it at its one-g value is what made the pitch axis diverge.", 0},
+    {"pitchHingeArmM", "m", 6.62, 3.0, 12.0, S::Physical, C::Validated,
+     "How far the canopy's origin travels per radian it rotates, off the same "
+     "probe: 0.1325 m at 0.02 rad and 0.2648 at 0.04, so a constant arm. Sets "
+     "the inertia that resists a pitch rotation, which is the canopy's own "
+     "plus the apparent mass it drags through the arc.", 0},
 
     // --- Level 3 payload and harness --------------------------------------
     {"hipTravelM", "m", Harness3.hipTravelM, 0.03, 0.14, S::Estimated,

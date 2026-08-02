@@ -562,6 +562,51 @@ int main()
               "the paper. Delete this when it has been");
     }
 
+    // -- the section's pitching moment ------------------------------------
+    //
+    // Checked against the closed-form thin-airfoil result rather than against
+    // itself, because it was wrong by a factor of four and nothing noticed.
+    // For a circular-arc camber line the Fourier coefficients of the camber
+    // slope are A1 = 4 h/c and A2 = 0, so
+    //
+    //     Cm_c/4 = (pi/4)(A2 - A1) = -pi h/c
+    //
+    // and the SAME A1 gives the zero-lift angle -2 h/c. Deriving one from
+    // A1 = 4 h/c and the other from A1 = h/c describes two different sections.
+    {
+        const SectionPolarTable table = SectionPolarTable::Analytic();
+        AnalyticPolarSpec spec;
+        const double camber = spec.camberFraction;
+        const SectionPolarSample sample = table.Sample(0.05, 0.0);
+        const double expected = -3.14159265358979323846 * camber;
+        std::printf("Section Cm at %.1f%% camber: %.4f, thin-airfoil "
+                    "-pi h/c = %.4f\n",
+                    camber * 100.0, sample.momentCoefficient, expected);
+        Check(std::fabs(sample.momentCoefficient - expected) < 1.0e-9,
+              "the quarter-chord moment is -pi (h/c), the closed-form result "
+              "for the camber line this section already uses for its "
+              "zero-lift angle");
+
+        // The two must come from one camber line, which is a relationship
+        // rather than two numbers: Cm/alpha0 = (-pi h/c)/(-2 h/c) = pi/2,
+        // independent of the camber itself.
+        const double ratio =
+            sample.momentCoefficient / table.ZeroLiftAngleRad(0.0);
+        Check(std::fabs(ratio - 3.14159265358979323846 / 2.0) < 1.0e-9,
+              "and it is the same camber line the zero-lift angle came from - "
+              "their ratio is pi/2 whatever the camber is");
+
+        // It is a couple, so it does not vanish where the section makes no
+        // lift. That is the property that sets a wing's trim incidence.
+        const SectionPolarSample atZeroLift =
+            table.Sample(table.ZeroLiftAngleRad(0.0), 0.0);
+        Check(std::fabs(atZeroLift.liftCoefficient) < 1.0e-6,
+              "at the zero-lift angle the section makes no lift");
+        Check(atZeroLift.momentCoefficient < -0.01,
+              "and still carries its nose-down couple, which is what a "
+              "pitching moment about the aerodynamic centre means");
+    }
+
     if (Failures == 0) std::printf("All aerodynamics checks passed.\n");
     else std::printf("%d aerodynamics check(s) failed.\n", Failures);
     return Failures == 0 ? 0 : 1;

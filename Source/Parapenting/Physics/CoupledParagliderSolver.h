@@ -251,6 +251,12 @@ struct CoupledDiagnostics
     // pilot hangs where the lines are unstressed, and the wing's entire pitch
     // stiffness otherwise.
     double linePitchMomentNm = 0.0;
+    // The payload's weight acting on its arm. Near zero at equilibrium by
+    // construction - the line hangs along apparent gravity, so the weight acts
+    // through the attachment - and reported so that "near zero" is checked
+    // rather than assumed.
+    double pendulumWeightMomentNm = 0.0;
+    double aeroPitchMomentNm = 0.0;
 
     // Flight numbers, for the tests to read.
     double airspeedMps = 0.0;

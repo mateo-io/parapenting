@@ -10,21 +10,42 @@ nothing geometry-driven flies the wing yet.
 
 ## Blocked on things this environment does not have
 
-**0. Trim is 25% slow, and the polars are the suspect.** 29.5 km/h against a
-published 39, and 34.4 on full bar against a published 53. This appeared the
-moment the wing and the pilot became two bodies: the model now flies at 11.8
-degrees of incidence, which is what a paraglider does, where before it flew at
-4.5, which is not.
+**0. Trim is 18% slow, and the pitch model is the suspect - not the polars.**
+31.9 km/h against a published 39, 41.3 on full bar against 53, glide 9.04
+against 9.5. This appeared when the wing and the pilot became two bodies: the
+model flies at 9.1 degrees of incidence where before it flew at 4.5, and the
+old exact agreement with the published 39 was two errors cancelling.
 
-- The old agreement with the published 39 was two errors cancelling - the
-  canopy was pinned level, and a too-low incidence was compensating for a lift
-  curve that is too high.
-- Blocked by the same thing as item 1, and it is the strongest evidence yet
-  that item 1 is the gate on Level 9.
-- Bounded by a check in `coupled_tests` so it cannot quietly grow, and recorded
-  rather than fitted away.
+- **The first diagnosis, that the analytic lift curve was too high, was wrong.**
+  Tested against the published envelope, this lift curve makes the required
+  trim CL of 0.580 at 5.30 degrees and the required top-speed CL of 0.314 at
+  0.54 degrees, and the risers geometrically produce 4.06 degrees of the 4.76
+  the published speed range demands. The curve is close to right.
+- Two real defects were behind most of the gap and are fixed: the section
+  pitching moment was four times too small (a dropped factor of four in the
+  camber line's Fourier coefficient) and was never applied to the wing at all.
+  Both are now locked by checks against the closed-form thin-airfoil result.
+- **What is left is item 10's doubled pitch stiffness**, which is the leading
+  suspect for the remaining 3.8 degrees of incidence.
+- Bounded by a check in `coupled_tests` so it cannot quietly grow.
 
-**1. Section polars are analytic.** Thin-airfoil lift with the circular-arc
+**10. The rigid motion lumps the canopy and the payload into one body**, whose
+centre of mass sits eight metres below the reference point. Gravity's restoring
+torque therefore appears twice: once as that body's weight moment, and once in
+the payload swing degree of freedom, which is a second pendulum on the same
+hinge. The wing has roughly 14000 Nm/rad of pitch stiffness where the lines
+themselves provide 5723.
+
+- Deleting the lumped term is NOT the fix and was tried: the term is
+  load-bearing for a lumped body, and without it the wing reaches 157 degrees
+  of incidence. Measured, not predicted.
+- Needs: the canopy as its own 5.1 kg body at its own centre of mass, the
+  payload as its own, and the line network coupling them - at which point the
+  canopy's weight moment is `Cross(r_attach, T)` and is small.
+- Done when: pitch stiffness is the measured line stiffness and nothing else,
+  and item 0's remaining incidence gap can be re-measured against it.
+
+**1. Section polars are analytic.****1. Section polars are analytic.** Thin-airfoil lift with the circular-arc
 zero-lift angle, brake as a trailing-edge flap, Viterna-Corrigan post-stall.
 All derived, all registered `Provisional`. Every flight number in Level 4 rests
 on theory rather than measurement.

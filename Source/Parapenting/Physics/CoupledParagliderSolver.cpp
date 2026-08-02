@@ -789,11 +789,25 @@ structureSolve:
         -PendulumLengthM * std::cos(state.payloadSwingRad)};
     const Vec3 payloadWeightWorld{
         0.0, 0.0, -PayloadMass.TotalKg() * GravityMps2};
-    // With the payload swung forward this is no longer a pure restoring
-    // moment: the weight now acts on an arm that is ahead of the wing, and it
-    // pitches the canopy. That coupling is the whole point - it is how the
-    // pilot swinging forward under brake pitches the wing back, and how the
-    // wing surging forward pitches it down again.
+    // The payload's weight acting on its arm. With the payload swung forward
+    // this is not a pure restoring moment: the weight acts on an arm ahead of
+    // the wing and pitches the canopy, which is how the pilot swinging forward
+    // under brake pitches the wing back.
+    //
+    // KNOWN OVERLAP, recorded rather than half-fixed. The rigid motion below
+    // integrates canopy and payload as ONE body whose centre of mass is eight
+    // metres beneath the reference point, so this term is that body's gravity
+    // moment and it is load-bearing - deleting it sends the wing to 157
+    // degrees of incidence, measured. But the swing degree of freedom above is
+    // a second pendulum on the same physical hinge, so gravity's restoring
+    // torque is represented twice and the wing has roughly 14000 Nm/rad of
+    // pitch stiffness where the lines themselves provide 5700.
+    //
+    // The honest fix is to stop lumping: give the canopy its own 5.1 kg body
+    // at its own centre of mass, the payload its own, and let the line network
+    // couple them - at which point this term is Cross(r_attach, T) on the
+    // canopy alone and is small. That is a rewrite of the rigid motion
+    // section, not a deletion, and it is written up in PHYSICS_TODO.
     const Vec3 pendulumMoment = Cross(
         payloadOffsetBody, state.attitude.InverseRotate(payloadWeightWorld));
     // The canopy's end of the same spring. Rotating the canopy nose-up moves
@@ -803,6 +817,8 @@ structureSolve:
     // second spring.
     const double linePitchMomentNm = -LinePitchStiffnessNmPerRad * swingFromTrim;
     diagnostics.linePitchMomentNm = linePitchMomentNm;
+    diagnostics.pendulumWeightMomentNm = pendulumMoment.y;
+    diagnostics.aeroPitchMomentNm = exchangedMomentBody.y;
     diagnostics.payloadSwingRad = state.payloadSwingRad;
     diagnostics.payloadSwingRateRadps = state.payloadSwingRateRadps;
     diagnostics.canopyLeadM = -payloadOffsetBody.x;

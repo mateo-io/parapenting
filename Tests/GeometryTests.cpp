@@ -4,6 +4,7 @@
 // specification, and that the properties claimed to be exact by construction
 // really are exact rather than merely close.
 #include "CanopyGeometry.h"
+#include "CanopyLoadPose.h"
 #include "BillowRelaxation.h"
 #include "SuspensionSystem.h"
 #include "PanelUnfolder.h"
@@ -547,6 +548,46 @@ int main(int argc, char** argv)
         }
         Check(lastA < firstB, "the A row sits ahead of the B row");
         Check(lastB < firstC, "the B row sits ahead of the C row");
+    }
+
+    // -- the canopy's swing on its lines ----------------------------------
+    //
+    // A sign test, and it exists because the renderer used to infer this
+    // direction from Unreal's rotator handedness. That inference cannot be
+    // checked by any suite here, and a wing that surges backwards looks
+    // exactly as convincing as one that surges forwards until a pilot flies
+    // it. An explicit displacement can be checked, so the displacement is what
+    // the renderer now consumes.
+    {
+        constexpr double LinesM = 7.3;
+        const CanopySwingOffset level = EvaluateCanopySwingOffset(0.0, LinesM);
+        Check(std::fabs(level.forwardM) < 1.0e-12
+              && std::fabs(level.riseM) < 1.0e-12,
+              "a wing that has not swung sits straight above the pilot");
+
+        // Brake pushes the wing back behind the pilot: canopyRelativePitchRad
+        // positive, so the canopy must move BACKWARD.
+        const CanopySwingOffset aft = EvaluateCanopySwingOffset(0.30, LinesM);
+        std::printf("Canopy swung +0.30 rad: %+.2f m along track, %+.2f m "
+                    "vertically\n", aft.forwardM, aft.riseM);
+        Check(aft.forwardM < -0.5,
+              "a positive swing puts the canopy behind the pilot, which is "
+              "what brake does");
+        Check(aft.riseM < 0.0,
+              "and lower, because it is travelling on an arc rather than "
+              "sliding along a shelf");
+
+        const CanopySwingOffset forward =
+            EvaluateCanopySwingOffset(-0.30, LinesM);
+        Check(forward.forwardM > 0.5,
+              "and a negative swing puts it ahead - the surge");
+        Check(std::fabs(forward.forwardM + aft.forwardM) < 1.0e-12
+              && std::fabs(forward.riseM - aft.riseM) < 1.0e-12,
+              "the arc is symmetric about straight overhead");
+
+        Check(std::fabs(aft.forwardM + LinesM * std::sin(0.30)) < 1.0e-12,
+              "and the displacement is L sin(q) exactly - the renderer is "
+              "reading a length off the suspension, not a tuned offset");
     }
 
     if (Failures)

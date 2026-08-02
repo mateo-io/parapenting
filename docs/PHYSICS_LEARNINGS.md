@@ -490,6 +490,17 @@ immediately: trim fell to 29.5 km/h and the incidence rose to 11.8. The model
 got *more* correct and the validation number got worse, which is the shape this
 always takes.
 
+**And the first diagnosis of the resulting gap was also wrong**, which is the
+second half of the lesson. It blamed the analytic lift curve, on the reasoning
+that the polars were the least validated thing in the stack. Testing that
+against the published envelope refuted it in one run: the curve makes the
+published trim CL at 5.3 degrees and the published top-speed CL at 0.5, and the
+riser geometry spans most of the incidence range between them. The real defects
+were in the pitching moment - four times too small, and never applied to the
+wing at all - and the residue is a doubled pitch stiffness. Suspecting the
+least-validated component is a reasonable prior and not evidence; the test that
+distinguishes them costs one afternoon and the assumption costs a level.
+
 **Rule:** a single scalar matching a published value validates nothing on its
 own, because any two compensating errors can produce it. What validates is
 agreement across quantities that cannot compensate for each other - trim speed
@@ -518,8 +529,10 @@ unnoticed through two levels of gates.
 | apparent mass, normal | 33.6 kg | a third of the aircraft |
 | pendulum stiffness | ~7000 N·m/rad | dominates pitch and roll |
 | roll damping time constant | 20 ms | sets the maximum aero interval |
-| coupled trim speed | 8.21 m/s | 29.5 km/h against a published 39 - see §20 |
-| coupled trim incidence | 11.8 deg | what a paraglider flies at; it was 4.5 |
+| coupled trim speed | 8.86 m/s | 31.9 km/h against a published 39 - see §20 |
+| coupled trim incidence | 9.1 deg | it was 4.5 pinned, 11.8 before the Cm fixes |
+| section Cm at 3.5% camber | -0.110 | -pi h/c; the code had -pi h/4c |
+| incidence for the published trim CL | 5.30 deg | the lift curve is close to right |
 | line pitch stiffness | 5723 N·m/rad | measured off the graph, not assumed |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |
 | canopy lead at trim | 0.77 m | and 1.85 m at the top of a surge |

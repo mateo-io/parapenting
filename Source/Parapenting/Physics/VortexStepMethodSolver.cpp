@@ -458,6 +458,7 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             solution.sections[i].angleOfAttackRad = alpha;
             solution.sections[i].liftCoefficient = polar.liftCoefficient;
             solution.sections[i].dragCoefficient = polar.dragCoefficient;
+            solution.sections[i].momentCoefficient = polar.momentCoefficient;
             const Vec3 freeInPlane = -(freestream
                 - section.spanDirection
                     * Dot(freestream, section.spanDirection));
@@ -547,6 +548,28 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
         solution.momentBodyNm += Cross(
             (section.boundStartM + section.boundEndM) * 0.5,
             solution.sections[i].forceBodyN);
+
+        // The section's OWN pitching moment about its quarter chord, which is
+        // not the moment of its force about anything. A cambered section
+        // carries a nose-down couple that survives even where it makes no
+        // lift, and the whole of it was being discarded: the polar table has
+        // computed a moment coefficient since Level 4 and nothing had ever
+        // read it, so the wing had no aerodynamic pitching moment of its own.
+        //
+        // Nothing caught that either, because with the canopy pinned straight
+        // below the payload the wing's incidence was set by the pin rather
+        // than by any moment balance. A wing whose pitching moment is missing
+        // entirely flies exactly as well as one whose pitching moment is
+        // right, as long as nothing is free to pitch.
+        //
+        // Sign: the aerodynamic convention has Cm positive nose-up, and in
+        // this frame a positive right-hand rotation about +Y tips the nose
+        // DOWN (SuspensionGraph.h). spanDirection runs right to left, so
+        // adding it scaled by q S c Cm puts a negative Cm on the +Y axis as a
+        // nose-down moment, which is what camber does.
+        const double sectionMoment = dynamicPressure * section.areaM2
+            * section.chordM * solution.sections[i].momentCoefficient;
+        solution.momentBodyNm += section.spanDirection * sectionMoment;
     }
 
     const double freestreamSpeed = Length(freestream);

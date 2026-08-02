@@ -58,7 +58,7 @@ Updated at the end of the Level 7 work. The engine as built is documented in
 | 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
 | 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
-| 7 Coupled solver | **Done, with a trim gap** | turns mirror to 2e-8, books balance, suite green; trim now 29.5 km/h vs published 39 - see the note below |
+| 7 Coupled solver | **Done, with a trim gap** | turns mirror to 2e-8, books balance, suite green; trim 31.9 km/h vs published 39, bar 41.3 vs 53 - see the note below |
 | 8 Emergent collapse | **Done, with gaps** | fold 0.70 vs 0.08 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
 | 9 Calibration | Not started | — |
 | 10 Performance and legacy removal | Not started | — |
@@ -82,9 +82,16 @@ actually works through.
 
 That broke the model's agreement with the published trim speed, and the break
 is the finding: the old agreement was two errors cancelling. Pinned level, the
-wing flew at 4.5 degrees of incidence; free, it flies at 11.8, which is what a
-paraglider does, and it flies 25% slow because the analytic lift curve is too
-high. Gap 1 below is now the gate on Level 9 by a wide margin.
+wing flew at 4.5 degrees of incidence, which is not what a paraglider does.
+
+Chasing the resulting gap found two more defects, both in the wing's pitching
+moment: the section value was four times too small - a dropped factor of four
+in the camber line's Fourier coefficient, against a closed-form result - and it
+was never applied to the wing at all. Trim went from 29.5 to 31.9 km/h against
+a published 39 and incidence from 11.8 to 9.1 degrees. The lift curve itself
+tests out close to right against the published envelope, so gap 1 is NOT what
+is holding trim back; the leading suspect is a doubled pitch stiffness from
+lumping the canopy and payload into one body, which is now gap 10.
 
 ### Carried gaps, by priority
 

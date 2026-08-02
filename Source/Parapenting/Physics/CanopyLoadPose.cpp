@@ -1,6 +1,7 @@
 #include "CanopyLoadPose.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace Parapenting::Physics
 {
@@ -20,5 +21,19 @@ CanopyLoadPose EvaluateCanopyLoadPose(
         9.0 * response,
         5.5 * response
     };
+}
+
+CanopySwingOffset EvaluateCanopySwingOffset(
+    double swingRad, double suspensionLengthM)
+{
+    // The canopy rides on an arc of radius `suspensionLengthM` centred on the
+    // pilot. Swung aft by q it sits at (-L sin q, L cos q), so it moves
+    // backward and DOWN - the drop is what makes a surge look like the wing
+    // diving forward and rising rather than sliding along a shelf.
+    const double length = std::max(0.0, suspensionLengthM);
+    CanopySwingOffset offset;
+    offset.forwardM = -length * std::sin(swingRad);
+    offset.riseM = length * (std::cos(swingRad) - 1.0);
+    return offset;
 }
 }

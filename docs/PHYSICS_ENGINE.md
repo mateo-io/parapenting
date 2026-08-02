@@ -309,23 +309,68 @@ the pendulum existed — the same force pitching the wing twice. It acts on the
 pilot and reaches the wing through the lines, so only the lines' own drag
 moment stays on the canopy.
 
-### The trim disagreement this exposed
+### The trim disagreement this exposed, and what was behind it
 
-Trim is now **8.21 m/s (29.5 km/h) against a published 39**, and full bar 34.4
-against a published 53. Both low by about the same fraction.
+Trim is **8.86 m/s (31.9 km/h) against a published 39**, full bar 41.3 against
+a published 53, glide 9.04 against 9.5.
 
-The previous model agreed with the published 39 km/h almost exactly. That
+The previous model agreed with the published 39 km/h almost exactly, and that
 agreement was two errors cancelling: the canopy was pinned level, which forced
 the wing to fly at 4.5° of incidence, and 4.5° is not what a paraglider flies
-at. It now hangs 4.75° nose-up and glides at 6.6°, so it flies at 11.8° — which
-is what a paraglider does. A too-low incidence was compensating for a lift
-curve that is too high.
+at.
 
-The lift curve is item 1 of `PHYSICS_TODO.md`: analytic thin-airfoil polars,
-no XFOIL, every coefficient registered `Provisional`. Level 9 is where it gets
-resolved, and this is now the strongest single piece of evidence that it must
-be. The disagreement is bounded by a check in `coupled_tests` rather than
-tuned away — the same treatment as Grindelwald's anchor.
+**The first diagnosis of the remaining gap was wrong and is recorded as such.**
+It blamed the analytic lift curve. Testing that against the published envelope
+says otherwise:
+
+| | |
+|---|---|
+| CL the published trim speed requires | 0.580 |
+| incidence at which this model makes it | **5.30°** |
+| CL the published top speed requires | 0.314 |
+| incidence at which this model makes it | **0.54°** |
+| incidence change the published speed range demands | 4.76° |
+| incidence change the risers geometrically produce | **4.06°** |
+
+The lift curve is close to right — it produces the published CLs at sensible
+incidences, and the riser geometry spans most of the incidence range the
+published speed range demands. The bar-to-trim speed ratio comes out 1.294
+against a published 1.359. What was wrong was the wing's **pitching moment**,
+and two defects were behind it:
+
+1. **The section pitching moment was four times too small.** For a circular-arc
+   camber line the Fourier coefficients of the camber slope are A1 = 4h/c and
+   A2 = 0, giving `Cm_c/4 = (π/4)(A2 − A1) = −π h/c` — which is −0.110 at 3.5%
+   camber. The code had `−(π/4)(h/c)` = −0.0275, which is what taking A1 = h/c
+   gives: the factor of four in the Fourier coefficient dropped while the π/4
+   prefactor was kept. The *same* A1 gives the zero-lift angle −2h/c, which was
+   right, so one camber line was being described two ways.
+2. **It was never applied to the wing at all.** The VSM's moment was only the
+   cross product of the section forces about their quarter-chord positions. A
+   section's own camber couple — which survives where the section makes no lift
+   and is precisely what sets a wing's trim incidence — was computed by the
+   polar table, stored, and discarded.
+
+Neither could be caught before, and for the same reason as everything else on
+this page: with the canopy pinned, its incidence was set by the pin. A wing
+whose pitching moment is missing entirely flies exactly as well as one whose
+pitching moment is right, as long as nothing is free to pitch.
+
+Fixing both moved trim from 29.5 to 31.9 km/h and incidence from 11.8° to 9.1°,
+and dropped the spurious turn in a symmetric frontal from 1.055 rad/s to 0.017.
+`aerodynamics_tests` now checks the moment against the closed-form thin-airfoil
+result and against the zero-lift angle it must share a camber line with.
+
+**The remaining gap is most likely pitch stiffness, not aerodynamics.** The
+wing still flies at 9.1° where the published CL implies 5.3°. The rigid motion
+section integrates canopy and payload as one body whose centre of mass is eight
+metres below the reference point, so gravity's restoring torque appears there
+*and* in the swing degree of freedom — about 14000 N·m/rad of pitch stiffness
+where the lines themselves provide 5723. Too stiff in pitch is exactly an
+incidence that will not come down under an aerodynamic moment. Deleting the
+lumped term is not the fix (measured: the wing goes to 157° of incidence,
+because that term is load-bearing for the lumped body); giving the canopy and
+the payload their own bodies is. Written up in `PHYSICS_TODO.md`.
 
 ## Level 8 — emergent collapse
 

@@ -121,6 +121,10 @@ struct VsmSectionResult
     double angleOfAttackRad = 0.0;
     double liftCoefficient = 0.0;
     double dragCoefficient = 0.0;
+    // The section's own quarter-chord pitching moment coefficient, positive
+    // nose-up. Camber makes it negative, and it is a couple rather than the
+    // moment of the section's force about anything.
+    double momentCoefficient = 0.0;
     // Downwash angle induced at this section by the whole wing.
     double inducedAngleRad = 0.0;
     // 0 attached, 1 fully separated.

@@ -688,13 +688,49 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     }
     else
     {
-        CanopyVisual->SetRelativeLocation(FVector::ZeroVector);
-        CanopyVisual->SetRelativeRotation(FRotator(
+        // The canopy swings on its lines, and where it ends up is decided by
+        // the physics rather than by a rotation convention.
+        //
+        // Rotating the component about its own origin - which sits at the
+        // pilot, 7.3 m below the mesh - does sweep the right arc, and that is
+        // what this used to rely on. But whether it sweeps FORWARD or AFT
+        // depends on the handedness of FRotator's pitch, which no suite here
+        // can check: a wing that surges backwards looks exactly as convincing
+        // as one that surges forwards until someone flies it. This project has
+        // shipped two convention errors that survived review for dozens of
+        // commits.
+        //
+        // So the arc is computed in the physics layer, where it is tested
+        // (`EvaluateCanopySwingOffset`, checked for sign and magnitude in the
+        // geometry suite), and the component is then translated by whatever it
+        // takes to land there. The rotation still supplies the canopy's tilt;
+        // it just no longer decides which way the wing goes.
+        const FRotator SwingRotation(
             FMath::RadiansToDegrees(static_cast<float>(
                 Telemetry.canopyRelativePitchRad)),
             0.0f,
             FMath::RadiansToDegrees(static_cast<float>(
-                Telemetry.canopyRelativeRollRad))));
+                Telemetry.canopyRelativeRollRad)));
+        CanopyVisual->SetRelativeRotation(SwingRotation);
+
+        constexpr float MetresToCm = static_cast<float>(
+            Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+        constexpr float SuspensionRiseCm = 730.0f;
+        const Parapenting::Physics::CanopySwingOffset Swing =
+            Parapenting::Physics::EvaluateCanopySwingOffset(
+                Telemetry.canopyRelativePitchRad,
+                SuspensionRiseCm / MetresToCm);
+        // Where the rotation alone would put the canopy, and where it should
+        // be. The difference is the correction, so the convention cancels out
+        // of the answer instead of being trusted.
+        const FVector RestCentre(0.0f, 0.0f, SuspensionRiseCm);
+        const FVector Rotated = SwingRotation.RotateVector(RestCentre);
+        const FVector Target(
+            RestCentre.X + Swing.forwardM * MetresToCm,
+            Rotated.Y,
+            RestCentre.Z + Swing.riseM * MetresToCm);
+        CanopyVisual->SetRelativeLocation(FVector(
+            Target.X - Rotated.X, 0.0f, Target.Z - Rotated.Z));
     }
     const int32 GhostIndex =
         FMath::FloorToInt(SimulationTimeSeconds * 10.0);

@@ -148,8 +148,28 @@ SectionPolarTable SectionPolarTable::Analytic(const AnalyticPolarSpec& spec)
             // Quarter-chord moment of a cambered section, plus the flap
             // increment. Thin-airfoil theory puts the flap contribution well
             // aft, which is why brake pitches the section nose-down.
+            //
+            // For a circular-arc (parabolic) camber line z/c = 4 (h/c) x/c
+            // (1 - x/c), the Fourier coefficients of the camber slope are
+            // A1 = 4 h/c and A2 = 0, and
+            //
+            //     Cm_c/4 = (pi/4) (A2 - A1) = -pi (h/c)
+            //
+            // which is -0.110 at this section's 3.5% camber. It is the same
+            // camber line that gives BaseZeroLiftAngle its -2 (h/c) above, so
+            // the two must be derived from the same A1 or they describe
+            // different sections.
+            //
+            // This read -(pi/4)(h/c) = -0.0275, four times too small, which is
+            // what taking A1 as h/c rather than 4 h/c gives - the factor of
+            // four in the Fourier coefficient dropped, while the (pi/4)
+            // prefactor was kept. Nothing caught it because nothing balanced
+            // this moment against anything until the wing and the pilot became
+            // two bodies: with the canopy pinned, the wing's own pitching
+            // moment had no way to set its incidence, so being four times too
+            // small changed no number anyone read.
             sample.momentCoefficient =
-                -0.25 * Pi * spec.camberFraction
+                -Pi * spec.camberFraction
                 - 0.60 * flapEffectiveness * deflection;
 
             const std::size_t at = brakeIndex * AlphaSamples + alphaIndex;

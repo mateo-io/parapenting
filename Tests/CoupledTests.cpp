@@ -532,11 +532,16 @@ int main()
         // The lift curve is item 1 of PHYSICS_TODO - analytic thin-airfoil
         // polars, no XFOIL, registered Provisional - and Level 9 is where it
         // gets resolved. Bounded here so the disagreement cannot quietly grow.
-        Check(hands.airspeedMps > 7.5 && hands.airspeedMps < 9.0,
-              "KNOWN DISAGREEMENT: trim is 8.2 m/s where the manufacturer "
-              "publishes 10.8. The geometry is self-consistent and the "
-              "analytic polars are the suspect; this bounds it rather than "
-              "hiding it");
+        std::printf("  bar/trim speed ratio %.3f against a published "
+                    "53/39 = 1.359\n", bar.airspeedMps / hands.airspeedMps);
+        Check(bar.airspeedMps / hands.airspeedMps > 1.2,
+              "and the speed range is most of the published one - 53/39 is "
+              "1.359, and this is the ratio that tests the lift curve's SLOPE "
+              "against a measurement rather than its offset");
+        Check(hands.airspeedMps > 8.4 && hands.airspeedMps < 9.4,
+              "KNOWN DISAGREEMENT: trim is 8.9 m/s where the manufacturer "
+              "publishes 10.8. Bounded rather than hidden, and narrowed twice "
+              "already by finding real defects behind it");
     }
 
     // -- Level 8: incident benchmarks --------------------------------------
@@ -605,9 +610,14 @@ int main()
         std::printf("Level 8, 2 m/s down the left half: hands up folds "
                     "%.3f, on bar folds %.3f\n",
                     handsUpGust.worstLeftCollapse, barGust.worstLeftCollapse);
-        Check(handsUpGust.worstLeftCollapse < 1.0e-3,
-              "two metres per second of sink over half the wing does nothing "
-              "to it hands-up");
+        Check(handsUpGust.worstLeftCollapse < 0.05,
+              "two metres per second of sink over half the wing barely marks "
+              "it hands-up");
+        Check(barGust.worstLeftCollapse
+                  > 10.0 * std::max(1.0e-4, handsUpGust.worstLeftCollapse),
+              "and folds it an order of magnitude harder on bar - accelerated "
+              "flight is collapse-prone, and it came out of the pressure "
+              "balance rather than being written in");
         Check(barGust.worstLeftCollapse > 0.05,
               "and folds it on bar - accelerated flight is collapse-prone, "
               "and it came out of the pressure balance rather than being "
@@ -722,8 +732,8 @@ int main()
         // intervals. No tolerance in this file can make that symmetric.
         // Level 11's unsteady wake is the honest fix; PHYSICS_TODO item 6 is
         // where it is recorded.
-        Check(frontal.worstTurnRateRadps < 1.5
-              && frontal.worstFoldAsymmetry < 0.35,
+        Check(frontal.worstTurnRateRadps < 0.2
+              && frontal.worstFoldAsymmetry < 0.05,
               "KNOWN LIMITATION: a deep symmetric frontal does not stay "
               "mirror-symmetric through the event, because the wing is partly "
               "separated and that solve has no steady state to find. The peak "

@@ -58,6 +58,12 @@ AParagliderPawn::AParagliderPawn()
     CanopyVisual->SetupAttachment(Root);
     CanopyVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+    SuspensionVisual = CreateDefaultSubobject<UProceduralMeshComponent>(
+        TEXT("SuspensionVisual"));
+    SuspensionVisual->SetupAttachment(Root);
+    SuspensionVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    SuspensionVisual->SetCastShadow(true);
+
     PilotVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PilotVisual"));
     PilotVisual->SetupAttachment(Root);
     PilotVisual->SetStaticMesh(SphereFinder.Object);
@@ -811,6 +817,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     // Render a load-responsive suspension fan. The line endpoints follow the
     // same collapse/cravat contraction as the canopy mesh, while unloaded
     // lines sag and flutter instead of remaining rigid during an incident.
+    BeginSuspensionMesh();
     const FTransform ActorTransform = GetActorTransform();
     const auto SuspensionLoadPose =
         Parapenting::Physics::EvaluateCanopyLoadPose(
@@ -833,18 +840,40 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     {
         const bool bLeft = Side < 0;
         const FVector CarabinerLocal = CarabinerLocalCm(bLeft);
-        DrawDebugSphere(
-            GetWorld(), ActorTransform.TransformPosition(CarabinerLocal),
-            4.5f, 8, FColor(205, 205, 210), false, 0.0f, 0, 1.5f);
+        const FVector MaillonSide(0.0f, 3.2f, 0.0f);
+        const FVector MaillonUp(0.0f, 0.0f, 5.0f);
+        const FColor MaillonColor(185, 190, 198);
+        AddSuspensionSegment(
+            CarabinerLocal - MaillonSide - MaillonUp,
+            CarabinerLocal + MaillonSide - MaillonUp,
+            MaillonColor, 0.9f);
+        AddSuspensionSegment(
+            CarabinerLocal + MaillonSide - MaillonUp,
+            CarabinerLocal + MaillonSide + MaillonUp,
+            MaillonColor, 0.9f);
+        AddSuspensionSegment(
+            CarabinerLocal + MaillonSide + MaillonUp,
+            CarabinerLocal - MaillonSide + MaillonUp,
+            MaillonColor, 0.9f);
+        AddSuspensionSegment(
+            CarabinerLocal - MaillonSide + MaillonUp,
+            CarabinerLocal - MaillonSide - MaillonUp,
+            MaillonColor, 0.9f);
         // The maillon and the harness webbing the carabiner hangs on, so the
         // load path is visibly continuous from the pilot up rather than
         // starting in mid air beside them.
         const FVector HarnessTop = PilotRigToActor().TransformPosition(
             FVector(-2.0f, bLeft ? -6.0f : 6.0f, 8.0f));
-        DrawDebugLine(
-            GetWorld(), ActorTransform.TransformPosition(HarnessTop),
-            ActorTransform.TransformPosition(CarabinerLocal),
-            FColor(60, 62, 68), false, 0.0f, 0, 3.0f);
+        AddSuspensionSegment(
+            HarnessTop, CarabinerLocal, FColor(60, 62, 68), 1.5f);
+        const FVector ShoulderWebbing = PilotRigToActor().TransformPosition(
+            FVector(-9.0f, bLeft ? -12.0f : 12.0f, 34.0f));
+        const FVector SeatWebbing = PilotRigToActor().TransformPosition(
+            FVector(7.0f, bLeft ? -15.0f : 15.0f, -24.0f));
+        AddSuspensionSegment(
+            ShoulderWebbing, HarnessTop, FColor(38, 42, 50), 1.7f);
+        AddSuspensionSegment(
+            HarnessTop, SeatWebbing, FColor(38, 42, 50), 1.9f);
         for (int32 Group = 0; Group < 4; ++Group)
         {
             const float TensionN = static_cast<float>(bLeft
@@ -864,19 +893,14 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             const float Width = FMath::Lerp(1.1f, 2.6f, Load01);
             for (int32 Rail = -1; Rail <= 1; Rail += 2)
             {
-                DrawDebugLine(
-                    GetWorld(),
-                    ActorTransform.TransformPosition(
-                        CarabinerLocal + Lateral * Rail),
-                    ActorTransform.TransformPosition(
-                        RiserTop + Lateral * Rail),
-                    RiserColors[Group], false, 0.0f, 0, Width);
+                AddSuspensionSegment(
+                    CarabinerLocal + Lateral * Rail,
+                    RiserTop + Lateral * Rail,
+                    RiserColors[Group], Width * 0.5f);
             }
-            DrawDebugLine(
-                GetWorld(),
-                ActorTransform.TransformPosition(RiserTop - Lateral),
-                ActorTransform.TransformPosition(RiserTop + Lateral),
-                RiserColors[Group], false, 0.0f, 0, Width);
+            AddSuspensionSegment(
+                RiserTop - Lateral, RiserTop + Lateral,
+                RiserColors[Group], Width * 0.5f);
         }
     }
     for (const auto& Attachment : SuspensionGeometry.attachments)
@@ -1009,16 +1033,10 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             FLinearColor(0.16f, 0.17f, 0.18f),
             FLinearColor(GroupColor), 1.0f - 0.72f * LineSlack)
                 .ToFColor(true);
-        DrawDebugLine(
-            GetWorld(), ActorTransform.TransformPosition(PilotLocal),
-            ActorTransform.TransformPosition(MidLocal), LineColor,
-            false, 0.0f, 0, FMath::Lerp(
-                0.45f, 1.65f, LineLoad01 * (1.0f - LineSlack)));
-        DrawDebugLine(
-            GetWorld(), ActorTransform.TransformPosition(MidLocal),
-            ActorTransform.TransformPosition(CanopyLocal), LineColor,
-            false, 0.0f, 0, FMath::Lerp(
-                0.45f, 1.65f, LineLoad01 * (1.0f - LineSlack)));
+        const float LineRadius = FMath::Lerp(
+            0.28f, 0.72f, LineLoad01 * (1.0f - LineSlack));
+        AddSuspensionSegment(PilotLocal, MidLocal, LineColor, LineRadius);
+        AddSuspensionSegment(MidLocal, CanopyLocal, LineColor, LineRadius);
     }
     // Brake fans are independent of the three load-bearing risers and pull
     // the trailing edge down toward the pilot's hands.
@@ -1096,26 +1114,29 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                         SimulationTimeSeconds * 10.0 + Span01 * 8.0))
                         * 14.0f * BrakeSlack,
                     -135.0f * BrakeSlack * BrakeSlack);
-            DrawDebugLine(
-                GetWorld(), ActorTransform.TransformPosition(HandLocal),
-                ActorTransform.TransformPosition(Cascade),
-                FColor(40, 190, 90), false, 0.0f, 0,
-                FMath::Lerp(0.45f, 1.65f,
-                    BrakeLoad01 * (1.0f - BrakeSlack)));
-            DrawDebugLine(
-                GetWorld(), ActorTransform.TransformPosition(Cascade),
-                ActorTransform.TransformPosition(TrailingEdge),
-                FColor(40, 190, 90), false, 0.0f, 0,
-                FMath::Lerp(0.45f, 1.4f,
-                    BrakeLoad01 * (1.0f - BrakeSlack)));
+            const float BrakeRadius = FMath::Lerp(
+                0.28f, 0.68f, BrakeLoad01 * (1.0f - BrakeSlack));
+            AddSuspensionSegment(
+                HandLocal, Cascade, FColor(40, 190, 90), BrakeRadius);
+            AddSuspensionSegment(
+                Cascade, TrailingEdge, FColor(40, 190, 90),
+                BrakeRadius * 0.88f);
         }
     }
-    DrawDebugSphere(
-        GetWorld(),
-        FVector(LandingTargetXM, LandingTargetYM,
-                Parapenting::Physics::TerrainModel::HeightM(
-                    LandingTargetXM, LandingTargetYM) + 1.2) * 100.0,
-        260.0f, 24, FColor::White, false, 0.0f, 0, 7.0f);
+    CommitSuspensionMesh();
+    // The old always-on 5.2 m debug sphere made every landing field readable
+    // by marker rather than by terrain. Keep it only in the explicit geometry
+    // diagnostic view; the production path must stand on field palette,
+    // approach references and later authored wear/edge overlays.
+    if (bGeometryVisualization)
+    {
+        DrawDebugSphere(
+            GetWorld(),
+            FVector(LandingTargetXM, LandingTargetYM,
+                    Parapenting::Physics::TerrainModel::HeightM(
+                        LandingTargetXM, LandingTargetYM) + 1.2) * 100.0,
+            260.0f, 24, FColor::White, false, 0.0f, 0, 7.0f);
+    }
     if (!NavigationProgress.complete)
     {
         const std::size_t WaypointIndex = FMath::Min<std::size_t>(
@@ -1392,9 +1413,78 @@ void AParagliderPawn::UpdatePilotVisual()
     PosePilotSegment(RightShin, RightKnee, RightBoot, 0.085f);
 }
 
+void AParagliderPawn::BeginSuspensionMesh()
+{
+    SuspensionVertices.Reset();
+    SuspensionTriangles.Reset();
+    SuspensionNormals.Reset();
+    SuspensionUVs.Reset();
+    SuspensionColors.Reset();
+}
+
+void AParagliderPawn::AddSuspensionSegment(
+    const FVector& Start, const FVector& End,
+    const FColor& Color, float RadiusCm)
+{
+    const FVector Axis = End - Start;
+    if (Axis.IsNearlyZero()) return;
+
+    const FVector Direction = Axis.GetSafeNormal();
+    const FVector Reference = FMath::Abs(Direction.Z) < 0.92f
+        ? FVector::UpVector : FVector::RightVector;
+    const FVector Side = FVector::CrossProduct(Direction, Reference)
+        .GetSafeNormal() * RadiusCm;
+    const FVector Up = FVector::CrossProduct(Side, Direction)
+        .GetSafeNormal() * RadiusCm;
+    const int32 Base = SuspensionVertices.Num();
+    const FVector Radials[4] = {Side, Up, -Side, -Up};
+    for (int32 Ring = 0; Ring < 2; ++Ring)
+    {
+        const FVector Centre = Ring == 0 ? Start : End;
+        for (int32 Corner = 0; Corner < 4; ++Corner)
+        {
+            SuspensionVertices.Add(Centre + Radials[Corner]);
+            SuspensionNormals.Add(Radials[Corner].GetSafeNormal());
+            SuspensionUVs.Add(FVector2D(
+                static_cast<float>(Corner) / 4.0f,
+                static_cast<float>(Ring)));
+            SuspensionColors.Add(Color);
+        }
+    }
+    for (int32 Corner = 0; Corner < 4; ++Corner)
+    {
+        const int32 Next = (Corner + 1) % 4;
+        SuspensionTriangles.Append({
+            Base + Corner, Base + 4 + Corner, Base + 4 + Next,
+            Base + Corner, Base + 4 + Next, Base + Next
+        });
+    }
+}
+
+void AParagliderPawn::CommitSuspensionMesh()
+{
+    TArray<FProcMeshTangent> Tangents;
+    if (!bSuspensionMeshInitialized)
+    {
+        SuspensionVisual->CreateMeshSection(
+            0, SuspensionVertices, SuspensionTriangles, SuspensionNormals,
+            SuspensionUVs, SuspensionColors, Tangents, false);
+        bSuspensionMeshInitialized = true;
+    }
+    else
+    {
+        SuspensionVisual->UpdateMeshSection(
+            0, SuspensionVertices, SuspensionNormals,
+            SuspensionUVs, SuspensionColors, Tangents);
+    }
+}
+
 void AParagliderPawn::BuildCanopyMesh()
 {
-    constexpr int32 SpanCount = 21;
+    // Rendering follows the 47-cell production-wing cadence while physics
+    // remains free to use its lower station count. StationAt interpolates the
+    // same authoritative canopy shape at this denser visual resolution.
+    constexpr int32 SpanCount = 47;
     constexpr int32 ChordCount = 9;
     constexpr int32 SurfaceVertexCount = SpanCount * ChordCount;
     TArray<FVector> Vertices;
@@ -1433,17 +1523,57 @@ void AParagliderPawn::BuildCanopyMesh()
                     + static_cast<float>(
                         Canopy.InflatedSectionAt(Chord01).sagittaM)
                         * MetresToCm);
+            // Ram-air intakes retain a real leading-edge gap. The old sine
+            // section collapsed both skins to the same point at chord zero,
+            // which made the wing read as a solid foam crescent.
             const float Thickness =
-                FMath::Sin(Chord01 * PI) * (38.0f - 12.0f * AbsSpan);
+                FMath::Sin(Chord01 * PI) * (38.0f - 12.0f * AbsSpan)
+                + FMath::Pow(1.0f - Chord01, 8.0f)
+                    * (18.0f - 6.0f * AbsSpan);
             Vertices[Index + SurfaceVertexCount] =
                 Vertices[Index] - FVector(0.0f, 0.0f, Thickness);
             UVs[Index] = FVector2D(
                 static_cast<float>(C) / (ChordCount - 1),
                 static_cast<float>(S) / (SpanCount - 1));
             UVs[Index + SurfaceVertexCount] = UVs[Index];
-            const bool Stripe = ((S / 2) % 2) == 0;
-            Colors[Index] = Stripe ? FColor(242, 82, 36) : FColor(245, 205, 44);
+            const float TipPanel = FMath::SmoothStep(0.72f, 1.0f, AbsSpan);
+            const float CentrePanel = 1.0f - FMath::SmoothStep(
+                0.04f, 0.22f, AbsSpan);
+            const float PanelValue = (S % 2) == 0 ? 1.0f : 0.91f;
+            FLinearColor Panel = FMath::Lerp(
+                FLinearColor(0.92f, 0.16f, 0.035f),
+                FLinearColor(1.0f, 0.56f, 0.035f), CentrePanel);
+            Panel = FMath::Lerp(
+                Panel, FLinearColor(0.055f, 0.10f, 0.18f), TipPanel);
+            Panel *= PanelValue;
+            Colors[Index] = Panel.ToFColor(false);
             Colors[Index + SurfaceVertexCount] = Colors[Index];
+        }
+    }
+    // Dark intake back-walls sit just behind the open leading edge. One quad
+    // per rendered cell gives the 47-cell cadence a geometric cue without
+    // painting fake holes onto the skin.
+    for (int32 S = 0; S < SpanCount - 1; ++S)
+    {
+        const int32 UpperA = S * ChordCount;
+        const int32 UpperB = (S + 1) * ChordCount;
+        const int32 LowerA = UpperA + SurfaceVertexCount;
+        const int32 LowerB = UpperB + SurfaceVertexCount;
+        const int32 Base = Vertices.Num();
+        Vertices.Append({
+            FMath::Lerp(Vertices[UpperA], Vertices[UpperA + 1], 0.48f),
+            FMath::Lerp(Vertices[UpperB], Vertices[UpperB + 1], 0.48f),
+            FMath::Lerp(Vertices[LowerB], Vertices[LowerB + 1], 0.48f),
+            FMath::Lerp(Vertices[LowerA], Vertices[LowerA + 1], 0.48f)
+        });
+        Triangles.Append({Base, Base + 1, Base + 2, Base, Base + 2, Base + 3});
+        for (int32 Corner = 0; Corner < 4; ++Corner)
+        {
+            Normals.Add(FVector::ForwardVector);
+            UVs.Add(FVector2D(
+                Corner == 1 || Corner == 2 ? 1.0f : 0.0f,
+                Corner >= 2 ? 1.0f : 0.0f));
+            Colors.Add(FLinearColor(0.012f, 0.016f, 0.022f).ToFColor(false));
         }
     }
     for (int32 S = 0; S < SpanCount - 1; ++S)
@@ -1489,17 +1619,19 @@ void AParagliderPawn::BuildCanopyMesh()
     GhostCanopyVisual->CreateMeshSection(
         0, Vertices, Triangles, Normals, UVs, GhostColors, Tangents, false);
     if (UMaterialInterface* Material =
-        Parapenting::LoadVertexColourMaterial())
+        Parapenting::LoadCanopyMaterial())
     {
         CanopyVisual->SetMaterial(0, Material);
         GhostCanopyVisual->SetMaterial(0, Material);
     }
+    if (UMaterialInterface* LineMaterial = Parapenting::LoadLineMaterial())
+        SuspensionVisual->SetMaterial(0, LineMaterial);
     UpdateCanopyMesh();
 }
 
 void AParagliderPawn::UpdateCanopyMesh()
 {
-    constexpr int32 SpanCount = 21;
+    constexpr int32 SpanCount = 47;
     constexpr int32 ChordCount = 9;
     constexpr int32 SurfaceVertexCount = SpanCount * ChordCount;
     // Base shape comes from the canopy geometry, which is derived from the
@@ -1602,10 +1734,16 @@ void AParagliderPawn::UpdateCanopyMesh()
                     * (1.0f - 0.72f * Collapse - 0.82f * Cravat)
                     * (1.0f - 0.65f * Frontal),
                 0.0f, 1.0f);
-            const bool Stripe = ((S / 2) % 2) == 0;
-            const FLinearColor Inflated = Stripe
-                ? FLinearColor(0.95f, 0.20f, 0.055f)
-                : FLinearColor(1.0f, 0.72f, 0.055f);
+            const float TipPanel = FMath::SmoothStep(0.72f, 1.0f, AbsSpan);
+            const float CentrePanel = 1.0f - FMath::SmoothStep(
+                0.04f, 0.22f, AbsSpan);
+            const float PanelValue = (S % 2) == 0 ? 1.0f : 0.91f;
+            FLinearColor Inflated = FMath::Lerp(
+                FLinearColor(0.92f, 0.16f, 0.035f),
+                FLinearColor(1.0f, 0.56f, 0.035f), CentrePanel);
+            Inflated = FMath::Lerp(
+                Inflated, FLinearColor(0.055f, 0.10f, 0.18f), TipPanel);
+            Inflated *= PanelValue;
             const FLinearColor Unloaded(0.08f, 0.055f, 0.045f);
             // Linear, not sRGB: mesh vertex colours reach the material
             // unconverted, so encoding here would gamma the skin twice and
@@ -1613,8 +1751,10 @@ void AParagliderPawn::UpdateCanopyMesh()
             const FColor SkinColor = FLinearColor::LerpUsingHSV(
                 Unloaded, Inflated,
                 0.18f + 0.82f * LocalPressure).ToFColor(false);
-            const float CellThickness = FMath::Sin(Chord01 * PI)
-                * (38.0f - 12.0f * AbsSpan) * LocalPressure;
+            const float CellThickness = (
+                FMath::Sin(Chord01 * PI) * (38.0f - 12.0f * AbsSpan)
+                + FMath::Pow(1.0f - Chord01, 8.0f)
+                    * (18.0f - 6.0f * AbsSpan)) * LocalPressure;
             Vertices[Index] = UpperVertex;
             Vertices[Index + SurfaceVertexCount] =
                 UpperVertex - FVector(0.0f, 0.0f, CellThickness);
@@ -1623,6 +1763,27 @@ void AParagliderPawn::UpdateCanopyMesh()
             UVs[Index + SurfaceVertexCount] = UVs[Index];
             Colors[Index] = SkinColor;
             Colors[Index + SurfaceVertexCount] = SkinColor;
+        }
+    }
+    for (int32 S = 0; S < SpanCount - 1; ++S)
+    {
+        const int32 UpperA = S * ChordCount;
+        const int32 UpperB = (S + 1) * ChordCount;
+        const int32 LowerA = UpperA + SurfaceVertexCount;
+        const int32 LowerB = UpperB + SurfaceVertexCount;
+        Vertices.Append({
+            FMath::Lerp(Vertices[UpperA], Vertices[UpperA + 1], 0.48f),
+            FMath::Lerp(Vertices[UpperB], Vertices[UpperB + 1], 0.48f),
+            FMath::Lerp(Vertices[LowerB], Vertices[LowerB + 1], 0.48f),
+            FMath::Lerp(Vertices[LowerA], Vertices[LowerA + 1], 0.48f)
+        });
+        for (int32 Corner = 0; Corner < 4; ++Corner)
+        {
+            Normals.Add(FVector::ForwardVector);
+            UVs.Add(FVector2D(
+                Corner == 1 || Corner == 2 ? 1.0f : 0.0f,
+                Corner >= 2 ? 1.0f : 0.0f));
+            Colors.Add(FLinearColor(0.012f, 0.016f, 0.022f).ToFColor(false));
         }
     }
     auto AccumulateTriangleNormal =

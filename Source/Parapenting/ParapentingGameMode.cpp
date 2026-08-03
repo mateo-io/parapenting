@@ -9,6 +9,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/VolumetricCloudComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/SkyLight.h"
@@ -195,8 +196,6 @@ void AParapentingGameMode::BeginPlay()
         nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
     UStaticMesh* ConeMesh = LoadObject<UStaticMesh>(
         nullptr, TEXT("/Engine/BasicShapes/Cone.Cone"));
-    UStaticMesh* PlaneMesh = LoadObject<UStaticMesh>(
-        nullptr, TEXT("/Engine/BasicShapes/Plane.Plane"));
     UStaticMesh* SphereMesh = LoadObject<UStaticMesh>(
         nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(
@@ -413,23 +412,80 @@ void AParapentingGameMode::BeginPlay()
         }
     }
 
-    if (PlaneMesh && ShapeMaterial)
+    if (ShapeMaterial)
     {
         // Lake Thun lies route-right/west of the southbound Amisbuehl line,
         // which is +Y now that the frame is route-right. Its 558 m MSL
         // surface is approximately -7 m in the Lehn datum.
-        AStaticMeshActor* Lake = World->SpawnActor<AStaticMeshActor>(
-            FVector(70000.0, 145000.0, -680.0), FRotator::ZeroRotator);
-        Lake->GetStaticMeshComponent()->SetStaticMesh(PlaneMesh);
-        Lake->GetStaticMeshComponent()->SetWorldScale3D(
-            FVector(3100.0f, 1200.0f, 1.0f));
-        Lake->GetStaticMeshComponent()->SetCollisionEnabled(
-            ECollisionEnabled::NoCollision);
-        UMaterialInstanceDynamic* WaterMaterial =
-            UMaterialInstanceDynamic::Create(ShapeMaterial, Lake);
-        WaterMaterial->SetVectorParameterValue(
-            TEXT("Color"), FLinearColor(0.018f, 0.19f, 0.31f, 1.0f));
-        Lake->GetStaticMeshComponent()->SetMaterial(0, WaterMaterial);
+        AActor* Lake = World->SpawnActor<AActor>();
+        UProceduralMeshComponent* LakeSurface =
+            NewObject<UProceduralMeshComponent>(Lake, TEXT("LakeThunSurface"));
+        Lake->SetRootComponent(LakeSurface);
+        LakeSurface->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        LakeSurface->SetCastShadow(false);
+        LakeSurface->RegisterComponent();
+
+        // A tapered shoreline silhouette replaces the kilometre-scale engine
+        // plane whose rectangular edge drew a ruler-straight horizon through
+        // the Amisbuehl corridor. Coordinates remain in the same surveyed
+        // route frame and the water elevation remains -6.8 m in the Lehn
+        // datum (558 m MSL).
+        constexpr float LakeHeightCm = -680.0f;
+        const TArray<FVector2D> ShoreM = {
+            FVector2D(-900.0f, 1200.0f),
+            FVector2D(-620.0f, 1880.0f),
+            FVector2D(120.0f, 2110.0f),
+            FVector2D(1040.0f, 2040.0f),
+            FVector2D(1880.0f, 1760.0f),
+            FVector2D(2310.0f, 1450.0f),
+            FVector2D(1630.0f, 1130.0f),
+            FVector2D(720.0f, 850.0f),
+            FVector2D(-120.0f, 860.0f)
+        };
+        TArray<FVector> LakeVertices;
+        TArray<int32> LakeTriangles;
+        TArray<FVector> LakeNormals;
+        TArray<FVector2D> LakeUVs;
+        TArray<FColor> LakeColors;
+        TArray<FProcMeshTangent> LakeTangents;
+        LakeVertices.Add(FVector(70000.0f, 145000.0f, LakeHeightCm));
+        LakeNormals.Add(FVector::UpVector);
+        LakeUVs.Add(FVector2D(0.5f, 0.5f));
+        LakeColors.Add(FColor::White);
+        LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
+        for (const FVector2D& PointM : ShoreM)
+        {
+            LakeVertices.Add(FVector(
+                PointM.X * 100.0f, PointM.Y * 100.0f, LakeHeightCm));
+            LakeNormals.Add(FVector::UpVector);
+            LakeUVs.Add(FVector2D(
+                (PointM.X + 900.0f) / 3210.0f,
+                (PointM.Y - 850.0f) / 1260.0f));
+            LakeColors.Add(FColor::White);
+            LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
+        }
+        for (int32 Edge = 0; Edge < ShoreM.Num(); ++Edge)
+        {
+            const int32 A = Edge + 1;
+            const int32 B = ((Edge + 1) % ShoreM.Num()) + 1;
+            LakeTriangles.Append({0, B, A});
+        }
+        LakeSurface->CreateMeshSection(
+            0, LakeVertices, LakeTriangles, LakeNormals, LakeUVs,
+            LakeColors, LakeTangents, false);
+        if (UMaterialInterface* AuthoredWater = LoadObject<UMaterialInterface>(
+            nullptr, TEXT("/Game/Materials/M_WaterSurface.M_WaterSurface")))
+        {
+            LakeSurface->SetMaterial(0, AuthoredWater);
+        }
+        else
+        {
+            UMaterialInstanceDynamic* WaterMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, Lake);
+            WaterMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.018f, 0.19f, 0.31f, 1.0f));
+            LakeSurface->SetMaterial(0, WaterMaterial);
+        }
 
         // The Aare and the main valley road form strong visual references
         // during the final glide into Interlaken and Lehn.

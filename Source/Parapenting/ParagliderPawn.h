@@ -266,6 +266,11 @@ private:
     void BuildCanopyMesh();
     void UpdateCanopyMesh();
     void UpdatePilotVisual();
+    void BeginSuspensionMesh();
+    void AddSuspensionSegment(
+        const FVector& start, const FVector& end,
+        const FColor& color, float radiusCm);
+    void CommitSuspensionMesh();
     static void PosePilotSegment(
         UStaticMeshComponent* segment,
         const FVector& start, const FVector& end, float radiusScale);
@@ -298,6 +303,9 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> CanopyVisual;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UProceduralMeshComponent> SuspensionVisual;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> GhostCanopyVisual;
@@ -427,6 +435,12 @@ private:
         FVector OffsetFromRunM = FVector::ZeroVector;
     };
     SuspensionRenderShape LineShape[Parapenting::Physics::LineRowCount];
+    TArray<FVector> SuspensionVertices;
+    TArray<int32> SuspensionTriangles;
+    TArray<FVector> SuspensionNormals;
+    TArray<FVector2D> SuspensionUVs;
+    TArray<FColor> SuspensionColors;
+    bool bSuspensionMeshInitialized = false;
     // The pose the pilot was last drawn in. Cached so the suspension draw can
     // hang the risers off the same body the arms and torso were built from,
     // rather than recomputing an anchor that then disagrees with it.

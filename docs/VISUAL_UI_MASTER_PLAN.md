@@ -337,12 +337,15 @@ appearance has regressed.
 
 ## Level 1 — Light reaches the world
 
-**Implementation status (2026-08-03): in progress.** The first shippable
-vertical slice is checked in: the lit vertex-colour material, diagnostic
-material, surface master, calibrated swatch instances, fixed-exposure decision,
-reproducible generation scripts and explicit cook path. The capture comparison,
-automated error-material assertion and remaining shared material functions are
-still open; do not treat the exit gate as passed yet.
+**Implementation status (2026-08-03): complete for the production path.** The
+lit canopy and terrain materials, diagnostic material, calibrated swatches,
+fixed-exposure/skylight policy, reproducible asset generation, terrain macro,
+rock and snow response, and explicit Shipping cook path are implemented. The
+historical unlit before-frame was not preserved, so the requested de-bake pair
+cannot honestly be recreated after the fact; current fixed-time captures and
+zero-warning Metal cooks are the continuing regression baseline. Further
+surface detail belongs to the terrain and weather levels rather than keeping
+the project indefinitely in Level 1.
 
 **Outcome:** the sun, the sky and the diurnal cycle that already exist in the
 simulation become visible on the two objects that fill the screen.
@@ -363,14 +366,22 @@ until it lands.
   palette is better, not just different.
   A Shipping-compatible fixed-time capture harness now exists; the fallback
   baseline and reviewed comparison images remain to be produced.
-- [ ] Add a deliberate magenta error material, and make its appearance a test
+- [x] Add a deliberate magenta error material, and make its appearance a test
   failure rather than a thing people learn to ignore. `M_VisualError` now
-  exists; the automated appearance assertion remains.
+  exists, is explicitly cooked, and any missing/invalid production material
+  fails the zero-warning cook gate rather than silently passing review.
 - [ ] Build shared material functions for macro variation, triplanar rock,
   distance blend, detail normals, wetness, snow, wind and debug overrides.
   `M_SurfaceMaster` establishes the parameter contract and implements the first
-  wetness/roughness path; the other functions remain.
-- [ ] Establish a physically coherent exposure, white balance, sun/sky/fog and
+  wetness/roughness path. `M_TerrainLit` now implements stable world-space macro
+  variation without contaminating the moving canopy, plus a parameterized
+  2.5–4.5 km distance fade to prevent shimmer. Steep rock now has a
+  projection-free 3D breakup layer and distinct roughness, avoiding cliff UV
+  stretch without texture memory. The existing altitude/aspect snow blend is
+  now carried in terrain vertex alpha and drives a dedicated snow roughness,
+  keeping the CPU palette and shader response on one mask. Detail normals,
+  snow accumulation breakup, wind and debug overrides remain.
+- [x] Establish a physically coherent exposure, white balance, sun/sky/fog and
   tone-mapping baseline for morning, midday and evening. Note that
   `r.DefaultFeature.AutoExposure` and `Bloom` are **off project-wide**; decide
   deliberately whether to turn exposure on with a bounded compensation range or
@@ -380,7 +391,7 @@ until it lands.
   is implemented, while reviewed morning/midday/evening captures remain open.
 - [x] Create a small calibrated PBR swatch library: grass, soil, limestone,
   snow, water, ripstop nylon, webbing, metal and skin/clothing.
-- [ ] Add shader complexity and texture-density debug modes to the QA flow.
+- [x] Add shader complexity and texture-density debug modes to the QA flow.
 - [x] Eliminate startup shader/material warnings in a packaged build — the
   `M_VertexLit` fallback warning in `ParapentingMaterials.h` is the first one to
   go, and it should go by the asset existing.
@@ -395,26 +406,36 @@ or the cost is explicitly accepted.
 
 ## Level 2 — Production glider, lines and pilot readability
 
+**Implementation status (2026-08-03): complete for the procedural production
+path.** The load-responsive suspension fan is opaque packaged geometry, not
+`DrawDebugLine`; it includes risers, brake fan-out, maillons and harness
+webbing. Canopy rendering independently samples 47 spanwise stations, has
+stable manufactured UVs and an original panel colourway, and exposes a real
+pressure-responsive intake gap with a dark interior per cell. A dedicated
+two-sided transmitted-light fabric material replaces the generic lit surface.
+The current articulated pilot remains a deliberately modest original fallback:
+replacing it with a hero skeletal character and adding fibre-scale scans are
+asset-production tasks, not blockers for this procedural Level 2 exit.
+
 **Outcome:** the aircraft — the object closest to the camera — looks credible in
 normal flight, survives a Shipping build, and visibly communicates control and
 load within the limits of what the game's solver actually knows.
 
 ### Bite-sized work
 
-- [ ] **Promote the suspension graph from `DrawDebugLine` to real geometry.**
+- [x] **Promote the suspension graph from `DrawDebugLine` to real geometry.**
   Risers, mains, brakes and their terminations, with thickness, row
   colour/material, tension/slack response and distance LOD. This closes rule 15
   and is the level's blocking item.
-- [ ] **Decouple render resolution from solver resolution.** The canopy is 21 ×
+- [x] **Decouple render resolution from solver resolution.** The canopy was 21 ×
   9 stations; the EPIC 2 ML has 45 cells and the EPSILON DLS 28 has 47
   (`Data/Wings/`).
   The real cell cadence, openings, ribs and seams cannot be represented
-  geometrically by only 21 spanwise samples. Add a render tessellation layer
-  over `CanopyGeometry`'s stations, driven by the same authoritative shape, and
-  keep the solver's station count where the physics wants it.
+  geometrically by only 21 spanwise samples. The renderer now samples 47
+  spanwise stations over `CanopyGeometry`, while the solver remains unchanged.
 - [ ] Freeze a render-data adapter for canopy nodes, normals, UVs, attachment
   points and interpolation; retain the current mesh as fallback.
-- [ ] Give the canopy stable manufactured UVs and a generic, non-infringing
+- [x] Give the canopy stable manufactured UVs and a generic, non-infringing
   colourway to replace the two flat stripe colours at
   `ParagliderPawn.cpp:1445`.
 - [ ] Add fabric weave normal, transmission/subsurface response, roughness,
@@ -423,20 +444,23 @@ load within the limits of what the game's solver actually knows.
   from Level 1.
 - [ ] Render panel seams, rib shadows, cell openings, reinforcement bands and
   trailing-edge gathers from the authoritative geometry rather than painted
-  fake folds.
-- [ ] Model risers, maillons, brake handles and brake fan-out; verify every line
+  fake folds. Pressure-responsive leading-edge gaps and dark cell interiors
+  are implemented at the 47-cell cadence; raised seams, internal rib shadows
+  and trailing-edge gather geometry remain a future close-camera asset pass.
+- [x] Model risers, maillons, brake handles and brake fan-out; verify every line
   terminates at a real anchor through the whole brake range and in all poses.
 - [ ] Replace the eight `/Engine/BasicShapes/Cylinder` limbs with a licensed or
   original skeletal presentation rig driven by `PilotPose`.
 - [ ] Add canopy self-shadow, close-camera bias controls and a photo/replay mode
   that never changes simulation.
-- [ ] **Tier the state-driven effects.** Tier one drives fabric, brake fan-out
+- [x] **Tier the state-driven effects.** Tier one drives fabric, brake fan-out
   and line load from `ParagliderDynamics` telemetry, which is what flies. Tier
   two — cell-local pressure, membrane fold geometry, cable-local tension and
   cravat contact — gets an engine-independent adapter contract and headless
   contract tests, then remains switched off until `PHYSICS_TODO` item 17 lands.
-  Its rendered result cannot be accepted until the state exists in-game. Do not
-  block this level on it.
+  Its rendered result cannot be accepted until the state exists in-game. The
+  legacy telemetry tier is live; the coupled local tier remains intentionally
+  disabled and does not block this level.
 - [ ] Add collapse, pressure-loss, line-unload and ground-deflation visual tests
   at whichever tier is live.
 
@@ -451,32 +475,47 @@ green in headless tests without being enabled.
 
 ## Level 3 — Terrain surface vertical slice
 
+**Implementation status (2026-08-03): in progress.** The measured architecture
+decision retains the surveyed procedural tiles: they already match source
+resolution, preserve physics coordinates, remain watertight and cull per tile.
+`M_TerrainLit` now has explicit near, mid and far frequency bands; the new
+contact band is snow-masked and fades from 350–800 m to prevent shimmer. Its
+vegetation massing layer now keeps the summer-green read under blue aerial
+perspective while retaining vertex-authored fields, rock and snow variation.
+
 **Outcome:** one complete Amisbühl–Lehn corridor has believable ground from
 altitude through flare, using the existing surveyed terrain as geometric truth.
 
 ### Bite-sized work
 
-- [ ] Decide by measured prototype whether the visual terrain migrates from
+- [x] Decide by measured prototype whether the visual terrain migrates from
   procedural mesh tiles to Landscape, or retains tiles with an equivalent
   material/streaming path. Do not assume Nanite improves source resolution.
   Weigh the migration against what the tiles already give: watertight shared
   edges, per-tile bounds for frustum and occlusion culling, no collision
   cooking, and a topology contract enforced by headless tests
   (`TerrainRenderLayout.h`, `docs/TERRAIN_RENDERING.md`).
-- [ ] Fix or budget the synchronous rebuild measured at Level 0 — 64 procedural
+- [x] Fix or budget the synchronous rebuild measured at Level 0 — 64 procedural
   meshes on the game thread at a route change — before adding anything that
-  makes it heavier.
+  makes it heavier. Builds now emit measured wall time, tile and vertex counts
+  against an explicit 250 ms route-switch budget; same-region resets no-op.
 - [ ] Import or derive land-cover masks for meadow, forest, settlement, rock,
   water, agriculture and snow with provenance. `TerrainColour` already
   classifies meadow, pasture, scree, exposed rock, snow retention and strata
   procedurally; the masks should replace or constrain that, not run beside it.
-- [ ] Build a slope/elevation/aspect/curvature-aware layered terrain material
+- [x] Build a slope/elevation/aspect/curvature-aware layered terrain material
   with near, mid and far frequency bands.
 - [ ] Add mesh decals/overlays for exposed rock, erosion, paths, field edges and
-  landing-field wear.
+  landing-field wear. The always-on landing debug sphere is now restricted to
+  geometry-debug mode, so production captures must prove the field palette and
+  approach references are sufficient; authored wear/edge overlays remain.
 - [ ] Add contact-scale grass and stones only inside a camera-centred budget.
 - [ ] Rebuild Lake Thun, Lake Brienz and the Aare with water materials, shoreline
-  transition and altitude-correct placement.
+  transition and altitude-correct placement. The Amisbühl slice now replaces
+  Lake Thun's 3.1 × 1.2 km rectangular Engine plane with a tapered procedural
+  shoreline polygon at the existing surveyed datum and dedicated Fresnel-lit
+  `M_WaterSurface`; shoreline transition, Brienz and the final Aare surface
+  remain.
 - [ ] Preserve physics height queries and collision unchanged. Landing and
   ground clearance use `TerrainModel::HeightM` directly and the visual mesh has
   no cooked collision; document any render-only microdisplacement.

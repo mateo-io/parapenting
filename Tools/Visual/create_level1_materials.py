@@ -71,6 +71,449 @@ def make_vertex_lit():
     return material
 
 
+def make_canopy_fabric():
+    """Two-sided transmitted-light fabric for the procedural canopy."""
+    material, created = load_or_create(
+        "M_CanopyFabric", unreal.Material, unreal.MaterialFactoryNew()
+    )
+    if not created:
+        return material
+    material.set_editor_property("two_sided", True)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    material.set_editor_property(
+        "shading_model",
+        unreal.MaterialShadingModel.MSM_TWO_SIDED_FOLIAGE,
+    )
+    color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionVertexColor, -520, -80
+    )
+    transmission_tint = vector(
+        material, "TransmissionTint",
+        unreal.LinearColor(0.72, 0.34, 0.18, 1.0), -520, 100
+    )
+    transmitted_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, -260, 80
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "RGB", transmitted_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        transmission_tint, "RGB", transmitted_color, "B"
+    )
+    two_sided_sign = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionTwoSidedSign, -520, 260
+    )
+    inverse_sign = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionOneMinus, -320, 300
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        two_sided_sign, "", inverse_sign, ""
+    )
+    half = scalar(material, "TwoSidedMaskScale", 0.5, -320, 380)
+    underside_mask = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, -120, 300
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        inverse_sign, "", underside_mask, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        half, "", underside_mask, "B"
+    )
+    neutral = scalar(material, "FrontAlbedoScale", 1.0, -120, 400)
+    underside_lift = scalar(material, "UndersideAlbedoScale", 1.55, -120, 480)
+    side_scale = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 100, 320
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral, "", side_scale, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        underside_lift, "", side_scale, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        underside_mask, "", side_scale, "Alpha"
+    )
+    sided_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 320, 40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "RGB", sided_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        side_scale, "", sided_color, "B"
+    )
+    roughness = scalar(material, "FabricRoughness", 0.68, 100, 440)
+    connect(sided_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(
+        transmitted_color, "", material,
+        unreal.MaterialProperty.MP_SUBSURFACE_COLOR
+    )
+    connect(roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
+    unreal.MaterialEditingLibrary.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, False)
+    return material
+
+
+def make_water_surface():
+    """Opaque alpine-water baseline with a readable grazing-angle response."""
+    material, created = load_or_create(
+        "M_WaterSurface", unreal.Material, unreal.MaterialFactoryNew()
+    )
+    if not created:
+        return material
+    material.set_editor_property("two_sided", False)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    deep = vector(
+        material, "DeepWaterColor",
+        unreal.LinearColor(0.006, 0.055, 0.075, 1.0), -520, -80
+    )
+    grazing = vector(
+        material, "GrazingWaterColor",
+        unreal.LinearColor(0.025, 0.20, 0.24, 1.0), -520, 20
+    )
+    fresnel = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionFresnel, -300, 100
+    )
+    water_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, -40, -40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        deep, "RGB", water_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        grazing, "RGB", water_color, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fresnel, "", water_color, "Alpha"
+    )
+    roughness = scalar(material, "WaterRoughness", 0.14, -40, 140)
+    specular = scalar(material, "WaterSpecular", 0.65, -40, 220)
+    connect(water_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
+    connect(specular, "", material, unreal.MaterialProperty.MP_SPECULAR)
+    unreal.MaterialEditingLibrary.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, False)
+    return material
+
+
+def make_terrain_lit():
+    """Terrain-only vertex material with stable world-space macro variation.
+
+    The canopy intentionally stays on M_VertexLit: world-position noise would
+    crawl across a moving wing and make the fabric look dirty. Terrain is
+    stationary, so low-frequency absolute-world noise breaks up large uniform
+    procedural triangles without needing UVs or texture assets.
+    """
+    material, created = load_or_create(
+        "M_TerrainLit", unreal.Material, unreal.MaterialFactoryNew()
+    )
+    if not created:
+        return material
+    material.set_editor_property("two_sided", False)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+
+    color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionVertexColor, -760, -100
+    )
+    world_position = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionWorldPosition, -760, 80
+    )
+    macro_noise = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -500, 80
+    )
+    # World position is centimetres. This yields broad features on roughly
+    # 80-250 m scales; two levels avoid obvious repetition at flight distance.
+    macro_noise.set_editor_property("scale", 0.00012)
+    macro_noise.set_editor_property("quality", 1)
+    macro_noise.set_editor_property("levels", 2)
+    macro_noise.set_editor_property("output_min", 0.84)
+    macro_noise.set_editor_property("output_max", 1.08)
+    macro_noise.set_editor_property("level_scale", 3.0)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        world_position, "", macro_noise, "Position"
+    )
+
+    pixel_depth = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionPixelDepth, -500, 260
+    )
+    fade_start = scalar(
+        material, "MacroFadeStartCm", 250000.0, -500, 340
+    )
+    fade_range = scalar(
+        material, "MacroFadeRangeCm", 200000.0, -500, 420
+    )
+    depth_after_start = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionSubtract, -260, 280
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        pixel_depth, "", depth_after_start, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fade_start, "", depth_after_start, "B"
+    )
+    normalized_depth = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionDivide, -60, 280
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        depth_after_start, "", normalized_depth, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fade_range, "", normalized_depth, "B"
+    )
+    fade = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionSaturate, 140, 280
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        normalized_depth, "", fade, ""
+    )
+    neutral_macro = scalar(material, "NeutralMacro", 1.0, -60, 160)
+    distance_macro = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 340, 80
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        macro_noise, "", distance_macro, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral_macro, "", distance_macro, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fade, "", distance_macro, "Alpha"
+    )
+
+    # Projection-free cliff breakup. A 3D field has no cliff UV stretching or
+    # visible planar seams, and the slope mask keeps it off fields/meadows.
+    rock_noise = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -500, 540
+    )
+    rock_noise.set_editor_property("scale", 0.0012)
+    rock_noise.set_editor_property("quality", 1)
+    rock_noise.set_editor_property("levels", 1)
+    rock_noise.set_editor_property("output_min", 0.88)
+    rock_noise.set_editor_property("output_max", 1.12)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        world_position, "", rock_noise, "Position"
+    )
+    pixel_normal = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionPixelNormalWS, -500, 660
+    )
+    normal_z = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionComponentMask, -300, 660
+    )
+    normal_z.set_editor_property("r", False)
+    normal_z.set_editor_property("g", False)
+    normal_z.set_editor_property("b", True)
+    normal_z.set_editor_property("a", False)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        pixel_normal, "", normal_z, ""
+    )
+    inverse_up = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionOneMinus, -100, 660
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        normal_z, "", inverse_up, ""
+    )
+    slope_gain = scalar(material, "RockSlopeGain", 2.4, -100, 760)
+    amplified_slope = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 100, 660
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        inverse_up, "", amplified_slope, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        slope_gain, "", amplified_slope, "B"
+    )
+    slope_mask = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionSaturate, 300, 660
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        amplified_slope, "", slope_mask, ""
+    )
+    distance_rock = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 340, 500
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        rock_noise, "", distance_rock, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral_macro, "", distance_rock, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fade, "", distance_rock, "Alpha"
+    )
+    slope_rock = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 560, 480
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral_macro, "", slope_rock, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        distance_rock, "", slope_rock, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        slope_mask, "", slope_rock, "Alpha"
+    )
+    combined_variation = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 580, 100
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        distance_macro, "", combined_variation, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        slope_rock, "", combined_variation, "B"
+    )
+
+    # Contact-scale albedo breakup for approach and flare. It is deliberately
+    # texture-free and fades before it can shimmer at flight altitude. Snow
+    # stays clean because its vertex-alpha coverage suppresses this layer.
+    near_noise = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, 360, 1040
+    )
+    near_noise.set_editor_property("scale", 0.008)
+    near_noise.set_editor_property("quality", 1)
+    near_noise.set_editor_property("levels", 1)
+    near_noise.set_editor_property("output_min", 0.94)
+    near_noise.set_editor_property("output_max", 1.06)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        world_position, "", near_noise, "Position"
+    )
+    near_fade_start = scalar(
+        material, "NearFadeStartCm", 35000.0, 360, 1140
+    )
+    near_fade_range = scalar(
+        material, "NearFadeRangeCm", 45000.0, 360, 1220
+    )
+    near_depth_after_start = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionSubtract, 580, 1080
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        pixel_depth, "", near_depth_after_start, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        near_fade_start, "", near_depth_after_start, "B"
+    )
+    normalized_near_depth = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionDivide, 780, 1080
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        near_depth_after_start, "", normalized_near_depth, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        near_fade_range, "", normalized_near_depth, "B"
+    )
+    near_fade = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionSaturate, 980, 1080
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        normalized_near_depth, "", near_fade, ""
+    )
+    distance_near = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 1180, 1020
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        near_noise, "", distance_near, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral_macro, "", distance_near, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        near_fade, "", distance_near, "Alpha"
+    )
+    snow_clean_near = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 1380, 1020
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        distance_near, "", snow_clean_near, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral_macro, "", snow_clean_near, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "A", snow_clean_near, "Alpha"
+    )
+    final_variation = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 800, 100
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        combined_variation, "", final_variation, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        snow_clean_near, "", final_variation, "B"
+    )
+
+    # Preserve surveyed vertex variation while establishing an unmistakable
+    # summer-vegetation mass. This also prevents atmospheric blue fill from
+    # neutralising the low-saturation 8-bit terrain palette at flight range.
+    vegetation_tint = vector(
+        material, "VegetationTint",
+        unreal.LinearColor(0.035, 0.18, 0.02, 1.0), 800, -220
+    )
+    vegetation_amount = scalar(
+        material, "VegetationTintAmount", 0.22, 800, -140
+    )
+    tinted_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 1020, -180
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "RGB", tinted_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        vegetation_tint, "RGB", tinted_color, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        vegetation_amount, "", tinted_color, "Alpha"
+    )
+
+    macro_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 1020, -80
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        tinted_color, "", macro_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        final_variation, "", macro_color, "B"
+    )
+
+    roughness = scalar(material, "Roughness", 0.92, 560, 780)
+    rock_roughness = scalar(material, "RockRoughness", 0.98, 560, 860)
+    slope_roughness = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 800, 760
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        roughness, "", slope_roughness, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        rock_roughness, "", slope_roughness, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        slope_mask, "", slope_roughness, "Alpha"
+    )
+    # Terrain vertex alpha carries the exact snow coverage computed alongside
+    # the terrain palette. This avoids a second, drifting snow-line formula in
+    # the shader and lets snow retain a distinct broad specular response.
+    snow_roughness = scalar(material, "SnowRoughness", 0.78, 800, 900)
+    surface_roughness = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 1020, 760
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        slope_roughness, "", surface_roughness, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        snow_roughness, "", surface_roughness, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "A", surface_roughness, "Alpha"
+    )
+    metallic = scalar(material, "Metallic", 0.0, -300, 300)
+    connect(macro_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(
+        surface_roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS
+    )
+    connect(metallic, "", material, unreal.MaterialProperty.MP_METALLIC)
+    unreal.MaterialEditingLibrary.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, False)
+    return material
+
+
 def make_error_material():
     material, created = load_or_create(
         "M_VisualError", unreal.Material, unreal.MaterialFactoryNew()
@@ -205,6 +648,9 @@ def make_swatches(parent):
 
 unreal.EditorAssetLibrary.make_directory(ROOT)
 make_vertex_lit()
+make_canopy_fabric()
+make_water_surface()
+make_terrain_lit()
 make_error_material()
 surface = make_surface_master()
 make_swatches(surface)

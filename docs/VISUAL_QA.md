@@ -20,7 +20,18 @@ a failed lighting calibration.
 The first production material library lives in `/Game/Materials`:
 
 - `M_VertexLit`: two-sided Default Lit vertex-colour material used by the
-  procedural terrain and canopy;
+  procedural canopy;
+- `M_TerrainLit`: one-sided Default Lit terrain specialization with subtle
+  absolute-world macro variation on approximately 80–250 metre scales. Macro
+  detail remains full through 2.5 km, then fades to the vertex palette by
+  4.5 km to avoid distant temporal shimmer. A second, projection-free 3D field
+  adds approximately 8 m breakup and higher roughness only on steep rock faces;
+  terrain vertex alpha carries the CPU-authored snow coverage, giving snow a
+  separately tunable roughness without duplicating snow-line logic in shader.
+  A restrained vegetation tint preserves an alpine-green landscape mass under
+  the atmosphere without flattening the vertex-authored surface classes;
+- `M_WaterSurface`: opaque, roughness-controlled lake surface with a Fresnel
+  transition from deep blue-green to a brighter grazing reflection;
 - `M_VisualError`: unmistakable magenta diagnostic material;
 - `M_SurfaceMaster`: parameterized PBR base for the first calibrated swatches;
 - `MI_*`: grass, soil, limestone, snow, water, ripstop nylon, webbing, metal
@@ -33,6 +44,8 @@ material graph, so run `reset_level1_surface_assets.py` in a separate Editor
 commandlet process before regenerating a deliberately changed surface master.
 `M_VertexLit` is loaded at startup and must be changed in the Editor or deleted
 before launch. Commit the resulting `.uasset` files with the scripts.
+Use `reset_level1_terrain_asset.py` in a separate commandlet before deliberately
+changing the generated `M_TerrainLit` graph.
 
 ## Required Level 1 captures
 
@@ -74,9 +87,25 @@ forest crushing and landing-field readability—not average brightness.
 
 ## Pass/fail checks
 
+For every material iteration, repeat the midday bookmark in the Editor with
+`viewmode shadercomplexity` and `viewmode texturedensity`, then return with
+`viewmode lit`. Shader complexity must not introduce a new hot band across the
+full terrain or canopy, and texture density must not show an accidental
+high-frequency sample on distant terrain. Shipping validation remains the Mac
+cook because diagnostic view modes are intentionally development-only.
+
 - No `M_VertexLit not found` warning in Development or Shipping logs.
 - Terrain and canopy receive the directional sun and cloud shadows.
 - Canopy remains visible from below; `M_VertexLit` is two-sided.
+- Canopy uses `M_CanopyFabric` and shows restrained transmitted colour from
+  below; suspension lines use opaque procedural geometry and remain present in
+  Shipping even when `ENABLE_DRAW_DEBUG` is zero.
+- The leading edge reads as individual ram-air cell mouths rather than a solid
+  crescent or one continuous slit. Mouth depth follows live pressure and
+  collapse; dark intake backs never protrude through the upper skin.
+- Every visible main terminates at its riser/cascade and canopy attachment;
+  brake branches terminate at the rendered hands and trailing edge. Maillons
+  and shoulder/seat webbing keep the load path continuous through the harness.
 - Fixed morning, midday and evening frames do not clip snow or crush forest
   detail.
 - Shader complexity and texture-density editor views contain no unexpected

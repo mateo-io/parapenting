@@ -4,6 +4,7 @@
 #include "Physics/TerrainRenderLayout.h"
 
 #include "Components/SceneComponent.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/Material.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/UObjectGlobals.h"
@@ -24,9 +25,9 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     // in this region runs roughly 1800-2100 m. Reaching full alpine tone by
     // 1280 m drained the colour out of the whole flyable band.
     const float HeightTint = FMath::Clamp(
-        static_cast<float>((Z - 400.0) / 1800.0), 0.0f, 1.0f);
+        static_cast<float>((Z - 900.0) / 1500.0), 0.0f, 1.0f);
     const float Steepness = FMath::Clamp(
-        static_cast<float>(1.0 - N.z) * 3.1f, 0.0f, 1.0f);
+        static_cast<float>((0.62 - N.z) / 0.30), 0.0f, 1.0f);
     const float BroadNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
         FVector2D(X * 0.00075, Y * 0.00075));
     const float DetailNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
@@ -79,13 +80,15 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     const float RockStrata = 0.5f + 0.5f * FMath::Sin(
         static_cast<float>(Z * 0.105 + X * 0.008 - Y * 0.004));
 
-    const FLinearColor Meadow(0.10f, 0.42f, 0.055f);
-    const FLinearColor FieldA(0.24f, 0.48f, 0.075f);
-    const FLinearColor FieldB(0.10f, 0.37f, 0.040f);
-    const FLinearColor ForestFloor(0.035f, 0.12f, 0.035f);
-    const FLinearColor Alpine(0.30f, 0.34f, 0.18f);
-    const FLinearColor RockA(0.30f, 0.285f, 0.265f);
-    const FLinearColor RockB(0.39f, 0.37f, 0.34f);
+    const FLinearColor Meadow(0.12f, 0.48f, 0.055f);
+    const FLinearColor FieldA(0.28f, 0.54f, 0.075f);
+    const FLinearColor FieldB(0.11f, 0.43f, 0.035f);
+    const FLinearColor ForestFloor(0.025f, 0.15f, 0.025f);
+    const FLinearColor Alpine(0.24f, 0.38f, 0.12f);
+    // Limestone in this summer landscape is rarely a uniform grey mass:
+    // grass, moss and scrub occupy ledges until faces become genuinely sheer.
+    const FLinearColor RockA(0.16f, 0.24f, 0.085f);
+    const FLinearColor RockB(0.31f, 0.34f, 0.18f);
     const FLinearColor Snow(0.80f, 0.84f, 0.86f);
 
     FLinearColor Colour = FMath::Lerp(Meadow, Alpine, HeightTint);
@@ -113,6 +116,10 @@ FLinearColor TerrainColour(double X, double Y, double Z,
             0.35f, 1.0f);
         Colour *= 0.76f + 0.25f * SunExposure;
     }
+    // RGB is terrain albedo; alpha is an authored surface-data channel. Keep
+    // the snow decision beside the geospatial palette instead of duplicating
+    // altitude/aspect thresholds in the material graph.
+    Colour.A = SnowBlend;
     return Colour;
 }
 }
@@ -148,13 +155,33 @@ void AParapentingTerrain::BuildForRegionAt(double XM, double YM)
     BuiltYMinM = Region.yMinM;
     bHasBuilt = true;
     ++BuildSerial;
+    const double BuildStartSeconds = FPlatformTime::Seconds();
     BuildTerrainMesh();
+    const double BuildMilliseconds =
+        (FPlatformTime::Seconds() - BuildStartSeconds) * 1000.0;
+    constexpr double RouteSwitchBudgetMilliseconds = 250.0;
+    if (BuildMilliseconds <= RouteSwitchBudgetMilliseconds)
+    {
+        UE_LOG(LogTemp, Display,
+            TEXT("Parapenting terrain rebuild: %.1f ms, %d tiles, %d "
+                 "vertices (budget %.0f ms)"),
+            BuildMilliseconds, ActiveLayout.TileCount(),
+            ActiveLayout.TotalVertices(), RouteSwitchBudgetMilliseconds);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("Parapenting terrain rebuild exceeded budget: %.1f ms, "
+                 "%d tiles, %d vertices (budget %.0f ms)"),
+            BuildMilliseconds, ActiveLayout.TileCount(),
+            ActiveLayout.TotalVertices(), RouteSwitchBudgetMilliseconds);
+    }
 }
 
 void AParapentingTerrain::BuildTerrainMesh()
 {
     UMaterialInterface* VertexMaterial =
-        Parapenting::LoadVertexColourMaterial();
+        Parapenting::LoadTerrainMaterial();
     const bool bBakeShading = !Parapenting::bVertexColourMaterialIsLit;
 
     const Layout& Active = ActiveLayout;
@@ -217,13 +244,15 @@ void AParapentingTerrain::BuildTerrainMesh()
                     Tangents.Add(FProcMeshTangent(Tangent, false));
                     UVs.Add(FVector2D(X / 48.0, Y / 48.0));
                     // Vertex colours are read raw by the material; the engine
-                    // does not sRGB-decode them. Encoding to sRGB here would
-                    // be undone a second time by the output transform, which
-                    // lifts every midtone and desaturates the whole terrain.
-                    // Store linear.
+                    // FColor is an 8-bit storage format and the material's
+                    // VertexColor expression converts those stored sRGB
+                    // values back to linear space. Encode the authored linear
+                    // albedo here; writing raw linear bytes crushes meadow
+                    // green (0.48 becomes roughly 0.19 after decoding) and
+                    // makes the whole range read blue-black.
                     Colours.Add(
                         TerrainColour(X, Y, Z, N, bBakeShading)
-                            .ToFColor(false));
+                            .ToFColor(true));
                 }
             }
 

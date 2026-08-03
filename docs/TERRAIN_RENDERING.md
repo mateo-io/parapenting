@@ -44,6 +44,25 @@ The topology contract lives in the engine-independent
 `TerrainRenderLayout.h`. Headless tests enforce geographic coverage, sub-25 m
 sampling and conservative vertex/triangle budgets.
 
+## Level 3 renderer decision
+
+The visual terrain retains the procedural tile path. A Landscape migration was
+rejected for this vertical slice because the current mesh already samples the
+20 m source grid directly, has watertight shared edges and per-tile culling,
+uses no cooked collision, and feeds the same coordinates as physics. Landscape
+or Nanite would not recover detail absent from the heightfield and would retain
+additional non-Nanite data for systems that require it. The retained path will
+spend its budget on material frequency bands, overlays and camera-budgeted
+contact detail instead. Reconsider only if an authored-painting or streaming
+requirement cannot be met on tiles, with an equivalent measured prototype.
+
+Every regional build logs wall time, tile count and vertex count against a
+250 ms route-switch budget. Repeated resets inside one region remain a no-op;
+only an Interlaken/Grindelwald switch may pay the synchronous build. If Apple
+Silicon captures exceed the budget, tile-data generation is the first candidate
+for worker-thread preparation while component creation stays on the game
+thread.
+
 ## Alpine surface classification
 
 Vertex shading combines surveyed elevation and normal with:
@@ -55,6 +74,19 @@ Vertex shading combines surveyed elevation and normal with:
 - broad, detail and micro spatial variation;
 - local heightfield curvature for gully occlusion and ridge definition;
 - terrain exposure consistent with the authored alpine sun direction.
+
+The Amisbühl vertical slice uses a tapered procedural Lake Thun footprint at
+the established -6.8 m local datum. It replaces the former rectangular Engine
+plane, whose straight boundary read as a false horizon and occluded terrain far
+beyond the intended shoreline. This polygon is render-only and has no collision;
+flight and clearance continue to query `TerrainModel`. Its dedicated
+`M_WaterSurface` material uses a Fresnel-weighted deep/grazing colour response;
+Brienz, the Aare and shoreline transition remain later Level 3 work.
+
+The fixed midday capture showed that the broad straight blue division remains
+after removing the rectangular lake proxy; it is therefore the atmospheric
+horizon/aerial-perspective boundary, not lake geometry. This is retained as
+evidence against repeatedly “fixing” the water for an atmospheric feature.
 
 Every tile uses its own render bounds, allowing Unreal frustum and occlusion
 culling to reject distant/off-screen portions of the drawn region. Both landing

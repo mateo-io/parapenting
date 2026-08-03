@@ -1,5 +1,7 @@
 #include "SectionPolarTable.h"
 
+#include "SectionPolarCache.h"
+
 #include "SectionViscousSolver.h"
 
 #include <algorithm>
@@ -548,7 +550,18 @@ const SectionPolarTable& SectionPolarTable::ForSection(
     }
     ComputedPolarSpec spec;
     spec.section = section;
-    built.emplace_back(section, Computed(spec));
+
+    // Try the cache before solving. A miss for ANY reason - no file, a changed
+    // spec, or a witness that no longer reproduces - means solve, so the slow
+    // path is always available and is what a disagreement falls back to. See
+    // SectionPolarCache.h for why the witness is the check that matters.
+    SectionPolarTable table;
+    if (!LoadSectionPolarTable(spec, table).hit)
+    {
+        table = Computed(spec);
+        SaveSectionPolarTable(spec, table);
+    }
+    built.emplace_back(section, std::move(table));
     return built.back().second;
 }
 

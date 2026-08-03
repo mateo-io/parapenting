@@ -434,6 +434,76 @@ it. The two agree to first order in the length budget, which is the dominant
 term, and the node version is a larger change to the graph. It is worth doing
 with item 11 rather than before it.
 
+## Level 10 — performance and integration (in progress)
+
+Strands 1 and 2 are done and are documented in `docs/SOLVER_PROFILE.md` and
+`docs/SOLVER_LOD.md`. What follows is what those two left open. None of it is
+blocking; all of it is the kind of thing that is obvious now and invisible in
+six months.
+
+**14. MOSTLY CLOSED. Construction was 1059 ms and is now 340 ms.** It was the
+only measured cost in the solver a pilot would notice — per-step cost is 6.5%
+of one core, against a second of stall to swap a wing.
+
+- The section polar table is now cached: **723 ms to 4 ms**. See
+  `docs/POLAR_CACHE.md`. The drift trap was the whole problem and it is solved
+  by a WITNESS rather than by a version constant somebody has to remember to
+  bump — one canonical cold solve stored in the file and re-solved on every
+  load, so a changed viscous solver, boundary layer, profile geometry or
+  panelling invalidates the cache even though every input is identical. Every
+  failure path falls through to solving. All four refusals are gated in
+  `aerodynamics_tests`.
+- **What is left is 336 ms and it did not move.** That is the suspension
+  network solving itself cold — trim load distribution, line stiffness curve,
+  brake swing curve, about eleven 12000-iteration relaxations. It is not a
+  table and cannot be cached the same way, because it depends on the line plan
+  and the payload rather than on the section alone.
+- Next, and untried: warm-start each of those relaxations from the previous
+  one. They are solves of the SAME network at neighbouring loads, and they are
+  currently each started cold. Note `solver_lod` measured that the warm-started
+  in-flight network converges in 40 iterations against a cold 12000, which is
+  where the suspicion comes from.
+- Done when: construction is under 100 ms.
+
+**15. The reduced tier converges a disturbance more slowly than the settled
+numbers show.** Worst network residual over a run including the cold start is
+28 N full against 83 N reduced — a 3× ratio where the settled ratio is 1.4×.
+
+- Bounded, not unknown: the gust signature in `solver_lod` is measured through
+  a real collapse and recovery, and `coupled_tests` gates the tier against the
+  full solver on fold as well as trim.
+- **Re-evaluate if the reduced tier is ever used for anything but frame rate.**
+  It must not carry a published number, a Level 9 calibration, or a new
+  gate — `FullFidelitySchedule` is the reference and a disagreement means a
+  disagreement with it.
+- The open question nobody has asked: whether `suspensionIterations` should be
+  a function of how far the network moved last step rather than a constant.
+  That would recover the transient without paying for it in cruise, and it is
+  the only remaining idea here that is not just a smaller number.
+
+**16. Research visualisation toggles are the unstarted Level 10 strand.** The
+per-solver debug views exist but there is no way to turn individual solver
+outputs on and off for inspection. Item 5 (the collapse debug view) is a
+special case of this and is separately blocked on item 7.
+
+- Worth doing before item 11 rather than after: the pitch axis is the open
+  physics problem, and being able to watch the line network and the section
+  moment against each other in flight is the cheapest instrument nobody has
+  built.
+
+**17. Removing the legacy path is Level 10's exit gate and is BLOCKED.** See
+item 7 for what it is and item 11 for why it cannot start. The exit gate is "no
+legacy direct-control force remains active", and the geometry-driven stack
+currently departs at 40% brake with brake lowering incidence. Swapping it under
+`ParagliderPawn` today would be a regression a pilot would feel immediately.
+
+- Note that the profile removed one excuse: the coupled solver is 15× faster
+  than real time at full fidelity and 36× reduced, so performance was never
+  the reason the game still flies `ParagliderDynamics`. Guiding rule 11 was,
+  and now item 11 is.
+- It is also not a switch flip: `ParagliderPawn` flies `ParagliderDynamics` and
+  about twenty headers pull types from it.
+
 ## Data gaps
 
 **9. Grindelwald First's anchor is 50 m above its surveyed ground.** Published

@@ -13,11 +13,17 @@
 // its circulation solve and its force integration right. What it does not yet
 // have is any claim about the EPIC 2, because the polars are analytic.
 #include "CanopyGeometry.h"
+#include "SectionPolarCache.h"
 #include "SectionPolarTable.h"
 #include "SectionProfile.h"
 #include "SectionViscousSolver.h"
 #include "ApparentMassTensor.h"
 #include "VortexStepMethodSolver.h"
+
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 
 #include <cmath>
 #include <cstdio>
@@ -763,6 +769,132 @@ int main()
         Check(atZeroLift.momentCoefficient < -0.01,
               "and still carries its nose-down couple, which is what a "
               "pitching moment about the aerodynamic centre means");
+    }
+
+    // Level 10, item 14: the polar cache, and the four ways it must refuse.
+    //
+    // Caching the solved table turns a 1021 ms construction into a read. The
+    // risk it introduces is the one this whole level was built away from: a
+    // file that disagrees with the geometry that produced it would put a
+    // stated section polar back, with none of the honesty of having declared
+    // it stated. So what is gated here is not that the cache is fast. It is
+    // that the cache REFUSES - on a changed spec, on a changed solver, on a
+    // corrupted file and on a truncated one - and that a refusal costs
+    // accuracy nothing because the solve is still there behind it.
+    {
+        std::printf("Polar cache:\n");
+        const std::filesystem::path scratch =
+            std::filesystem::temp_directory_path() / "parapenting-polar-test";
+        std::filesystem::remove_all(scratch);
+        std::filesystem::create_directories(scratch);
+        setenv("PARAPENTING_POLAR_CACHE", scratch.c_str(), 1);
+
+        ComputedPolarSpec spec;
+        const SectionPolarTable solved = SectionPolarTable::Computed(spec);
+        Check(SaveSectionPolarTable(spec, solved), "a solved table saves");
+
+        // Round trip. Compared on what callers actually read, at incidences
+        // either side of the stall and at both ends of the brake axis, rather
+        // than on a checksum of the bytes.
+        {
+            SectionPolarTable loaded;
+            const SectionPolarCacheResult result =
+                LoadSectionPolarTable(spec, loaded);
+            Check(result.hit, "and loads again");
+            bool identical = result.hit;
+            for (const double brake : {0.0, 0.5, 1.0})
+            {
+                for (double alpha = -0.20; alpha <= 0.40; alpha += 0.01)
+                {
+                    const SectionPolarSample a = solved.Sample(alpha, brake);
+                    const SectionPolarSample b = loaded.Sample(alpha, brake);
+                    identical = identical
+                        && a.liftCoefficient == b.liftCoefficient
+                        && a.dragCoefficient == b.dragCoefficient
+                        && a.momentCoefficient == b.momentCoefficient;
+                }
+                identical = identical
+                    && solved.StallAngleRad(brake)
+                           == loaded.StallAngleRad(brake)
+                    && solved.MaximumLiftCoefficient(brake)
+                           == loaded.MaximumLiftCoefficient(brake);
+            }
+            Check(identical,
+                  "and is BIT-identical to the solved table across the stall "
+                  "and the brake axis - a cache that is merely close is a "
+                  "second model");
+        }
+
+        // A changed section must not load a table solved for the old one.
+        {
+            ComputedPolarSpec other = spec;
+            other.section.maxCamberFraction += 0.001;
+            SectionPolarTable loaded;
+            const SectionPolarCacheResult result =
+                LoadSectionPolarTable(other, loaded);
+            Check(!result.hit,
+                  "a section a thousandth of a chord different does not load "
+                  "the old table");
+        }
+
+        // The check the spec cannot make. Editing the stored witness stands in
+        // for the real hazard - the viscous solver changing while every input
+        // stays identical - because on load the witness is re-solved and
+        // compared, and that is the comparison that fails.
+        {
+            const std::string path = SectionPolarCachePath(spec);
+            std::fstream file(path, std::ios::binary | std::ios::in
+                                        | std::ios::out);
+            Check(static_cast<bool>(file), "the cache file is there to edit");
+            // Magic, version, then the spec; the witness follows.
+            file.seekp(sizeof(char) * 8 + sizeof(std::uint32_t)
+                       + 15 * sizeof(double) + 2 * sizeof(std::uint64_t),
+                       std::ios::beg);
+            const double wrong = 1234.5;
+            file.write(reinterpret_cast<const char*>(&wrong), sizeof(wrong));
+            file.close();
+
+            SectionPolarTable loaded;
+            const SectionPolarCacheResult result =
+                LoadSectionPolarTable(spec, loaded);
+            std::printf("  witness edited: %s\n",
+                        SectionPolarCacheMissName(result.miss));
+            Check(!result.hit,
+                  "a table whose witness no longer reproduces is REFUSED - "
+                  "this is what catches a changed solver with an unchanged "
+                  "spec, and it needs no version constant to be remembered");
+        }
+
+        // Truncation. A short file that happens to parse must not become a
+        // table with the wrong shape.
+        {
+            Check(SaveSectionPolarTable(spec, solved), "resaved");
+            const std::string path = SectionPolarCachePath(spec);
+            const auto size = std::filesystem::file_size(path);
+            std::filesystem::resize_file(path, size / 2);
+            SectionPolarTable loaded;
+            const SectionPolarCacheResult result =
+                LoadSectionPolarTable(spec, loaded);
+            std::printf("  truncated: %s\n",
+                        SectionPolarCacheMissName(result.miss));
+            Check(!result.hit, "a truncated cache is refused");
+        }
+
+        // And the fallback is real: with the cache directory disabled
+        // entirely, the table still comes out and still agrees.
+        {
+            setenv("PARAPENTING_POLAR_CACHE", "", 1);
+            SectionPolarTable loaded;
+            Check(!LoadSectionPolarTable(spec, loaded).hit,
+                  "an empty cache directory disables the cache");
+            const SectionPolarTable cold = SectionPolarTable::Computed(spec);
+            Check(cold.MaximumLiftCoefficient(0.0)
+                      == solved.MaximumLiftCoefficient(0.0),
+                  "and solving from cold gives the same wing it always did");
+        }
+
+        std::filesystem::remove_all(scratch);
+        unsetenv("PARAPENTING_POLAR_CACHE");
     }
 
     if (Failures == 0) std::printf("All aerodynamics checks passed.\n");

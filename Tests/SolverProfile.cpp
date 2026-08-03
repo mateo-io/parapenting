@@ -71,15 +71,24 @@ int main()
 
     // -- construction ------------------------------------------------------
     {
+        // Split, because the two halves have different answers. The polar
+        // table is cacheable and now is; the rest is the suspension network
+        // solving itself cold, which is not a table and cannot be one.
         const auto start = std::chrono::steady_clock::now();
+        SectionPolarTable::ForSection(canopy.Spec().section);
+        const auto polars = std::chrono::steady_clock::now();
         CoupledParagliderSolver solver(canopy, linePlan);
         const auto built = std::chrono::steady_clock::now();
-        const double buildMs =
-            std::chrono::duration<double, std::milli>(built - start).count();
-        std::printf("Construction: %.1f ms\n", buildMs);
-        std::printf("  section polar table, suspension graph, trim load "
-                    "distribution, line stiffness curve and brake swing "
-                    "curve, all solved rather than loaded\n");
+
+        const double polarMs =
+            std::chrono::duration<double, std::milli>(polars - start).count();
+        const double restMs =
+            std::chrono::duration<double, std::milli>(built - polars).count();
+        std::printf("Construction: %.1f ms total\n", polarMs + restMs);
+        std::printf("  %7.1f ms  section polar table (cached after the first "
+                    "run; see docs/POLAR_CACHE.md)\n", polarMs);
+        std::printf("  %7.1f ms  suspension graph, trim load distribution, "
+                    "line stiffness curve, brake swing curve\n", restMs);
         std::printf("  this is a load-time cost, and it is what decides "
                     "whether a wing can be swapped in flight\n\n");
     }

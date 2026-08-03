@@ -163,6 +163,7 @@ target_compile_options(parapenting_payload_tests PRIVATE
 add_executable(parapenting_aerodynamics_tests
     AerodynamicsTests.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
@@ -189,6 +190,7 @@ add_executable(parapenting_pressure_tests
     PressureTests.cpp
     ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
@@ -234,6 +236,7 @@ add_executable(parapenting_calibration_tests
     ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
@@ -265,6 +268,7 @@ add_executable(parapenting_coupled_tests
     ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
@@ -296,6 +300,7 @@ add_executable(parapenting_solver_profile
     ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp
@@ -326,6 +331,7 @@ add_executable(parapenting_solver_lod
     ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
     ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
     ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/SectionViscousSolver.cpp
     ../Source/Parapenting/Physics/ApparentMassTensor.cpp

@@ -76,11 +76,14 @@ switching buys nothing.
 
 ## The one number that is a problem
 
-**Construction: 1021 ms.** Section polar table over 21 brake stations, each a
-panel factorisation and an incidence sweep, plus the suspension graph, trim
-load distribution, line stiffness curve and brake swing curve — all solved
-rather than loaded. That is a second of stall to swap a wing, and it is the
-only measured cost here that a pilot would ever notice.
+**Construction: 1059 ms** — a second of stall to swap a wing, and the only
+measured cost here that a pilot would ever notice.
+
+> **Strand 3 took 68% of it: now 340 ms.** The section polar table went from
+> 723 ms to 4 ms by caching, validated against drift by a re-solved witness
+> rather than a version constant — `docs/POLAR_CACHE.md`. The remaining 336 ms
+> is the suspension network solving itself cold and did not move; see
+> `PHYSICS_TODO` item 14 for the untried next step.
 
 ## What strand 2 did
 

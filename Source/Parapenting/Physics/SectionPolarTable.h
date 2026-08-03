@@ -134,6 +134,8 @@ struct ComputedPolarSpec
     double sweepLowRad = -0.35;   // -20 deg
     double sweepHighRad = 0.44;   // 25 deg
     std::size_t brakeSamples = 21;
+
+    bool operator==(const ComputedPolarSpec&) const = default;
 };
 
 // A table over angle of attack and brake deflection. Reynolds number is a
@@ -222,6 +224,12 @@ public:
     std::size_t AlphaSampleCount() const { return AlphaCount; }
 
 private:
+    // The cache reads and writes these directly. It is a friend rather than a
+    // set of accessors because serialising is not part of what a polar table
+    // is for, and widening the interface to allow it would invite something
+    // else to write the arrays.
+    friend struct SectionPolarCacheAccess;
+
     AnalyticPolarSpec SpecValue{};
     ComputedPolarSpec ComputedValue{};
     PolarProvenance Source = PolarProvenance::Analytic;

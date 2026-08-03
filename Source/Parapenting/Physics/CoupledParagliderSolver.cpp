@@ -1,6 +1,7 @@
 #include "CoupledParagliderSolver.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace Parapenting::Physics
@@ -8,6 +9,33 @@ namespace Parapenting::Physics
 namespace
 {
 constexpr double GravityMps2 = 9.80665;
+
+// Adds its lifetime to a counter, or does nothing. `enabled` is a member read
+// once per scope; with profiling off the clock is never touched.
+class StageTimer
+{
+public:
+    StageTimer(bool enabled, long long& sink)
+        : Sink(enabled ? &sink : nullptr),
+          Start(enabled ? std::chrono::steady_clock::now()
+                        : std::chrono::steady_clock::time_point{})
+    {
+    }
+
+    ~StageTimer()
+    {
+        if (Sink == nullptr) return;
+        *Sink += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - Start).count();
+    }
+
+    StageTimer(const StageTimer&) = delete;
+    StageTimer& operator=(const StageTimer&) = delete;
+
+private:
+    long long* Sink;
+    std::chrono::steady_clock::time_point Start;
+};
 
 std::vector<double> SectionSpanFractions(
     const std::vector<VsmSection>& sections)
@@ -428,6 +456,8 @@ void CoupledParagliderSolver::Step(
 {
     const double dt = ScheduleValue.timeStepS;
     CoupledDiagnostics diagnostics;
+    const StageTimer stepTimer(Profiling, ProfileValue.totalNs);
+    if (Profiling) ++ProfileValue.steps;
 
     // What the hands do to the trailing edge, which is not what the hands do.
     // See EngagedBrake: the sewn-in slack comes off first, and the SAME
@@ -549,8 +579,13 @@ void CoupledParagliderSolver::Step(
             // Warm-started by the separation state, so a handful of
             // iterations is enough once the first solve has landed.
             settings.maxIterations = state.initialised ? 40 : 600;
-            const VsmSolution solved = Aerodynamics.SolveUnsteady(
-                aero, state.separation, dt, settings);
+            if (Profiling) ++ProfileValue.aeroTicks;
+            const VsmSolution solved = [&]
+            {
+                const StageTimer t(Profiling, ProfileValue.vsmUnsteadyNs);
+                return Aerodynamics.SolveUnsteady(
+                    aero, state.separation, dt, settings);
+            }();
 
             // Reject a solve that has not converged to anything usable. Deep
             // stall genuinely has no steady state - the separated branch has a
@@ -605,9 +640,13 @@ void CoupledParagliderSolver::Step(
             still.angularVelocityBodyRadps = Vec3{};
             VsmSettings stillSettings = settings;
             stillSettings.maxIterations = 600;
-            const VsmSolution stationary = Aerodynamics.SolveFrozen(
-                still, state.separation, state.stationaryCirculation,
-                stillSettings);
+            const VsmSolution stationary = [&]
+            {
+                const StageTimer t(Profiling, ProfileValue.vsmStationaryNs);
+                return Aerodynamics.SolveFrozen(
+                    still, state.separation, state.stationaryCirculation,
+                    stillSettings);
+            }();
 
             aeroTargetMoment = stationary.momentBodyNm;
             const bool probeUsable = allFinite(stationary.momentBodyNm)
@@ -661,6 +700,8 @@ void CoupledParagliderSolver::Step(
                 const auto probeAt = [&](double rate,
                                          std::vector<double>& warm)
                 {
+                    const StageTimer t(
+                        Profiling, ProfileValue.vsmDampingProbeNs);
                     VsmSolveInput probe = still;
                     Vec3 probeRate{};
                     setComponent(probeRate, axis, rate);
@@ -698,8 +739,11 @@ void CoupledParagliderSolver::Step(
                 cells.dynamicPressurePa[i] = dynamicPressure;
                 cells.angleOfAttackRad[i] = solved.sections[i].angleOfAttackRad;
             }
-            const CellPressureResult pressureResult =
-                Pressure.Step(state.pressure, cells, dt);
+            const CellPressureResult pressureResult = [&]
+            {
+                const StageTimer t(Profiling, ProfileValue.pressureNs);
+                return Pressure.Step(state.pressure, cells, dt);
+            }();
             cellPressureCoefficient = pressureResult.pressureCoefficient;
             state.heldPressureCoefficientMean =
                 pressureResult.meanPressureCoefficient;
@@ -717,7 +761,11 @@ void CoupledParagliderSolver::Step(
             skin.internalPressurePa = medianGaugePa;
             skin.brakeLineForceN = 40.0
                 * (leftBrakeAtWing + rightBrakeAtWing);
-            const MembraneResult skinResult = Membrane.Step(skin, dt);
+            const MembraneResult skinResult = [&]
+            {
+                const StageTimer t(Profiling, ProfileValue.membraneNs);
+                return Membrane.Step(skin, dt);
+            }();
             diagnostics.membraneStrain = skinResult.maximumStrain;
 
             // A second station, at whichever cell is worst fed. The skin's
@@ -735,6 +783,7 @@ void CoupledParagliderSolver::Step(
             {
                 MembraneLoad worst = skin;
                 worst.internalPressurePa = lowestGaugePa;
+                const StageTimer t(Profiling, ProfileValue.membraneNs);
                 worstSkin = Membrane.Step(worst, dt);
             }
 
@@ -811,6 +860,7 @@ structureSolve:
     // Its inputs are held between aerodynamic solves, like the loads are.
     if (!state.collapseInput.empty())
     {
+        const StageTimer t(Profiling, ProfileValue.collapseNs);
         diagnostics.collapseState =
             Collapse.Step(state.collapse, state.collapseInput, dt);
     }
@@ -855,8 +905,11 @@ structureSolve:
         SuspensionSolverSettings lineSettings;
         lineSettings.iterations = state.initialised
             ? std::max(1, ScheduleValue.suspensionIterations) : 12000;
-        lineSolution = SolveSuspension(
-            Lines, suspension, lineSettings, &state.suspension);
+        {
+            const StageTimer t(Profiling, ProfileValue.suspensionNs);
+            lineSolution = SolveSuspension(
+                Lines, suspension, lineSettings, &state.suspension);
+        }
         diagnostics.suspensionResidualN = lineSolution.canopyForceResidualN;
 
         const double magnitude = Length(exchangedForceBody);
@@ -874,6 +927,10 @@ structureSolve:
     state.heldAeroMomentBodyNm = exchangedMomentBody;
 
     // -- 7. rigid motion ---------------------------------------------------
+    // Runs to the end of the step, so this timer's scope is the rest of the
+    // function and it is deliberately declared last.
+    const StageTimer motionTimer(Profiling, ProfileValue.rigidMotionNs);
+
     // The payload, on its own pendulum under the carabiners.
     PayloadInput payloadInput;
     payloadInput.weightShift = controls.weightShift;

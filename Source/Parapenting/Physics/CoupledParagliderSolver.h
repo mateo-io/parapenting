@@ -290,6 +290,42 @@ struct CoupledDiagnostics
     double rightCarabinerLoadN = 0.0;
 };
 
+// Where a step's wall clock goes, in nanoseconds, accumulated over however
+// many steps were run. Level 10 needs this before it can pick solver levels of
+// detail: a cheaper tier is a guess until the expensive stage is known.
+//
+// The three VSM entries are separate because they are separate solves with
+// different iteration caps, not three parts of one. An aerodynamic tick runs
+// FOUR: the unsteady solve the wing actually flies on, a rotation-free solve
+// for the moment, and two rate probes for the damping derivative - and the
+// last three are capped at 600 iterations where the first is capped at 40.
+struct CoupledStepProfile
+{
+    long long vsmUnsteadyNs = 0;
+    long long vsmStationaryNs = 0;
+    long long vsmDampingProbeNs = 0;
+    long long pressureNs = 0;
+    long long membraneNs = 0;
+    long long collapseNs = 0;
+    long long suspensionNs = 0;
+    long long rigidMotionNs = 0;
+    long long totalNs = 0;
+    long long steps = 0;
+    long long aeroTicks = 0;
+
+    long long VsmTotalNs() const
+        { return vsmUnsteadyNs + vsmStationaryNs + vsmDampingProbeNs; }
+    // What the stages add up to, against `totalNs`. The gap is the step's own
+    // bookkeeping - the vectors it fills, the diagnostics it writes - and it is
+    // reported rather than distributed, because a large gap means the timers
+    // are in the wrong places and that should be visible.
+    long long AccountedNs() const
+    {
+        return VsmTotalNs() + pressureNs + membraneNs + collapseNs
+            + suspensionNs + rigidMotionNs;
+    }
+};
+
 class CoupledParagliderSolver
 {
 public:
@@ -311,6 +347,17 @@ public:
 
     const CoupledDiagnostics& Diagnostics() const { return LastDiagnostics; }
     const CoupledSchedule& Schedule() const { return ScheduleValue; }
+
+    // Wall-clock accounting for one step, by stage. Off by default and costing
+    // one predictable branch per stage when off, because the thing being
+    // measured here is tens of microseconds and a clock read is tens of
+    // nanoseconds - always-on timers would be a tenth of a percent of the
+    // answer, which is fine, but they would also be a permanent claim on a hot
+    // loop for a number nobody reads in flight.
+    void SetProfiling(bool on) { Profiling = on; }
+    const CoupledStepProfile& Profile() const { return ProfileValue; }
+    void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
+
     void SetSchedule(const CoupledSchedule& schedule)
         { ScheduleValue = schedule; }
 
@@ -392,6 +439,8 @@ private:
         double travel = 0.0;
         double offsetRad = 0.0;
     };
+    bool Profiling = false;
+    CoupledStepProfile ProfileValue{};
     std::vector<BrakeSwingSample> BrakeSwingCurve;
     double BrakeSwingOffsetRad(double travel) const;
     // The section the ribs are cut to, and the mean chord at the span

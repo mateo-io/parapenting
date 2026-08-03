@@ -155,6 +155,19 @@ CoupledParagliderSolver::LineStiffnessAt(double loadN) const
     return StiffnessCurve.back().stiffness;
 }
 
+CoupledSchedule FullFidelitySchedule()
+{
+    return CoupledSchedule{};
+}
+
+CoupledSchedule ReducedFidelitySchedule()
+{
+    CoupledSchedule schedule;
+    schedule.suspensionIterations = 40;
+    schedule.dampingProbeInterval = 3;
+    return schedule;
+}
+
 void CoupledParagliderSolver::MeasureLineStiffness()
 {
     // What holds a paraglider's wing at its incidence is not a pendulum on the
@@ -639,7 +652,8 @@ void CoupledParagliderSolver::Step(
             VsmSolveInput still = aero;
             still.angularVelocityBodyRadps = Vec3{};
             VsmSettings stillSettings = settings;
-            stillSettings.maxIterations = 600;
+            stillSettings.maxIterations =
+                std::max(1, ScheduleValue.frozenSolveIterations);
             const VsmSolution stationary = [&]
             {
                 const StageTimer t(Profiling, ProfileValue.vsmStationaryNs);
@@ -683,8 +697,12 @@ void CoupledParagliderSolver::Step(
             // braked left and braked right measures two different damping
             // coefficients, and two flights that should be mirror images of
             // each other stop being so in the fourth second.
-            if (probeUsable)
+            const int probeInterval =
+                std::max(1, ScheduleValue.dampingProbeInterval);
+            if (probeUsable && state.aeroTicksSinceDampingProbe + 1
+                                   >= probeInterval)
             {
+                state.aeroTicksSinceDampingProbe = 0;
                 constexpr double ProbeRateRadps = 0.3;
                 const int axis = state.dampingProbeAxis % 3;
                 const auto component = [](const Vec3& v, int which)
@@ -724,6 +742,10 @@ void CoupledParagliderSolver::Step(
                                  delta / (2.0 * ProbeRateRadps));
                 }
                 state.dampingProbeAxis = (axis + 1) % 3;
+            }
+            else
+            {
+                ++state.aeroTicksSinceDampingProbe;
             }
 
             diagnostics.vsmResidual = solved.residual;

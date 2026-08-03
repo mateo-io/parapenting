@@ -57,9 +57,16 @@ and the line network is not amortised at all.
 **3. The damping probes cost four times the solve the wing flies on.** An
 aerodynamic tick runs four VSM solves: the unsteady one, a rotation-free one
 for the moment, and two rate probes for the damping derivative. The probes are
-23.8% of every step against the unsteady solve's 6.1%, because they are capped
-at 600 iterations where the unsteady solve is capped at 40. One axis is already
-probed per tick; the cap is what is expensive.
+23.8% of every step against the unsteady solve's 6.1%.
+
+> **Corrected by the strand 2 sweep.** This section originally went on to
+> blame the 600-iteration cap, against the unsteady solve's 40. That was wrong,
+> and it is the reason strand 2 measured before cutting. Dropping the cap from
+> 600 to 40 saves **0–6%, inside the run-to-run noise**: the warm-started
+> probes converge and exit long before the cap, so it is never reached. What
+> costs is running two extra frozen solves *at all*, which makes their
+> **frequency** the lever, not their iteration count. See
+> `SOLVER_LOD.md`.
 
 **4. Nothing is state-dependent.** Cruise 540, 25% brake 540, asymmetric 524,
 4 m/s gust 552 — a 5% spread across flight states that load the stages very
@@ -74,6 +81,16 @@ panel factorisation and an incidence sweep, plus the suspension graph, trim
 load distribution, line stiffness curve and brake swing curve — all solved
 rather than loaded. That is a second of stall to swap a wing, and it is the
 only measured cost here that a pilot would ever notice.
+
+## What strand 2 did
+
+See `SOLVER_LOD.md`. In short: `ReducedFidelitySchedule` moves two knobs and
+buys **59%** of a step, 522 → 231 µs, with trim speed and incidence unchanged
+to three decimals and the 4 m/s asymmetric collapse moving 0.001. It is gated
+against the full solver in `coupled_tests` on every run.
+
+Of the three targets below, target 1 delivered, target 2 delivered but not for
+the reason given, and target 3 was not attempted.
 
 ## What strand 2 should act on, in order
 

@@ -88,7 +88,56 @@ struct CoupledSchedule
     double couplingRelaxation = 0.5;
     // Iterations the warm-started line network gets per step.
     int suspensionIterations = 120;
+    // Iterations the two FROZEN VSM solves get - the rotation-free solve for
+    // the moment, and the rate probes for the damping derivative. Together
+    // they are 30% of a step against the unsteady solve's 6%, entirely
+    // because of this number.
+    //
+    // It is 600 for a reason and the reason is recorded: run cold at the
+    // unsteady solve's 40, the probes were not converged and not even the same
+    // wing, the derivative they returned moved 10% between intervals, and two
+    // mirror-image flights measured different damping. See PHYSICS_LEARNINGS
+    // section 28. They are warm-started now, which is a different question -
+    // but it is a question to MEASURE before lowering this, not to assume.
+    int frozenSolveIterations = 600;
+    // Aerodynamic ticks between damping-derivative probes. 1 probes one axis
+    // every tick, so each axis refreshes every 3 ticks - 0.3 s at the default
+    // schedule.
+    //
+    // This, and NOT the iteration cap above, is the lever on the probes' 23.8%
+    // of a step. Measured: dropping the cap from 600 to 40 saves 0-4%, inside
+    // the noise, because the warm-started probes converge and exit long before
+    // the cap. What costs is running two extra frozen solves at all.
+    int dampingProbeInterval = 1;
 };
+
+// The two schedules that have been measured against each other. Anything else
+// is a set of loose knobs, and a tier nobody has swept is a guess.
+//
+// FULL is the default and the reference: every published number and every
+// calibration gate is measured on it, and it is what a disagreement means.
+//
+// REDUCED is for the cases Level 10's profile identified - weaker machines,
+// more than one aircraft in the air, faster-than-real-time research runs - and
+// it moves exactly two knobs, both chosen off `solver_lod`'s sweep at the knee
+// where the saving flattens and the error starts to climb:
+//
+//   * suspensionIterations 120 -> 40. The flight signature is unchanged to
+//     three decimals; what moves is the network's own residual, 0.140 N to
+//     0.198 N against a flight load near 1030 N. Below 40 the saving flattens
+//     (40% at 40 iterations, 49% at 20) while the residual does not (0.198 to
+//     0.384), which is what makes 40 the knee rather than a preference.
+//   * dampingProbeInterval 1 -> 3. Each axis then refreshes every 0.9 s
+//     instead of every 0.3 s.
+//
+// Two knobs are deliberately NOT moved. `couplingIterations` stays at 3
+// because 2 changes the peak of a 4 m/s asymmetric collapse from 0.648 to
+// 0.691 - 6.5%, on the number a pilot is judged on - for 21%.
+// `frozenSolveIterations` stays at 600 because lowering it buys nothing: the
+// warm-started probes converge and exit long before the cap, so 600 to 40 is
+// worth 0-6%, inside the run-to-run noise.
+CoupledSchedule FullFidelitySchedule();
+CoupledSchedule ReducedFidelitySchedule();
 
 struct CoupledControls
 {
@@ -179,6 +228,9 @@ struct CoupledState
     // Which axis the next full solve probes for its damping derivative. One
     // per aerodynamic interval, round-robin, so each is refreshed every 0.3 s.
     int dampingProbeAxis = 0;
+    // Aerodynamic ticks since the last probe, against
+    // `CoupledSchedule::dampingProbeInterval`.
+    int aeroTicksSinceDampingProbe = 0;
     // Circulation carried for the rotation-free solve and the two damping
     // probes, so each continues from its own last answer instead of being
     // solved cold every interval.

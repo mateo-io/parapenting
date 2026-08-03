@@ -1045,6 +1045,102 @@ int main()
               "six solvers");
     }
 
+    // Level 10: the reduced solver tier must be the same aircraft.
+    //
+    // `ReducedFidelitySchedule` exists so a weaker machine, a second aircraft
+    // or a faster-than-real-time research run can buy 59% of a step back. What
+    // makes that legitimate rather than a quiet downgrade is this block: the
+    // tier is flown through the same two things the sweep measured it on and
+    // compared against the FULL solver, every run.
+    //
+    // The tolerances are not round numbers picked to pass. They are the
+    // sweep's measured disagreements with roughly a decade of headroom, so a
+    // future change that degrades the tier trips this long before a pilot
+    // could feel it. Measured at the time of writing: dv 0.000, dalpha 0.00
+    // deg, dfold 0.001, worst network residual 0.197 N against the full
+    // solver's 0.140. Run `parapenting_solver_lod` to re-derive them.
+    {
+        std::printf("Level 10, reduced tier against the full solver:\n");
+
+        const auto flySettled = [&](const CoupledSchedule& schedule)
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan(), schedule);
+            CoupledState state;
+            // Settle before measuring the residual, and settle UNTRACKED. The
+            // startup transient dwarfs the steady state - 28 N full and 83 N
+            // reduced over the first seconds against 0.14 and 0.20 settled -
+            // so a worst-over-everything reading is a measurement of the cold
+            // start, not of the tier. That the ratio is worse in the transient
+            // (3x) than settled (1.4x) is real and is the honest caveat on
+            // this tier: fewer iterations converge a disturbance more slowly.
+            Fly(wing, CoupledControls{}, 40.0, &state);
+            double worstResidualN = 0.0;
+            for (int step = 0; step < 120 * 20; ++step)
+            {
+                wing.Step(state, CoupledControls{}, CoupledAtmosphere{});
+                worstResidualN = std::max(
+                    worstResidualN,
+                    std::fabs(wing.Diagnostics().suspensionResidualN));
+            }
+            struct Result { double speed; double alphaRad; double residualN; };
+            return Result{wing.Diagnostics().airspeedMps,
+                          wing.Diagnostics().angleOfAttackRad,
+                          worstResidualN};
+        };
+
+        const auto flyGust = [&](const CoupledSchedule& schedule)
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan(), schedule);
+            CoupledState state;
+            Fly(wing, CoupledControls{}, 20.0, &state);
+            CoupledAtmosphere gust;
+            gust.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+            gust.gustSpanFrom = -1.0;
+            gust.gustSpanTo = 0.0;
+            double peak = 0.0;
+            for (int step = 0; step < 120 * 2; ++step)
+            {
+                wing.Step(state, CoupledControls{}, gust);
+                peak = std::max(
+                    peak, wing.Diagnostics().collapseState.leftCollapse);
+            }
+            for (int step = 0; step < 120 * 30; ++step)
+            {
+                wing.Step(state, CoupledControls{}, CoupledAtmosphere{});
+                peak = std::max(
+                    peak, wing.Diagnostics().collapseState.leftCollapse);
+            }
+            return peak;
+        };
+
+        const auto full = flySettled(FullFidelitySchedule());
+        const auto reduced = flySettled(ReducedFidelitySchedule());
+        const double fullFold = flyGust(FullFidelitySchedule());
+        const double reducedFold = flyGust(ReducedFidelitySchedule());
+
+        std::printf("  trim   full %.3f m/s at %.2f deg, reduced %.3f at "
+                    "%.2f\n",
+                    full.speed, full.alphaRad * 180.0 / 3.14159265358979,
+                    reduced.speed,
+                    reduced.alphaRad * 180.0 / 3.14159265358979);
+        std::printf("  gust   full folds %.3f, reduced %.3f\n",
+                    fullFold, reducedFold);
+        std::printf("  worst network residual: full %.3f N, reduced %.3f N\n",
+                    full.residualN, reduced.residualN);
+
+        Check(std::fabs(reduced.speed - full.speed) < 0.05,
+              "the reduced tier trims at the same speed as the full solver");
+        Check(std::fabs(reduced.alphaRad - full.alphaRad) < 0.002,
+              "and at the same incidence, within a tenth of a degree");
+        Check(std::fabs(reducedFold - fullFold) < 0.02,
+              "and folds the same amount in the 4 m/s asymmetric gust - the "
+              "number a pilot is judged on, and the one a cheaper tier is "
+              "most likely to get wrong");
+        Check(reduced.residualN < 0.5,
+              "and leaves the line network converged: the residual grows when "
+              "iterations are cut, and this is what bounds how far");
+    }
+
     if (Failures == 0) std::printf("All coupled checks passed.\n");
     else std::printf("%d coupled check(s) failed.\n", Failures);
     return Failures == 0 ? 0 : 1;

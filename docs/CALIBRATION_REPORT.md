@@ -51,20 +51,45 @@ This number was 31.9 km/h for most of the project's life. What closed it was
 
 ## The manoeuvre set
 
-| manoeuvre | speed | sink | glide | incidence | settled |
-|---|---|---|---|---|---|
-| hands-up trim | 11.06 m/s | 0.97 | 11.33 | 5.1° | yes |
-| accelerator step (full bar) | 7.83 | 7.83 | 0.01 | 85.8° | **departed** |
-| brake step 25% | 10.92 | 0.94 | 11.63 | 4.4° | still oscillating |
-| deep brake step 40% | 7.81 | 7.81 | 0.01 | 91.2° | **departed** |
-| brake pulse and release | 11.56 | 1.36 | 8.45 | 4.3° | still oscillating |
-| weight shift step | 11.09 | 0.98 | 11.32 | 5.1° | yes |
-| coordinated turn 35% | 10.78 | 1.08 | 9.91 | 4.2° | still oscillating |
-| stall approach | 7.80 | 7.80 | 0.02 | 94.6° | separated, as intended |
+**Flown to a settling criterion** — incidence holding 0.01° and airspeed
+0.01 m/s over ten seconds — rather than to the fast suite's 90-second clock.
+Every row needed **530 s** to stand still before its input went in.
+`parapenting_calibration_settled` produces this; the fast `calibration_tests`
+still uses the clock and its numbers are in the right-hand column for
+comparison.
 
-The brake rows read weaker than they did before the brake double count was
-removed — 25% is worth 0.14 m/s here where it was worth 2.1 — and the incidence
-column runs the wrong way under brake. Both are §3d and item 11.
+| manoeuvre | speed | sink | glide | incidence | settle | state | (on the 90 s clock) |
+|---|---|---|---|---|---|---|---|
+| hands-up trim | 11.175 m/s | 1.015 | 10.96 | 4.95° | 530 s | settled | 11.06 / 0.97 / 11.33 / 5.1° |
+| accelerator step (full bar) | 7.829 | 7.828 | 0.01 | 85.75° | 530 s | **departed** | 7.83 / 85.8° |
+| brake step 25% | 10.237 | 0.944 | 10.79 | 5.74° | 530 s | **did not settle after the input** | 10.92 / 4.4° |
+| deep brake step 40% | 7.810 | 7.810 | 0.01 | 91.17° | 530 s | **departed** | 7.81 / 91.2° |
+| brake pulse and release | 11.173 | 1.015 | 10.96 | 4.95° | 530 s | settled, back at trim | 11.56 / 4.3° |
+| weight shift step | 11.189 | 1.017 | 10.96 | 4.93° | 530 s | settled | 11.09 / 5.1° |
+| coordinated turn 35% | 10.350 | 0.971 | 10.62 | 5.04° | 530 s | settled | 10.78 / 4.2° |
+| stall approach | 7.800 | 7.799 | 0.02 | 94.56° | 530 s | safety envelope engaged | 7.80 / 94.6° |
+
+**What moved.** Hands-up trim is 11.175 m/s where the clock said 11.06, and
+glide is **10.96 where the clock said 11.33** — so about a fifth of the drag
+disagreement was never a drag disagreement, it was an unsettled measurement.
+Sink rises from 0.97 to 1.015 against a published 1.14, closing the same way.
+
+**What it cost.** The two published numbers that were said to "land untuned"
+both land slightly worse. Trim speed goes from +2.1% over published to
+**+3.1%**, and incidence from 5.14° to 4.95° against the 5.30° the published
+lift coefficient needs — an error of 0.35° where it was 0.16°.
+
+**Two consistency checks that now pass and could not before.** The brake pulse
+returns to exactly the hands-up trim (11.173 against 11.175, 4.95° against
+4.95°), and weight shift leaves the speed alone (11.189). On the clock both
+read as different flight states — 11.56 and 11.09 — which was the transient,
+not the manoeuvre.
+
+**25% brake still does not settle**, even given 1500 s after its input, which
+is consistent with the pitch-axis trace needing 1080 s for it at the lighter
+default weight. Deep brake and full bar reach a genuine steady state, but it is
+a fully separated descent at 86–91° of incidence — a steady state, not a trim
+point, and labelled as such.
 
 ## Pitch, against a closed form
 

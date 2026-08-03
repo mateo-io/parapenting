@@ -855,20 +855,30 @@ several passes, and sent the search toward a number — the specific stiffness o
 6.13 m — that turned out not to be an input to the solver at all. A theory that
 explains a measurement you cannot actually resolve explains nothing.
 
-**And the specific trap that made all of it possible: a mode nobody had
-characterised.** The argument for "this cannot be a decaying oscillation" was
+**And the specific trap that made all of it possible: the right number about
+the wrong mode.** The argument for "this cannot be a decaying oscillation" was
 that the phugoid's period is 2.91 s and its damping 0.28, so twenty periods
 would have killed it. Both numbers were real, both were measured by
 `calibration_tests`, and both belong to a *different mode* — the wing swinging
 against the pilot after a brake pulse, which that test names and gates
-correctly. The mode actually decaying is the phugoid proper: **period 16.3 s,
-damping ratio 0.030**, incidence and airspeed in antiphase, needing eight to
-sixteen minutes. It had never been measured because nothing had ever been flown
-long enough to see one full cycle, let alone thirty.
+correctly. The mode actually decaying is the slow one: **period 16.4 s, damping
+ratio 0.031**, incidence and airspeed in antiphase, needing eight to sixteen
+minutes.
 
 When a number is used to rule something out, check that it describes the thing
 being ruled out. "The phugoid is well damped" was true of a mode that was not
 the phugoid.
+
+**The codebase knew, and knowing was not enough.** `CalibrationManeuver.cpp`
+already named "a slow speed-and-incidence mode near twenty", already recorded
+that fitting the full record returned "a 20.4 s pendulum with a damping ratio
+of 0.05, which is a true statement about the wrong mode", and already windowed
+the pitch identification to avoid it. All correct. But the settle time was
+raised to 90 s and left there, and nobody carried the mode's own numbers across
+to ask whether 90 s was enough for it — five and a half periods at damping
+0.031 leaves a third of the transient. A fact recorded in one function does not
+propagate to the constant three functions away that depends on it. When a
+measurement lands, the useful question is which *other* numbers it invalidates.
 
 ## Numbers worth remembering
 

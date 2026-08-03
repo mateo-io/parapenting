@@ -229,11 +229,63 @@ ManeuverResult RunCalibrationManeuver(
 
     // Settle. Every manoeuvre starts from the same place, hands up, or the
     // response carries the initial condition in it.
-    const int settleSteps = static_cast<int>(settings.settleSeconds / dt);
-    for (int step = 0; step < settleSteps; ++step)
-        solver.Step(state, CoupledControls{}, stillAir);
+    if (settings.settleToCriterion)
+    {
+        // Fly windows until one of them stands still. Reported either way:
+        // "did not settle in 1500 s" is a result, and a far more useful one
+        // than a number averaged out of an oscillation.
+        const int windowSteps = std::max(1, static_cast<int>(
+            settings.settleWindowSeconds / dt));
+        double elapsed = 0.0;
+        while (elapsed < settings.maximumSettleSeconds)
+        {
+            double lowAlpha = 1.0e9, highAlpha = -1.0e9;
+            double lowSpeed = 1.0e9, highSpeed = -1.0e9;
+            for (int step = 0; step < windowSteps; ++step)
+            {
+                solver.Step(state, CoupledControls{}, stillAir);
+                const CoupledDiagnostics& d = solver.Diagnostics();
+                lowAlpha = std::min(lowAlpha, d.angleOfAttackRad);
+                highAlpha = std::max(highAlpha, d.angleOfAttackRad);
+                lowSpeed = std::min(lowSpeed, d.airspeedMps);
+                highSpeed = std::max(highSpeed, d.airspeedMps);
+            }
+            elapsed += settings.settleWindowSeconds;
+            if (highAlpha - lowAlpha < settings.settleIncidenceToleranceRad
+                && highSpeed - lowSpeed < settings.settleAirspeedToleranceMps)
+            {
+                result.preInputSettled = true;
+                break;
+            }
+        }
+        result.actualSettleSeconds = elapsed;
+    }
+    else
+    {
+        const int settleSteps = static_cast<int>(settings.settleSeconds / dt);
+        for (int step = 0; step < settleSteps; ++step)
+            solver.Step(state, CoupledControls{}, stillAir);
+    }
 
-    const int recordSteps = static_cast<int>(settings.recordSeconds / dt);
+    // The record phase needs the same treatment as the settle. A step input on
+    // an aircraft whose slow mode is 16.4 s at damping 0.031 is not over in
+    // forty-five seconds either, and the settled values below are averaged out
+    // of the tail of this window - so with a fixed record they are averages of
+    // an oscillation no matter how long the pre-input settle was.
+    const bool criterionRecord = settings.settleToCriterion;
+    const int recordSteps = static_cast<int>(
+        (criterionRecord ? settings.maximumSettleSeconds
+                         : settings.recordSeconds) / dt);
+    // Do not start testing for a settled state until the input has been in for
+    // a while, or a manoeuvre whose ramp has not begun reads as settled at trim
+    // and stops before it has done anything.
+    const double earliestFinishS =
+        std::max(30.0, settings.settleWindowSeconds * 3.0);
+    const int criterionWindowSteps = std::max(1, static_cast<int>(
+        settings.settleWindowSeconds / dt));
+    double windowLowAlpha = 1.0e9, windowHighAlpha = -1.0e9;
+    double windowLowSpeed = 1.0e9, windowHighSpeed = -1.0e9;
+    int recordedSteps = 0;
     const int stride = std::max(1, static_cast<int>(
         1.0 / std::max(1.0e-6, settings.sampleRateHz * dt)));
 
@@ -265,6 +317,33 @@ ManeuverResult RunCalibrationManeuver(
         result.worstEnergyResidualW = std::max(
             result.worstEnergyResidualW, std::fabs(d.energyResidualW));
         if (d.aerodynamicsRejected) result.safetyEnvelopeEngaged = true;
+
+        ++recordedSteps;
+        if (criterionRecord)
+        {
+            windowLowAlpha = std::min(windowLowAlpha, d.angleOfAttackRad);
+            windowHighAlpha = std::max(windowHighAlpha, d.angleOfAttackRad);
+            windowLowSpeed = std::min(windowLowSpeed, d.airspeedMps);
+            windowHighSpeed = std::max(windowHighSpeed, d.airspeedMps);
+            if (recordedSteps % criterionWindowSteps == 0)
+            {
+                const bool stopped =
+                    windowHighAlpha - windowLowAlpha
+                        < settings.settleIncidenceToleranceRad
+                    && windowHighSpeed - windowLowSpeed
+                        < settings.settleAirspeedToleranceMps;
+                windowLowAlpha = 1.0e9; windowHighAlpha = -1.0e9;
+                windowLowSpeed = 1.0e9; windowHighSpeed = -1.0e9;
+                if (stopped && t > earliestFinishS)
+                {
+                    // Record the last window's worth of samples as the settled
+                    // state, then stop. Everything after this is the same
+                    // number repeated.
+                    result.settled = true;
+                    break;
+                }
+            }
+        }
 
         if (step % stride != 0) continue;
 
@@ -316,9 +395,14 @@ ManeuverResult RunCalibrationManeuver(
     double turnMin = 1.0e9;
     double turnMax = -1.0e9;
     int count = 0;
+    const double averagingWindowS = settings.settleToCriterion
+        ? settings.settleWindowSeconds : 2.0;
     for (const ManeuverSample& sample : result.samples)
     {
-        if (sample.timeS < endTime - 2.0) continue;
+        // Two seconds normally; the full settling window in criterion mode,
+        // because two seconds inside a 16 s period is a chord of the
+        // oscillation rather than a measurement of it.
+        if (sample.timeS < endTime - averagingWindowS) continue;
         airspeedSum += sample.airspeedMps;
         sinkSum += sample.sinkMps;
         incidenceSum += sample.angleOfAttackRad;
@@ -346,10 +430,15 @@ ManeuverResult RunCalibrationManeuver(
             : 0.0;
         // Settled is a measurement, not an assumption: the last two seconds
         // must have held speed and turn rate.
-        result.settled =
+        const bool heldOverWindow =
             (airspeedMax - airspeedMin)
                 < 0.01 * std::max(1.0, result.settledAirspeedMps)
             && (turnMax - turnMin) < 0.01;
+        // In criterion mode the loop above already proved the tighter test and
+        // set this; do not let the looser one downgrade it, and do not let it
+        // UPGRADE a run that ran out of time either.
+        result.settled = settings.settleToCriterion
+            ? (result.settled && heldOverWindow) : heldOverWindow;
     }
 
     // Pitch identification. Only the manoeuvres that release an input leave a

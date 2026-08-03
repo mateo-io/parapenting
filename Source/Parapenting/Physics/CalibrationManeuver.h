@@ -112,6 +112,12 @@ struct ManeuverResult
     // rate to within 0.01 rad/s. A manoeuvre that has not settled cannot
     // identify a steady-state number, and saying so is the point.
     bool settled = false;
+    // How long the wing actually took to stand still before the input, and
+    // whether it ever did. Zero when `settleToCriterion` is off, in which case
+    // the settle was whatever the clock said and `preInputSettled` is unknown
+    // rather than true.
+    double actualSettleSeconds = 0.0;
+    bool preInputSettled = false;
 
     // Pitch identification, from the swing angle's free oscillation after the
     // input is released. Zero when the manoeuvre does not excite one.
@@ -143,6 +149,33 @@ struct CalibrationSettings
     // oscillating when the input arrives. It showed up honestly - every
     // manoeuvre reported NOT SETTLED - rather than being averaged away.
     double settleSeconds = 90.0;
+    // Settle until the wing STOPS MOVING rather than until the clock runs out.
+    //
+    // Ninety seconds is not enough and the arithmetic says so plainly: the slow
+    // speed-and-incidence mode is 16.4 s with a damping ratio of 0.031, so
+    // ninety seconds is five and a half periods and leaves e^(-0.031 * 2pi *
+    // 5.5) = 34% of the opening transient still running. Every number below is
+    // then a sample of a decaying oscillation rather than a trim point, and the
+    // `settled` flag does not catch it because 1% of airspeed over two seconds
+    // is a far looser test than the mode is slow.
+    //
+    // Measured with the criterion below: hands-up needs 410 s, 20% brake 460,
+    // 25% brake 1080, and 30% and beyond do not settle inside 1200 at all. See
+    // PHYSICS_TODO item 18 and `parapenting_pitch_axis_trace`.
+    //
+    // Off by default because it turns a suite that runs in minutes into one
+    // that runs in the better part of an hour. `parapenting_calibration_settled`
+    // is the slow target that turns it on.
+    bool settleToCriterion = false;
+    // Incidence and airspeed must both hold this over a ten-second window.
+    // Ten seconds rather than two, because a two-second window inside a 16 s
+    // period is a chord of the oscillation, not a measurement of it.
+    double settleWindowSeconds = 10.0;
+    double settleIncidenceToleranceRad = 1.7e-4;   // 0.01 deg
+    double settleAirspeedToleranceMps = 0.01;
+    // Give up and say so. A manoeuvre that has not settled by here is reported
+    // as not settled, never quietly averaged.
+    double maximumSettleSeconds = 1500.0;
     // Seconds of recording after it. Forty-five, for the same reason the
     // settle is ninety: a step response on an aircraft whose slow mode has an
     // eleven second period is not over in twenty.

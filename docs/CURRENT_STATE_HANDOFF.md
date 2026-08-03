@@ -261,8 +261,10 @@ criterion rather than a clock. Four gates were loosened to bound the brake
 behaviour rather than fit it; they are tabulated with their strict thresholds
 under item 11.
 
-**The largest disagreement is now drag** (`PHYSICS_TODO` item 12): glide
-**11.33 against 9.5** and sink **0.97 against 1.14**. It is one error — trim
+**The largest disagreement is now drag** (`PHYSICS_TODO` item 12), though a
+fifth smaller than it was written up as. Settled to a criterion rather than the
+fast suite's 90-second clock: glide **10.96 against 9.5** and sink **1.015
+against 1.14**, where the clock said 11.33 and 0.97. It is one error — trim
 speed and incidence both land, so only the drag is wrong. The solved section
 runs 0.0157 at trim against the 0.018–0.025 paraglider sections are quoted at.
 The missing term is named — the shear layer off the cell mouth — and has been

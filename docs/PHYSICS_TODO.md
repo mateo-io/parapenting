@@ -162,11 +162,20 @@ influential number in the stack. XFOIL over a digitised EPIC 2 profile would
 make these `Measured` and is still worth doing - but it is no longer what
 blocks the envelope.
 
-**12. The section drag is optimistic, and this is now the largest disagreement
-in the model.** Glide at trim is **11.33 against a published 9.5** and sink is
-**0.97 against 1.14**. It is one error, not two: trim speed and incidence both
-land (39.8 km/h against 39.0, 5.14 degrees against the 5.30 the published lift
-coefficient needs), so the lift side is right and only the drag is wrong. The
+**12. The section drag is optimistic, and this is still the largest
+disagreement in the model — but a fifth smaller than it was written up as.**
+
+Settled to a criterion (item 18), glide at trim is **10.96 against a published
+9.5** and sink is **1.015 against 1.14**. On the fast suite's 90-second clock
+those read 11.33 and 0.97, so part of what was being called drag was an
+unsettled measurement. Re-check any conclusion in this item that was drawn from
+the older pair.
+
+It is still one error rather than two, and the lift side still carries it: trim
+speed is 40.2 km/h against a published 39.0 and incidence 4.95 degrees against
+the 5.30 the published lift coefficient needs. Note both of those got slightly
+WORSE with proper settling (from +2.1% and 0.16 degrees to +3.1% and 0.35), so
+"trim speed and incidence both land" is a weaker statement than it was. The
 solved section runs about **0.0157 at trim** where paraglider sections are
 usually quoted at 0.018 to 0.025.
 
@@ -616,11 +625,26 @@ currently departs at 40% brake with brake lowering incidence. Swapping it under
 - It is also not a switch flip: `ParagliderPawn` flies `ParagliderDynamics` and
   about twenty headers pull types from it.
 
-**18. Every calibration number was measured after too short a settle.** Item 11
-found that this wing's slow pitch mode needs eight to sixteen minutes to settle
-and that the harness gives it 20 to 60 seconds. `CalibrationManeuver` already
-computes and prints a settled/not-settled flag per manoeuvre, and it has been
-printing `NOT SETTLED` against the brake rows for as long as they have existed.
+**18. Every calibration number was measured after too short a settle.** The
+harness gives each manoeuvre **90 seconds** — already raised once from 15 for
+exactly this reason — where hands-up needs 410 s and 25% brake needs 1080.
+
+The arithmetic is the whole argument: the slow mode is 16.4 s at damping 0.031,
+so 90 s is five and a half periods and leaves e^(−0.031·2π·5.5) ≈ **34% of the
+opening transient still running**. And the `settled` flag does not catch it,
+because holding airspeed to 1% over **two seconds** is a far looser test than
+that mode is slow — two seconds inside a sixteen-second period is a chord of
+the oscillation, not a measurement of it.
+
+- **Credit where it is due, and a correction to my own earlier note here.** The
+  slow mode was not undiscovered. `CalibrationManeuver.cpp` names it — "a slow
+  speed-and-incidence mode near twenty" — records that fitting the whole
+  45 s record locked onto it and reported "a 20.4 s pendulum with a damping
+  ratio of 0.05, which is a true statement about the wrong mode", and windows
+  the pitch identification to 2–9 s specifically to avoid it. What had not been
+  done was connecting that mode to the *settle time*. The measurement in item
+  11 (16.39 s, damping 0.031, off 27 peaks) sharpens a number that was already
+  roughly right.
 
 - The whole Level 9 table in `docs/CALIBRATION_REPORT.md` is therefore
   provisional, including the two published numbers that "land untuned" —
@@ -633,16 +657,34 @@ printing `NOT SETTLED` against the brake rows for as long as they have existed.
   reach a trim point inside twenty minutes of flight, so every deep-brake
   number in the report is a snapshot of a transient, not a disagreement with
   the manufacturer.
-- Do it by settling to a CRITERION rather than lengthening the clock. A fixed
-  settle is a guess whatever number is in it, and `parapenting_pitch_axis_trace`
-  already has the loop to copy.
-- The cost is real and should be planned for: `calibration_tests` currently
-  takes minutes, and settling eight manoeuvres to criterion could take an hour.
-  That probably means the settle-to-criterion run is a separate slow target
-  rather than part of `check-build.sh`, with the fast suite gating against its
-  recorded output.
-- Do this BEFORE re-opening the drag disagreement (item 12) or the brake
-  behaviour, because both are read off this table.
+- **Done: `CalibrationSettings::settleToCriterion`,** which flies windows until
+  incidence holds 0.01° and airspeed 0.01 m/s over ten seconds, reports
+  `actualSettleSeconds` and `preInputSettled`, and applies the same treatment
+  to the record phase — a step input takes as long to settle as the trim does,
+  so a fixed 45 s record averages an oscillation no matter how long the
+  pre-input settle was. Off by default.
+- **`parapenting_calibration_settled`** is the slow target that turns it on. It
+  is deliberately NOT in `Tools/check-build.sh`: settling eight manoeuvres this
+  way is the better part of an hour against minutes for the fast suite. The
+  fast suite keeps its clock-based settle and its own gates; this says whether
+  those gates point at trim points or at transients.
+- **Measured. About a fifth of the drag disagreement was never drag.** Settled
+  properly, hands-up glide is **10.96 against the clock's 11.33** and a
+  published 9.5; sink is 1.015 against 0.97 and a published 1.14. Item 12 is
+  smaller than it was written up as, and still real.
+- **The two "landing untuned" numbers land slightly worse.** Trim speed goes
+  from +2.1% over published to **+3.1%** (11.175 m/s, 40.2 km/h against 39),
+  and incidence from 5.14° to **4.95°** against the 5.30° the published lift
+  coefficient needs.
+- **Two consistency checks now pass that could not before.** The brake pulse
+  returns to exactly hands-up trim (11.173 against 11.175 m/s, 4.95° against
+  4.95°) and weight shift leaves the speed alone (11.189). On the 90 s clock
+  those read as different flight states, 11.56 and 11.09 — which was the
+  transient, not the manoeuvre. That is the clearest evidence that the settled
+  numbers are the real ones.
+- Still open: 25% brake does not settle even given 1500 s after its input.
+  Deep brake and full bar do reach a steady state, but a fully separated one at
+  86–91° of incidence — a steady state, not a trim point.
 
 ## Data gaps
 

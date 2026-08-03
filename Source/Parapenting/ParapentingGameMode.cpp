@@ -14,6 +14,7 @@
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
@@ -21,7 +22,14 @@
 #include "Physics/RouteCatalogue.h"
 #include "Physics/WindsockModel.h"
 #include "UObject/ConstructorHelpers.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformMisc.h"
+#include "ImageUtils.h"
+#include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "UnrealClient.h"
 
 AParapentingGameMode::AParapentingGameMode()
 {
@@ -35,6 +43,18 @@ void AParapentingGameMode::InitGame(
     const FString& MapName, const FString& Options, FString& ErrorMessage)
 {
     Super::InitGame(MapName, Options, ErrorMessage);
+
+    bVisualQACaptureRequested = FParse::Value(
+        FCommandLine::Get(), TEXT("VisualQACapture="), VisualQACaptureName);
+    FString VisualQAHourText;
+    if (FParse::Value(
+            FCommandLine::Get(), TEXT("VisualQAHour="), VisualQAHourText))
+    {
+        VisualQALocalHour = FCString::Atod(*VisualQAHourText);
+    }
+    FParse::Value(
+        FCommandLine::Get(), TEXT("VisualQAWarmup="), VisualQAWarmupSeconds);
+    VisualQAWarmupSeconds = FMath::Max(1.0f, VisualQAWarmupSeconds);
 
     // InitGame runs before the default pawn is spawned. Loading the
     // authoritative terrain here guarantees the pawn's BeginPlay/ResetFlight
@@ -112,9 +132,18 @@ void AParapentingGameMode::BeginPlay()
     }
 
     ASkyLight* Sky = World->SpawnActor<ASkyLight>();
-    Sky->GetLightComponent()->SetIntensity(0.42f);
-    Sky->GetLightComponent()->SetRealTimeCapture(true);
-    Sky->GetLightComponent()->SetMobility(EComponentMobility::Movable);
+    SkyLightComponent = Sky->GetLightComponent();
+    // M_VertexLit removes the old fake key light from terrain vertex colours.
+    // The previous 0.42 skylight then left every sun-facing-away slope close
+    // to black. Alpine shade is cool and strongly sky-lit, not unilluminated:
+    // use the atmosphere capture as the fill and retain a restrained lower-
+    // hemisphere ground bounce for canopy undersides and steep valley walls.
+    SkyLightComponent->SetIntensity(1.35f);
+    SkyLightComponent->bLowerHemisphereIsBlack = false;
+    SkyLightComponent->SetLowerHemisphereColor(
+        FLinearColor(0.055f, 0.070f, 0.085f));
+    SkyLightComponent->SetRealTimeCapture(true);
+    SkyLightComponent->SetMobility(EComponentMobility::Movable);
 
     ASkyAtmosphere* AtmosphereActor = World->SpawnActor<ASkyAtmosphere>();
     USkyAtmosphereComponent* Atmosphere = AtmosphereActor->GetComponent();
@@ -537,11 +566,34 @@ void AParapentingGameMode::BeginPlay()
 void AParapentingGameMode::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    const AParagliderPawn* Glider =
+    AParagliderPawn* Glider =
         Cast<AParagliderPawn>(GetWorld() ? GetWorld()->GetFirstPlayerController()
             ? GetWorld()->GetFirstPlayerController()->GetPawn() : nullptr
             : nullptr);
     if (!Glider) return;
+
+    if (bVisualQACaptureRequested && !bVisualQATimeApplied)
+    {
+        StartVisualQACapture(*Glider);
+    }
+    if (bVisualQACaptureRequested && bVisualQATimeApplied
+        && !bVisualQAScreenshotRequested)
+    {
+        VisualQAWarmupSeconds -= DeltaSeconds;
+        if (VisualQAWarmupSeconds <= 0.0f)
+        {
+            bVisualQAScreenshotRequested = true;
+            FScreenshotRequest::OnScreenshotCaptured().AddUObject(
+                this, &AParapentingGameMode::SaveVisualQACapture);
+            FScreenshotRequest::OnScreenshotRequestProcessed().AddUObject(
+                this, &AParapentingGameMode::FinishVisualQACapture);
+            FScreenshotRequest::RequestScreenshot(
+                VisualQACapturePath, false, false, false, FIntRect(), true);
+            UE_LOG(LogTemp, Display,
+                TEXT("Parapenting Visual QA: requested %s"),
+                *VisualQACapturePath);
+        }
+    }
     const auto Cloud = Glider->GetCloudFieldState();
     if (CloudComponent)
     {
@@ -584,6 +636,15 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
         SunComponent->CloudShadowOnSurfaceStrength =
             static_cast<float>(
                 Cloud.shadowStrength * Diurnal.ambientLight);
+        if (SkyLightComponent)
+        {
+            // Keep shadow fill coupled to deterministic simulation time. The
+            // sky remains present near dawn, while midday gets enough diffuse
+            // light to preserve forest and rock detail without flattening the
+            // directional sun term.
+            SkyLightComponent->SetIntensity(static_cast<float>(
+                0.42 + 0.93 * Diurnal.ambientLight));
+        }
     }
     for (int32 Index = 0;
          Index < WindsockComponents.Num()
@@ -616,5 +677,77 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
             static_cast<float>(3.0 * Sock.lengthScale)));
         WindsockComponent->SetWorldLocation(
             WindsockAnchorsCm[Index] + Direction * (LengthCm * 0.5f));
+    }
+}
+
+void AParapentingGameMode::StartVisualQACapture(AParagliderPawn& Glider)
+{
+    bVisualQATimeApplied = true;
+    Glider.SetVisualQALocalHour(VisualQALocalHour);
+
+    FString SafeName = VisualQACaptureName;
+    for (TCHAR& Character : SafeName)
+    {
+        if (!FChar::IsAlnum(Character) && Character != TEXT('-')
+            && Character != TEXT('_'))
+        {
+            Character = TEXT('_');
+        }
+    }
+    if (SafeName.IsEmpty())
+        SafeName = TEXT("capture");
+
+    const FString CaptureDirectory = FPaths::Combine(
+        FPaths::ProjectSavedDir(), TEXT("VisualQA"));
+    IFileManager::Get().MakeDirectory(*CaptureDirectory, true);
+    VisualQACapturePath = FPaths::Combine(
+        CaptureDirectory,
+        FString::Printf(TEXT("%s_%05.2fh.png"),
+            *SafeName, VisualQALocalHour));
+
+    if (APlayerController* Controller = GetWorld()
+            ? GetWorld()->GetFirstPlayerController() : nullptr)
+    {
+        Controller->SetShowMouseCursor(false);
+        if (AHUD* Hud = Controller->GetHUD())
+            Hud->bShowHUD = false;
+    }
+    UE_LOG(LogTemp, Display,
+        TEXT("Parapenting Visual QA: fixed time %.2f, warmup %.1fs"),
+        VisualQALocalHour, VisualQAWarmupSeconds);
+}
+
+void AParapentingGameMode::FinishVisualQACapture()
+{
+    FScreenshotRequest::OnScreenshotCaptured().RemoveAll(this);
+    FScreenshotRequest::OnScreenshotRequestProcessed().RemoveAll(this);
+    const bool bCaptureWritten =
+        IFileManager::Get().FileSize(*VisualQACapturePath) > 0;
+    if (bCaptureWritten)
+    {
+        UE_LOG(LogTemp, Display,
+            TEXT("Parapenting Visual QA: captured %s"),
+            *VisualQACapturePath);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("Parapenting Visual QA: FAILED to capture %s"),
+            *VisualQACapturePath);
+    }
+    FPlatformMisc::RequestExitWithStatus(false, bCaptureWritten ? 0 : 2);
+}
+
+void AParapentingGameMode::SaveVisualQACapture(
+    int32 Width, int32 Height, const TArray<FColor>& Colors)
+{
+    TArray64<uint8> CompressedPng;
+    FImageUtils::PNGCompressImageArray(
+        Width, Height, MakeArrayView(Colors), CompressedPng);
+    if (!FFileHelper::SaveArrayToFile(CompressedPng, *VisualQACapturePath))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("Parapenting Visual QA: could not write %s"),
+            *VisualQACapturePath);
     }
 }

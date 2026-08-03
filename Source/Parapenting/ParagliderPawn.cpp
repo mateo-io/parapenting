@@ -2029,6 +2029,14 @@ void AParagliderPawn::CycleTimeOfDay()
     ResetFlight();
 }
 
+void AParagliderPawn::SetVisualQALocalHour(double LocalHour)
+{
+    AirModel.SetStartLocalHour(LocalHour);
+    bLiveWeatherActive = false;
+    LiveWeatherStatus = TEXT("VISUAL QA TIME OVERRIDE");
+    ResetFlight();
+}
+
 void AParagliderPawn::FetchLiveWeather()
 {
     LiveWeatherStatus = TEXT("FETCHING OPEN-METEO MODEL...");

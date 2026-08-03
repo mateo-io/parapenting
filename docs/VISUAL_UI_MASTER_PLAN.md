@@ -361,6 +361,8 @@ until it lands.
   drops its baked key light the moment the material is lit, so every ground
   colour changes at once; the before/after pair is the evidence that the new
   palette is better, not just different.
+  A Shipping-compatible fixed-time capture harness now exists; the fallback
+  baseline and reviewed comparison images remain to be produced.
 - [ ] Add a deliberate magenta error material, and make its appearance a test
   failure rather than a thing people learn to ignore. `M_VisualError` now
   exists; the automated appearance assertion remains.
@@ -374,8 +376,8 @@ until it lands.
   deliberately whether to turn exposure on with a bounded compensation range or
   keep it off and author fixed exposure per weather preset. Either is
   defensible; drifting between them is not. The fixed-exposure policy is now
-  recorded in `docs/VISUAL_QA.md`; morning/midday/evening calibration awaits
-  the repeatable capture harness.
+  recorded in `docs/VISUAL_QA.md`; the first diurnal skylight-fill calibration
+  is implemented, while reviewed morning/midday/evening captures remain open.
 - [x] Create a small calibrated PBR swatch library: grass, soil, limestone,
   snow, water, ripstop nylon, webbing, metal and skin/clothing.
 - [ ] Add shader complexity and texture-density debug modes to the QA flow.

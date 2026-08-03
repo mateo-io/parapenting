@@ -122,6 +122,9 @@ public:
         { return AirModel.SampleDiurnalState(SimulationTimeSeconds); }
     double GetLocalTimeHours() const
         { return GetDiurnalState().localHour; }
+    // Deterministic visual-QA entry point. Kept separate from player input so
+    // packaged capture jobs can select an exact sun state without cycling F11.
+    void SetVisualQALocalHour(double LocalHour);
     FString GetLocalTimeDisplay() const;
     const char* GetLandingPhaseName() const
         { return Parapenting::Physics::LandingPhaseName(LandingGuidance.phase); }

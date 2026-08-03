@@ -945,6 +945,44 @@ pendulum's tracking of apparent gravity, which is exactly what
 `swingDampingRatio` stands in for, and whether a real wing tracks that
 completely is checkable against a real wing.
 
+## 35. A good explanation earns one prediction; spend it somewhere it can fail
+
+§34 explained the slow mode's period and damping from one measured exponent. The
+next question was the departure at `swingDampingRatio` 0.25, and the exponent
+made a prediction about it for free: `ω = g√n/V` is oscillatory for n > 0 and
+divergent for n < 0, and the wing sits at n = 0.171 — a fifteenth of classical
+and very close to the sign change. If the ratio buys tracking, and tracking
+flattens the lift curve against speed, the departure should be **n crossing
+zero**: one number whose size is the period and whose sign is the stability.
+
+It is not. n stays between 0.14 and 0.19 straight across the boundary, and the
+ratio that departs soonest has the highest n in the table. What actually grows,
+identified by its period, is a 3.6–5.7 s mode — the pendulum band, not the
+16.4 s phugoid.
+
+**The failure was worth more than the confirmation would have been.** It cost
+one cheap run, and it removed a whole class of theories: the phugoid mechanism,
+now understood in detail, simply does not reach the departure. Item 11 had spent
+two levels treating "the slow mode" and "the departure" as one problem. They are
+two, and only one of them is solved.
+
+**Design the test so it can lose.** The prediction was stated before the run, in
+the file, with the failing outcome written out beside the passing one — "if the
+departing ratios still measure n > 0, this explanation does not reach it". A
+prediction recorded only after the answer is known is not a prediction, and an
+explanation that survives because nothing was staked on it has not been tested.
+
+**And name the culprit, not just the acquittal.** "Not the phugoid" would have
+been a weak result. Measuring the period of what does grow costs the same run
+and points at the next mode. That needed a 10 Hz trace: the 1 Hz sampling that
+the phugoid work ran on cannot resolve a 2.91 s mode at all, and undersampling
+a mode into invisibility is precisely how this item lost two levels the first
+time. When moving to a new mode, check the sample rate against *that* mode.
+
+One thing did follow the ratio, and it is the part of §34 that survives: dα/dV
+moves −1.27 to −1.72 as the ratio rises. The coefficient does buy pendulum
+tracking. Tracking is just not what the departure is made of.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -987,3 +1025,5 @@ completely is checkable against a real wing.
 | phugoid drag exponent, D ~ V^d | 0.313 | classical 2; this is the low damping |
 | incidence against speed, slow mode | -1.69 deg/(m/s) | the pendulum holds lift, not incidence |
 | lift swing over the slow mode | 0.97% of weight | what is left to restore with |
+| mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
+| its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |

@@ -185,14 +185,30 @@ Settled Fly(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
 // the period fix without that would be claiming a win while quietly making
 // the other half worse. So d is measured too, off the TANGENTIAL direction of
 // the same path: `D = -m (g sin gamma + Vdot)`.
-void ReportPhugoidMechanism(const std::vector<double>& speed,
-                            const std::vector<double>& gamma,
-                            const std::vector<double>& alpha,
-                            std::size_t from, std::size_t to,
-                            double massKg, double periodS,
-                            double classicalPeriodS, double measuredDamping)
+struct Exponents
 {
-    if (to <= from + 4 || to + 1 >= speed.size()) return;
+    double lift = 0.0;          // n in L ~ V^n
+    double drag = 0.0;          // d in D ~ V^d
+    double glideRatio = 0.0;
+    double alphaSlopeDegPerMps = 0.0;
+    double lowLiftN = 0.0;
+    double highLiftN = 0.0;
+    double meanSpeedMps = 0.0;
+    int samples = 0;
+    bool valid = false;
+};
+
+// The regression itself, factored out because the departure runs below need
+// exactly this and a second copy of the arithmetic is a second place for it to
+// be wrong.
+Exponents MeasureExponents(const std::vector<double>& speed,
+                           const std::vector<double>& gamma,
+                           const std::vector<double>& alpha,
+                           std::size_t from, std::size_t to,
+                           double massKg, double periodS)
+{
+    Exponents out;
+    if (to <= from + 4 || to + 1 >= speed.size()) return out;
 
     // A central difference on 1 s samples underestimates the rate of a
     // sinusoid by sin(wh)/(wh) - 2.5% at this period. Small, known exactly,
@@ -233,19 +249,41 @@ void ReportPhugoidMechanism(const std::vector<double>& speed,
         highLift = std::max(highLift, lift);
         ++count;
     }
-    if (count < 8) return;
+    if (count < 8) return out;
 
     const double nDenominator = count * sumLnVLnV - sumLnV * sumLnV;
-    if (std::fabs(nDenominator) < 1.0e-12) return;
-    const double liftExponent =
-        (count * sumLnVLnL - sumLnV * sumLnL) / nDenominator;
-    const double dragExponent =
-        (count * sumLnVLnD - sumLnV * sumLnD) / nDenominator;
-    const double glideRatio = sumLift / sumDrag;
-    const double alphaSlope =
+    if (std::fabs(nDenominator) < 1.0e-12) return out;
+    out.lift = (count * sumLnVLnL - sumLnV * sumLnL) / nDenominator;
+    out.drag = (count * sumLnVLnD - sumLnV * sumLnD) / nDenominator;
+    out.glideRatio = sumLift / sumDrag;
+    out.alphaSlopeDegPerMps =
         (count * sumVA - sumV * sumA) / (count * sumVV - sumV * sumV);
+    out.lowLiftN = lowLift;
+    out.highLiftN = highLift;
+    out.samples = count;
+    out.meanSpeedMps = sumV / count;
+    out.valid = true;
+    return out;
+}
 
-    const double meanSpeed = sumV / count;
+void ReportPhugoidMechanism(const std::vector<double>& speed,
+                            const std::vector<double>& gamma,
+                            const std::vector<double>& alpha,
+                            std::size_t from, std::size_t to,
+                            double massKg, double periodS,
+                            double classicalPeriodS, double measuredDamping)
+{
+    const Exponents e =
+        MeasureExponents(speed, gamma, alpha, from, to, massKg, periodS);
+    if (!e.valid) return;
+    const double liftExponent = e.lift;
+    const double dragExponent = e.drag;
+    const double glideRatio = e.glideRatio;
+    const double alphaSlope = e.alphaSlopeDegPerMps;
+    const double lowLift = e.lowLiftN;
+    const double highLift = e.highLiftN;
+
+    const double meanSpeed = e.meanSpeedMps;
     // What n the measured period implies, and what period the measured n
     // implies. Two roads to the same number; they are printed side by side
     // because the point is whether they meet.
@@ -311,6 +349,198 @@ void ReportPhugoidMechanism(const std::vector<double>& speed,
                 "explanation,\n  it is a worse one - it lengthens the period "
                 "and leaves the drag term whole,\n  which over-damps the "
                 "prediction by a factor of several.\n\n");
+}
+
+// The departure at swingDampingRatio 0.25, and whether it is the SAME thing.
+//
+// With the period and the damping both falling out of the lift exponent, item
+// 11's remaining question is why the aircraft departs below a swing damping
+// ratio of about 0.3 - the only reason that number is 0.35 rather than the
+// ~0.06 pilot and line drag imply.
+//
+// The exponent makes that question a prediction rather than a new search.
+// `omega = g sqrt(n) / V` is oscillatory for n > 0 and DIVERGENT for n < 0: at
+// n < 0 the wing lifts less when it flies faster, which is a wing with no
+// speed stability left. The hands-up mode sits at n = 0.171, which is very
+// close to zero - a fifteenth of classical. If the ratio is buying tracking,
+// and tracking is what flattens the lift curve against speed, then the
+// departure should be n CROSSING ZERO and nothing else. One number whose sign
+// is stability and whose size is the period.
+//
+// This is a real test because it can fail cleanly: if the ratios that depart
+// still measure n > 0, the departure is a different mechanism - most likely
+// the fast pendulum mode - and this explanation does not reach it.
+//
+// Cheap, unlike everything else in this file: a departure happens in a minute
+// or two, where a settled measurement takes twenty.
+struct DivergingMode
+{
+    double periodS = 0.0;
+    // Amplitude growth per cycle. Above 1 the mode is growing, which is what
+    // a departure is made of.
+    double growthPerCycle = 0.0;
+    int cycles = 0;
+    bool valid = false;
+};
+
+// WHICH mode is growing, identified by its period. The two candidates are far
+// enough apart that this is unambiguous: the pendulum mode is 2.91 s, the
+// phugoid 16.4 s. Read off the last stretch before departure, where whatever
+// is diverging dominates everything else.
+DivergingMode MeasureDivergingMode(const std::vector<double>& fineAlpha,
+                                   int departedAt)
+{
+    DivergingMode out;
+    // The last 40 s before it lets go, at 10 Hz. Before that the transient
+    // the run started on is still mixed in.
+    const std::size_t end = departedAt > 0
+        ? static_cast<std::size_t>(departedAt) * 10
+        : fineAlpha.size();
+    if (end < 500) return out;
+    const std::size_t begin = end - 400;
+
+    // Peaks and troughs, on a trace sampled ten times faster than the fastest
+    // mode being looked for.
+    std::vector<std::size_t> peaks, troughs;
+    for (std::size_t i = begin + 2; i + 2 < end; ++i)
+    {
+        if (fineAlpha[i] > fineAlpha[i - 2] && fineAlpha[i] > fineAlpha[i + 2]
+            && fineAlpha[i] >= fineAlpha[i + 1])
+            peaks.push_back(i);
+        if (fineAlpha[i] < fineAlpha[i - 2] && fineAlpha[i] < fineAlpha[i + 2]
+            && fineAlpha[i] <= fineAlpha[i + 1])
+            troughs.push_back(i);
+    }
+    if (peaks.size() < 3 || troughs.size() < 3) return out;
+
+    out.periodS = static_cast<double>(peaks.back() - peaks.front())
+        / static_cast<double>(peaks.size() - 1) / 10.0;
+    out.cycles = static_cast<int>(peaks.size()) - 1;
+
+    // Amplitude peak-to-trough, first cycle against last. A divergence has no
+    // settled value to measure amplitude about, so the trough is the
+    // reference rather than a mean.
+    const std::size_t firstTrough = troughs.front();
+    const std::size_t lastTrough = troughs.back();
+    const double firstAmplitude =
+        fineAlpha[peaks.front()] - fineAlpha[firstTrough];
+    const double lastAmplitude = fineAlpha[peaks.back()] - fineAlpha[lastTrough];
+    if (firstAmplitude > 1.0e-9 && lastAmplitude > 1.0e-9 && out.cycles > 0)
+    {
+        out.growthPerCycle = std::pow(lastAmplitude / firstAmplitude,
+                                      1.0 / static_cast<double>(out.cycles));
+        out.valid = true;
+    }
+    return out;
+}
+
+void ReportDeparture(const CanopyGeometry& canopy, const LinePlanSpec& linePlan)
+{
+    std::printf("Departure: is it the same exponent, crossing zero?\n");
+    std::printf("%8s %9s %10s %9s %9s %10s %9s %10s  %s\n",
+                "ratio", "n", "d", "alpha/V", "L/D", "outcome",
+                "growing", "per cycle", "note");
+
+    constexpr int MaximumSeconds = 400;
+    for (const double ratio : {0.20, 0.25, 0.30, 0.35, 0.50})
+    {
+        CoupledParagliderSolver solver(canopy, linePlan);
+        solver.SetSwingDampingRatio(ratio);
+        const double massKg = solver.AllUpMassKg();
+        CoupledState state;
+        std::vector<double> alpha, speed, gamma;
+        // A second trace at 10 Hz, for identifying the mode that diverges by
+        // its PERIOD. The 1 Hz samples above cannot do it: the pendulum mode
+        // is 2.91 s, and one sample a second cannot resolve it at all. Which
+        // is worth saying out loud, because sampling too slowly to see a mode
+        // is exactly how this item spent two levels not seeing the other one.
+        std::vector<double> fineAlpha;
+        int departedAt = 0;
+        for (int second = 0; second < MaximumSeconds; ++second)
+        {
+            for (int tenth = 0; tenth < 10; ++tenth)
+            {
+                for (int step = 0; step < 12; ++step)
+                    solver.Step(state, CoupledControls{}, CoupledAtmosphere{});
+                fineAlpha.push_back(
+                    solver.Diagnostics().angleOfAttackRad * Degrees);
+            }
+            alpha.push_back(solver.Diagnostics().angleOfAttackRad * Degrees);
+            speed.push_back(solver.Diagnostics().airspeedMps);
+            const Vec3& v = state.velocityWorldMps;
+            gamma.push_back(std::atan2(v.z,
+                                       std::sqrt(v.x * v.x + v.y * v.y)));
+            if (solver.Diagnostics().angleOfAttackRad > 0.35)
+            {
+                departedAt = second + 1;
+                break;
+            }
+        }
+        const DivergingMode dm = MeasureDivergingMode(fineAlpha, departedAt);
+
+        // Measure over the run BEFORE it departs, and stop short of the
+        // departure itself: past 20 degrees the wing is separated and the
+        // lift it is producing is not on the curve this is fitting. Ten
+        // seconds of margin, which is most of a period.
+        const std::size_t end = departedAt > 12
+            ? static_cast<std::size_t>(departedAt) - 11
+            : alpha.size() - 2;
+        // The difference-gain correction wants a period. Where the run is
+        // long enough this is the settled mode's 16.4 s; a diverging run has
+        // no period at all, and at these timescales the correction is 2% - so
+        // it is applied at the nominal value and the error is smaller than
+        // the sign being tested for.
+        const Exponents e =
+            MeasureExponents(speed, gamma, alpha, 5, end, massKg, 16.4);
+
+        const char* outcome = departedAt > 0 ? "DEPARTED" : "flying";
+        if (!e.valid)
+        {
+            std::printf("%8.2f %9s %10s %9s %9s %10s %9s %10s  too few "
+                        "samples before departure\n", ratio, "-", "-", "-",
+                        "-", outcome, "-", "-");
+            continue;
+        }
+        char note[96];
+        if (departedAt > 0)
+            std::snprintf(note, sizeof note, "at %d s", departedAt);
+        else
+            std::snprintf(note, sizeof note, "still flying at %d s",
+                          MaximumSeconds);
+        char growing[16] = "-";
+        char growth[16] = "-";
+        if (dm.valid)
+        {
+            std::snprintf(growing, sizeof growing, "%.2f s", dm.periodS);
+            std::snprintf(growth, sizeof growth, "x%.3f", dm.growthPerCycle);
+        }
+        std::printf("%8.2f %9.3f %10.3f %9.3f %9.2f %10s %9s %10s  %s\n",
+                    ratio, e.lift, e.drag, e.alphaSlopeDegPerMps,
+                    e.glideRatio, outcome, growing, growth, note);
+    }
+    std::printf("\n  n > 0 is an oscillation and n < 0 is a divergence, so if "
+                "the departure is\n  the exponent crossing zero, that column "
+                "changes sign exactly where the\n  outcome column does.\n\n"
+                "  'growing' is the period of whatever is actually growing in "
+                "the last 40 s\n  before the wing lets go, off a 10 Hz trace - "
+                "because one sample a second\n  cannot resolve a 2.91 s mode, "
+                "and undersampling a mode into invisibility is\n  precisely "
+                "how this item lost two levels. It names the culprit: 2.9 s is "
+                "the\n  pendulum mode, 16.4 s is the phugoid. A dash is no "
+                "oscillation large enough\n  to measure in that window, which "
+                "is what a decaying mode looks like.\n\n"
+                "  ANSWERED, in the negative: n does not change sign, so the "
+                "departure is not\n  the phugoid going unstable. What grows is "
+                "3.6-5.7 s - the pendulum band -\n  with net damping ratio "
+                "-0.017 at 0.25 and -0.042 at 0.20, and the boundary\n  lies "
+                "between 0.25 and 0.30. The period differs between the two "
+                "departing\n  runs and the amplitude is large by then, so "
+                "'pendulum band' is as strong a\n  claim as this supports - "
+                "but an order of magnitude is not a close call.\n\n"
+                "  What DID follow the ratio is the tracking: alpha/V goes "
+                "-1.27 to -1.72 as\n  the ratio rises, which is the mechanism "
+                "the phugoid work identified. The\n  ratio buys tracking; "
+                "tracking is not what the departure is made of.\n\n");
 }
 
 // The slow mode itself: period and damping, off successive peaks of a long
@@ -431,8 +661,12 @@ void ReportSlowMode(const CanopyGeometry& canopy, const LinePlanSpec& linePlan)
 
 int main(int argc, char** argv)
 {
-    const bool slowModeOnly =
-        argc > 1 && std::string(argv[1]) == "--slow-mode";
+    const std::string mode = argc > 1 ? std::string(argv[1]) : std::string();
+    const bool slowModeOnly = mode == "--slow-mode";
+    // The departure sweep on its own. Worth a flag: it answers item 11's
+    // remaining question and costs minutes where the rest of this file costs
+    // an hour.
+    const bool departureOnly = mode == "--departure";
     std::printf("Level 10: the pitch axis, instrumented. PHYSICS_TODO item "
                 "11.\n");
     std::printf("Nothing here asserts. Item 11 is an open disagreement and "
@@ -442,7 +676,14 @@ int main(int argc, char** argv)
     const CanopyGeometry canopy;
     const LinePlanSpec linePlan = Epic2MlLinePlan();
 
+    if (departureOnly)
+    {
+        ReportDeparture(canopy, linePlan);
+        return 0;
+    }
+
     ReportSlowMode(canopy, linePlan);
+    ReportDeparture(canopy, linePlan);
     if (slowModeOnly) return 0;
 
     // -- what brake commands against what it gets --------------------------

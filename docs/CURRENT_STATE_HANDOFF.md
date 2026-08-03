@@ -257,8 +257,15 @@ and the phugoid's restoring force is only the leftover. `PHYSICS_LEARNINGS` §34
 
 Consequence for anyone picking this up: the slow mode is **not** evidence about
 `swingDampingRatio` — the tuned coefficient appears in neither formula. What
-still pins it at 0.35 is that the aircraft departs at 0.25, and that is now
-item 11's remaining question.
+still pins it at 0.35 is that the aircraft departs at 0.25.
+
+**And that departure is a different mode, which was checked rather than
+assumed.** The exponent predicts divergence when n goes negative, so the
+departure should have been n crossing zero. It is not: n stays 0.14–0.19 across
+the boundary, and `--departure` shows the thing actually growing is a
+**3.6–5.7 s** mode — the pendulum band — with damping −0.017 at ratio 0.25 and
+−0.042 at 0.20. So item 11 is two problems, not one: the slow mode is explained,
+the fast one is not. `PHYSICS_LEARNINGS` §35.
 
 What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
 pendulum mode — the wing swinging against the pilot after a brake pulse — which

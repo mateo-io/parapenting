@@ -459,15 +459,44 @@ stands in for, and it is checkable against a real wing in a way "the period is
   appearing nowhere in either formula. So the 0.031 damping ratio can no longer
   be read as "the pendulum damping is wrong" — it is what a wing with a nearly
   cancelled speed-lift gradient does regardless.
-- **Next, and narrower than the item has ever been:** why does the aircraft
-  DEPART at `swingDampingRatio` 0.25? That is now the only thing pinning the
-  value at 0.35 rather than the ~0.06 that pilot and line drag imply, and it is
-  a stability question about the fast pendulum mode, not about the phugoid the
-  last two levels went after. The phugoid explanation above also predicts what
-  to look at: the incidence excursion of −1.69°/(m/s) is the pendulum's
-  tracking, so if tracking is what 0.35 is buying, that slope should move with
-  the ratio and the departure should be the point where it stops tracking at
-  all.
+- **The departure is NOT the phugoid, and that was a prediction that failed.**
+  `ω = g√n/V` diverges for n < 0, so if the departure were this mechanism the
+  lift exponent would change sign exactly at the stability boundary. It does
+  not. `parapenting_pitch_axis_trace --departure`:
+
+| ratio | n | d | dα/dV | outcome | growing | per cycle |
+|---|---|---|---|---|---|---|
+| 0.20 | 0.190 | 0.514 | −1.504 | DEPARTED at 93 s | **5.68 s** | ×1.302 |
+| 0.25 | 0.145 | 0.661 | −1.272 | DEPARTED at 348 s | **3.62 s** | ×1.113 |
+| 0.30 | 0.181 | 0.341 | −1.674 | flying at 400 s | — | — |
+| 0.35 | 0.170 | 0.306 | −1.686 | flying at 400 s | — | — |
+| 0.50 | 0.142 | 0.252 | −1.715 | flying at 400 s | — | — |
+
+  n stays between 0.14 and 0.19 across the boundary and does not even trend —
+  0.20, which departs soonest, has the *highest* n in the table. Fed through
+  `ζ = (d/2)/((L/D)√n)` the departing rows come out better damped (0.056 at
+  0.20 against 0.034 at 0.35). The phugoid does not go unstable here.
+
+- **What does: a mode in the pendulum band, measured by its period.** Off a
+  10 Hz trace of the last 40 s before the wing lets go — 1 Hz cannot resolve a
+  2.91 s mode, and undersampling a mode into invisibility is how this item lost
+  two levels — the thing growing is **3.6–5.7 s**, not the phugoid's 16.4 s. Net
+  damping ratio **−0.017 at 0.25 and −0.042 at 0.20**, so the stability boundary
+  is between 0.25 and 0.30. The two departing runs disagree on period and the
+  amplitude is large by then, so "pendulum band" is as strong a claim as this
+  supports — but an order of magnitude is not a close call.
+- **One thing did follow the ratio, and it is the phugoid mechanism:** dα/dV
+  goes −1.27 to −1.72 as the ratio rises. `swingDampingRatio` really is buying
+  pendulum tracking, exactly as the exponent work implied. Tracking is simply
+  not what the departure is made of.
+- **Next:** the fast mode's damping, and what is taking it negative.
+  `swingDampingRatio` is the only *explicit* damper in that mode — it divides
+  the link rate against the world every step — so a mode that still diverges at
+  0.25 means something else is feeding it. Measure the pendulum mode's damping
+  against the ratio directly, rather than inferring it from whether the
+  aircraft survived; note that `calibration_tests` reports 0.28 for the
+  brake-pulse pendulum at ratio 0.35, which does not extrapolate to the −0.017
+  measured at 0.25, so those two may not be the same mode either.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

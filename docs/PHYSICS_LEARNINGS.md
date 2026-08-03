@@ -1093,6 +1093,60 @@ and both periods hold, while the slow mode's damping moves 19%. Without that
 check all six numbers would have been reported with equal confidence, and one of
 them does not deserve it.
 
+## 38. Refuting one part of an eigenvalue is not refuting the mode
+
+`pitch_eigenmodes --sweep` takes §37's spectrum through the departure boundary:
+the same settled state, `swingDampingRatio` changed underneath it, eigenvalues
+at twelve ratios from 0.90 to 0.10.
+
+**The prediction, written in the file before the run, failed.** It was that the
+*fast* mode goes unstable — the ratio is a link damping, the departure is fast,
+`--departure` had identified the growing mode in the pendulum band. The fast
+mode does not cross. Its real part moves from −0.368 to −0.304 across a ninefold
+change in the coefficient, its period does not move at all, and it is still
+firmly damped at 0.10 where the aircraft certainly leaves.
+
+Something does cross, between **0.28 and 0.25**, and it is the **16 s phugoid**
+arriving by its damping. Its period tracks 16.3 → 13.8 s as the ratio falls and
+its real part goes through zero right at the documented boundary — from three
+runs that did not know about each other: two transition times, and again about
+each ratio's own from-scratch trim.
+
+**§35 acquitted the phugoid, and this is how a careful test still concluded too
+much.** §35 predicted the lift exponent `n` would cross zero, measured it
+holding at 0.14–0.19, and inferred the phugoid does not reach the departure. But
+`ω = g√n / V` is a claim about the mode's *frequency* — n crossing zero is the
+oscillation becoming a divergence. n staying positive rules that out and nothing
+else. The phugoid arrives by the part of the eigenvalue ω says nothing about,
+and the period staying near 16 s across the boundary — which §35 itself measured
+— is exactly what that looks like. **A prediction about the real part and a
+prediction about the imaginary part are two predictions; refuting one is not
+evidence about the other.**
+
+**The instrument's own uncertainty landed on the answer.** §37's linearity check
+separated the converged numbers from the one that was not, and the one that was
+not is the slow mode's damping. The crossing is a sign change in precisely that
+number. The *ordering* is solid — monotone in the ratio, three independent
+runs — so the finding stands as "the phugoid's damping crosses near the
+boundary"; the interval 0.28–0.25 should not be quoted tighter. Being able to
+say which half of a result is load-bearing is what the check bought.
+
+**The corroboration failed and it is reported as failed.** The sweep flies each
+ratio and fits the growth of a control-subtracted trace, so the spectrum would
+have a trajectory behind it. It fitted at two ratios out of twelve, at R² 0.26
+and 0.43, and disagreed with the eigenvalue eightfold. The diagnosis is the
+instrument: it watches the *link* over 40 s, and the mode that crosses is a 16 s
+oscillation growing at 0.008/s on a signal the fast mode has already left.
+Undersampling a mode into invisibility, for the third time in this item, on the
+third different instrument. The eigenvalue crossing currently has **no
+time-domain confirmation**, and the sweep says so in its own output.
+
+**Still unreconciled:** §35 identified the growing mode on a departing wing at
+3.6–5.7 s, and no such mode exists in this spectrum at any ratio. That reading
+was taken at large amplitude on a wing already leaving, where a linearisation
+has no claim — so the two are not in contradiction, and they are also not
+reconciled.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1139,3 +1193,6 @@ them does not deserve it.
 | slow mode, by eigenvalue | 16.40 s, zeta 0.033 | against 16.39 / 0.031 off a trace |
 | mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
+| fast mode's real part, ratio 0.90 to 0.10 | -0.368 to -0.304 /s | it never crosses; not the departure - §38 |
+| mode whose damping DOES cross | the 16 s phugoid | between ratio 0.28 and 0.25 - §38 |
+| phugoid period, ratio 0.90 to 0.10 | 23.4 s to 13.8 s | the frequency never goes imaginary |

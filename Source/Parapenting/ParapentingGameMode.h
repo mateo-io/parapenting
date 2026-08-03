@@ -31,6 +31,7 @@ private:
     bool bVisualQAScreenshotRequested = false;
     float VisualQAWarmupSeconds = 4.0f;
     double VisualQALocalHour = 13.0;
+    int32 VisualQAWeatherPreset = INDEX_NONE;
     FString VisualQACaptureName;
     FString VisualQACapturePath;
 
@@ -44,10 +45,19 @@ private:
     TObjectPtr<class USkyLightComponent> SkyLightComponent;
 
     UPROPERTY()
+    TObjectPtr<class UExponentialHeightFogComponent> FogComponent;
+
+    UPROPERTY()
     TObjectPtr<class UMaterialInstanceDynamic> CloudMaterialInstance;
 
     UPROPERTY()
     TArray<TObjectPtr<class UStaticMeshComponent>> WindsockComponents;
+
+    // Water is the only surface in the current authored library with a
+    // complete wind-readable parameter contract.  These are render-only MIDs:
+    // changing them must never feed into TerrainModel or AtmosphereModel.
+    UPROPERTY()
+    TArray<TObjectPtr<class UMaterialInstanceDynamic>> WaterMaterialInstances;
 
     TArray<FVector> WindsockAnchorsCm;
     TArray<FVector2D> WindsockSamplePositionsM;

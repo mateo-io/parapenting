@@ -34,6 +34,7 @@ add_executable(parapenting_physics_tests
     ../Source/Parapenting/Physics/CameraFeedback.cpp
     ../Source/Parapenting/Physics/AudioFeedback.cpp
     ../Source/Parapenting/Physics/PilotPose.cpp
+    ../Source/Parapenting/Physics/GliderRigSnapshot.cpp
     ../Source/Parapenting/Physics/CanopyLoadPose.cpp
     ../Source/Parapenting/Physics/SuspensionSystem.cpp
     ../Source/Parapenting/Physics/ResearchManeuver.cpp

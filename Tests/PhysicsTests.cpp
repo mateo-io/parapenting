@@ -19,6 +19,7 @@
 #include "AudioFeedback.h"
 #include "EquipmentSetup.h"
 #include "PilotPose.h"
+#include "GliderRigSnapshot.h"
 #include "CanopyLoadPose.h"
 #include "InputBindingProfile.h"
 #include "WindsockModel.h"
@@ -164,6 +165,47 @@ int main()
         assert(active.rigOffsetCm.y > neutral.rigOffsetCm.y + 20.0);
         assert(active.rigOffsetCm.z < neutral.rigOffsetCm.z);
         assert(active.rigRotationDegrees.z > 10.0);
+        const auto length = [](const Vec3& a, const Vec3& b)
+        {
+            const Vec3 delta = a - b;
+            return std::sqrt(delta.x * delta.x + delta.y * delta.y
+                + delta.z * delta.z);
+        };
+        assert(std::abs(length(leftBrake.leftShoulderCm, leftBrake.leftElbowCm)
+            - PilotUpperArmLengthCm) < 1e-8);
+        assert(std::abs(length(leftBrake.leftElbowCm, leftBrake.leftHandCm)
+            - PilotForearmLengthCm) < 1e-8);
+        PilotPoseInput fullBrake;
+        fullBrake.leftBrake = 1.0;
+        fullBrake.leftBrakeForceN = 65.0;
+        const auto full = EvaluatePilotPose(fullBrake);
+        assert(std::abs(length(full.leftShoulderCm, full.leftElbowCm)
+            - PilotUpperArmLengthCm) < 1e-8);
+        assert(std::abs(length(full.leftElbowCm, full.leftHandCm)
+            - PilotForearmLengthCm) < 1e-8);
+    }
+    {
+        const auto previous = BuildGliderRigSnapshot({1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+        GliderRigSnapshotInput currentInput{1.0 + 1.0 / 120.0,
+            0.1, 0.0, 0.4, 0.8, 0.0, 35.0, 0.0, 0.0, 0.0,
+            24.0, 45.0};
+        currentInput.telemetry.canopyPressure = 0.6;
+        const auto current = BuildGliderRigSnapshot(currentInput, &previous);
+        const auto halfway = InterpolateGliderRigSnapshot(previous, current, 0.5);
+        assert(std::abs(halfway.brakeTravel[0] - 0.4) < 1e-12);
+        assert(halfway.brakeTravel[1] == 0.0);
+        assert(std::abs(halfway.telemetry.canopyPressure - 0.8) < 1e-12);
+        assert(halfway.brakeTravelVelocityPerS[0] > 40.0);
+        const auto bounded = InterpolateGliderRigSnapshot(previous, current, 4.0);
+        assert(bounded.brakeTravel == current.brakeTravel);
+        for (int side = 0; side < GliderRigSideCount; ++side)
+        {
+            const Vec3 riser = current.riserTopRigCm[side][0]
+                - current.carabinerRigCm[side];
+            assert(std::abs(std::sqrt(riser.x * riser.x + riser.y * riser.y
+                + riser.z * riser.z) - 45.0) < 1e-12);
+        }
     }
     {
         // One layout per surveyed region, and every one of them has to hold

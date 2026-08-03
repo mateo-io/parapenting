@@ -2,6 +2,13 @@
 
 The simulator exposes three persistent HUD modes, cycled with `Tab`.
 
+The cold-boot **Flight Deck** (shown for five seconds at boot, reopened with
+`?`, dismissed with `Esc`) is intentionally separate from those
+in-flight modes. It is a presentation layer over the route, weather, wing,
+graphics, accessibility and input-binding models already owned by the
+simulation. It exposes the currently selected value and the live shortcut for
+each setting; it does not retain a second copy of any of them.
+
 ## Compact (default)
 
 Compact mode keeps only information needed continuously in flight:

@@ -160,6 +160,9 @@ void AParagliderPawn::BeginPlay()
     ManualWindFromDegrees = AirModel.GetSnapshot().windFromDegrees;
     ManualWindSpeedMps = AirModel.GetSnapshot().windSpeedMps;
     ResetFlight();
+    CaptureGliderRigSnapshot(0.0);
+    PreviousRigSnapshot = CurrentRigSnapshot;
+    RenderRigSnapshot = CurrentRigSnapshot;
     RefreshReplayCatalogue();
 
     const auto TintPart = [](UStaticMeshComponent* Part, const FLinearColor& Color)
@@ -212,14 +215,23 @@ void AParagliderPawn::ResetFlight()
     NavigationRoute = Parapenting::Physics::BuildNavigationRoute(
         NavigationLaunch, NavigationLanding);
     NavigationProgress = {};
-    FVector LocationM(
-        Launch.x, Launch.y, LaunchGround + 25.0);
     const double RouteDX = Landing.x - Launch.x;
     const double RouteDY = Landing.y - Launch.y;
     const double RouteLength = FMath::Max(
         1.0, FMath::Sqrt(RouteDX * RouteDX + RouteDY * RouteDY));
     double ForwardX = RouteDX / RouteLength;
     double ForwardY = RouteDY / RouteLength;
+    // The default reset is a flight-lab entry point, not a ground-launch
+    // exercise. Start a short distance down the selected route with enough
+    // clearance to work the controls, read the air and make choices before
+    // needing to set up for landing. `N` still explicitly returns the pilot
+    // to the surveyed launch for the ground-launch flow.
+    constexpr double DefaultFlightStartFromLaunchM = 500.0;
+    const double FlightStartX = Launch.x + ForwardX * DefaultFlightStartFromLaunchM;
+    const double FlightStartY = Launch.y + ForwardY * DefaultFlightStartFromLaunchM;
+    const double FlightStartGround =
+        Parapenting::Physics::TerrainModel::HeightM(FlightStartX, FlightStartY);
+    FVector LocationM(FlightStartX, FlightStartY, FlightStartGround + 75.0);
     const auto ScenarioId =
         Parapenting::Physics::GetTrainingScenarioByIndex(
             SelectedScenarioIndex).id;
@@ -260,6 +272,12 @@ void AParagliderPawn::ResetFlight()
     AppliedControls = {};
     SolverClock.Reset();
     SimulationTimeSeconds = 0.0;
+    PreviousRigSnapshot = {};
+    CurrentRigSnapshot = {};
+    RenderRigSnapshot = {};
+    CaptureGliderRigSnapshot(SimulationTimeSeconds);
+    PreviousRigSnapshot = CurrentRigSnapshot;
+    RenderRigSnapshot = CurrentRigSnapshot;
     bLanded = false;
     bGroundLaunching = false;
     bLaunchHeld = false;
@@ -332,6 +350,15 @@ void AParagliderPawn::StopLaunchRun()
 void AParagliderPawn::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if (bFlightDeckVisible)
+    {
+        FlightDeckAutoCloseSeconds -= DeltaSeconds;
+        if (FlightDeckAutoCloseSeconds <= 0.0f)
+        {
+            bFlightDeckVisible = false;
+            FlightDeckAutoCloseSeconds = 0.0f;
+        }
+    }
     UpdateBindingCapture();
     // Fixed-step spine. The clock owns the accumulator so the step count is
     // derived from total delivered time rather than a residual, and so
@@ -402,6 +429,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             State.velocityWorldMps = RolloutState.velocityWorldMps;
             State.canopyPressure = RolloutState.canopyPressure;
             State.angularVelocityBodyRadps = {};
+            CaptureGliderRigSnapshot(
+                SolverClock.SimulationTimeSeconds() + PhysicsStepSeconds);
             SolverClock.EndStep();
             SimulationTimeSeconds = SolverClock.SimulationTimeSeconds();
             continue;
@@ -471,6 +500,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 State.canopyPressure = FMath::Max(
                     State.canopyPressure, 0.9);
             }
+            CaptureGliderRigSnapshot(
+                SolverClock.SimulationTimeSeconds() + PhysicsStepSeconds);
             SolverClock.EndStep();
             SimulationTimeSeconds = SolverClock.SimulationTimeSeconds();
             continue;
@@ -572,6 +603,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         Debrief.Step(DebriefSample, PhysicsStepSeconds);
         Parapenting::Physics::UpdateNavigationProgress(
             NavigationProgress, NavigationRoute, State.positionWorldM);
+        CaptureGliderRigSnapshot(
+            SolverClock.SimulationTimeSeconds() + PhysicsStepSeconds);
         SolverClock.EndStep();
         SimulationTimeSeconds = SolverClock.SimulationTimeSeconds();
         ApplyIncidentCue(Parapenting::Physics::ScenarioCueCrossed(
@@ -633,7 +666,10 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     SetActorRotation(FQuat(
         State.attitude.x, State.attitude.y, State.attitude.z, State.attitude.w));
 
-    const auto& Telemetry = Dynamics.LastTelemetry();
+    RenderRigSnapshot = Parapenting::Physics::InterpolateGliderRigSnapshot(
+        PreviousRigSnapshot, CurrentRigSnapshot,
+        SolverClock.InterpolationAlpha());
+    const auto& Telemetry = RenderRigSnapshot.telemetry;
     const float AudioAirspeed = bLanded
         ? static_cast<float>(Parapenting::Physics::Length(
             RolloutState.velocityWorldMps))
@@ -792,8 +828,11 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     }
     else if (CameraMode == 2)
     {
-        CameraBase = FVector(115.0f, 0.0f, 85.0f);
-        BaseFov = 103.0f;
+        // Side technical: it intentionally keeps the pilot low and the wing
+        // high in the same frame, so surge and brake travel can be reviewed
+        // without changing any physical transform.
+        CameraBase = FVector(-150.0f, -780.0f, 190.0f);
+        BaseFov = 76.0f;
     }
     const FVector CameraTarget = CameraBase + InertialOffset + FVector(
         -static_cast<float>((Telemetry.airspeedMps - 10.5) * 7.0),
@@ -801,10 +840,11 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         static_cast<float>(Telemetry.harnessPitchRad * 120.0) * MotionScale);
     Camera->SetRelativeLocation(FMath::VInterpTo(
         Camera->GetRelativeLocation(), CameraTarget, DeltaSeconds, 2.8f));
-    const float CameraBasePitch = CameraMode == 2 ? -2.0f : 3.0f;
+    const float CameraBasePitch = CameraMode == 2 ? 8.0f : 3.0f;
+    const float CameraBaseYaw = CameraMode == 2 ? 79.0f : 0.0f;
     const FRotator CameraRotationTarget(
         CameraBasePitch + static_cast<float>(CameraResponse.pitchDegrees),
-        static_cast<float>(CameraResponse.yawDegrees),
+        CameraBaseYaw + static_cast<float>(CameraResponse.yawDegrees),
         static_cast<float>(CameraResponse.rollDegrees));
     Camera->SetRelativeRotation(FMath::RInterpTo(
         Camera->GetRelativeRotation(), CameraRotationTarget, DeltaSeconds, 3.6f));
@@ -918,8 +958,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             bGroundLaunching ? 0.0
             : (bLeft ? Telemetry.leftCravat : Telemetry.rightCravat))
             * TipBlend;
-        const float Brake = static_cast<float>(bLeft
-            ? AppliedControls.leftBrake : AppliedControls.rightBrake);
+        const float Brake = static_cast<float>(RenderRigSnapshot.brakeTravel[
+            bLeft ? 0 : 1]);
         const float SuspensionPressure = bLanded
             ? static_cast<float>(State.canopyPressure)
             : (bGroundLaunching
@@ -990,16 +1030,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         // with the lines running past them from a common point below - which
         // is why the attachments looked wrong and the lines looked parallel.
         const FVector PilotLocal = RiserTopLocalCm(RiserGroup, bLeft);
-        const float LoadedChord =
-            static_cast<float>(AttachStation.chordM) * MetresToCm
-            * static_cast<float>(SuspensionLoadPose.chordScale);
-        FVector CanopyLocal(
-            (0.48f - Chord01) * LoadedChord
-                + static_cast<float>(
-                    (bGroundLaunching ? 0.0 : Telemetry.recoverySurge)
-                        * 350.0),
-            ContractedSpan + Flutter,
-            Arch - Drop);
+        FVector CanopyLocal = CanopyAttachmentLocalCm(Span01, Chord01);
         CanopyLocal =
             CanopyRelativeTransform.TransformPosition(CanopyLocal);
         // The cascade junction, placed where the solver put it: the fraction
@@ -1038,13 +1069,14 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         AddSuspensionSegment(PilotLocal, MidLocal, LineColor, LineRadius);
         AddSuspensionSegment(MidLocal, CanopyLocal, LineColor, LineRadius);
     }
-    // Brake fans are independent of the three load-bearing risers and pull
-    // the trailing edge down toward the pilot's hands.
+    // Brake fan attachments and cascade topology come from the same graph as
+    // the structural lines. There is no decorative span plan here: editing
+    // the authoritative brake attachment list changes what is rendered.
     for (int32 Side = -1; Side <= 1; Side += 2)
     {
         const bool bLeft = Side < 0;
-        const float Brake = static_cast<float>(bLeft
-            ? AppliedControls.leftBrake : AppliedControls.rightBrake);
+        const float Brake = static_cast<float>(RenderRigSnapshot.brakeTravel[
+            bLeft ? 0 : 1]);
         const float BrakeSlack = static_cast<float>(bLeft
             ? Telemetry.leftLineSlack[3] : Telemetry.rightLineSlack[3]);
         const float BrakeTensionN = static_cast<float>(bLeft
@@ -1057,9 +1089,15 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         // holding it were computed independently before, so pulling a brake
         // moved the arm down and left the line ending beside it.
         const FVector HandLocal = BrakeHandLocalCm(bLeft);
-        for (int32 Branch = 0; Branch < 4; ++Branch)
+        for (const auto& BrakeAttachment : LineGraph.nodes)
         {
-            const float Span01 = Side * (0.24f + Branch * 0.20f);
+            if (BrakeAttachment.kind
+                    != Parapenting::Physics::SuspensionNodeKind::CanopyAttachment
+                || BrakeAttachment.row != Parapenting::Physics::LineRow::Brake
+                || (BrakeAttachment.side < 0.0) != bLeft)
+                continue;
+            const float Span01 = static_cast<float>(
+                BrakeAttachment.spanFraction);
             const float AbsSpan = FMath::Abs(Span01);
             const float TipBlend = FMath::SmoothStep(
                 0.42f, 1.0f, AbsSpan);
@@ -1094,26 +1132,21 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 bGroundLaunching ? 0.0 : Telemetry.rotorStrength)
                 * TipBlend * 15.0f * FMath::Sin(static_cast<float>(
                     SimulationTimeSeconds * 11.0 + Span01 * 8.0));
-            FVector TrailingEdge(
-                -0.52f * LoadedChord
-                    + static_cast<float>(
-                        (bGroundLaunching ? 0.0 : Telemetry.recoverySurge)
-                            * 350.0),
-                ContractedSpan,
-                Arch - CollapseDrop - Brake * 55.0f + RotorFlutter
-                    - static_cast<float>(
-                        bGroundLaunching ? 0.0 : Telemetry.deepStall)
-                        * 75.0f);
+            FVector TrailingEdge = CanopyAttachmentLocalCm(
+                BrakeAttachment.spanFraction, BrakeAttachment.chordFraction);
             TrailingEdge =
                 CanopyRelativeTransform.TransformPosition(TrailingEdge);
-            const FVector Cascade = FMath::Lerp(
-                HandLocal, TrailingEdge, 0.62f)
-                + FVector(
-                    28.0f * BrakeSlack,
-                    FMath::Sin(static_cast<float>(
-                        SimulationTimeSeconds * 10.0 + Span01 * 8.0))
-                        * 14.0f * BrakeSlack,
-                    -135.0f * BrakeSlack * BrakeSlack);
+            FVector SolvedOffset = LineShape[
+                static_cast<int32>(Parapenting::Physics::LineRow::Brake)]
+                .OffsetFromRunM * MetresToCm;
+            if (bLeft) SolvedOffset.Y = -SolvedOffset.Y;
+            const FVector Cascade = HandLocal
+                + (TrailingEdge - HandLocal) * LineShape[
+                    static_cast<int32>(Parapenting::Physics::LineRow::Brake)]
+                    .splitAlongRun
+                + SolvedOffset
+                + FVector(0.0f, 0.0f,
+                    -95.0f * FMath::Square(BrakeSlack));
             const float BrakeRadius = FMath::Lerp(
                 0.28f, 0.68f, BrakeLoad01 * (1.0f - BrakeSlack));
             AddSuspensionSegment(
@@ -1277,14 +1310,9 @@ FVector AParagliderPawn::CarabinerLocalCm(bool bLeft) const
     // already rotated by that same roll. Two descriptions of one motion, which
     // is why the pilot and the lines disagreed on screen. The rig supplies it
     // once now, and the telemetry fields remain for CSV and analysis.
-    constexpr float MetresToCm = static_cast<float>(
-        Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
-    const float HalfSeparationCm = 0.5f * MetresToCm * static_cast<float>(
-        Parapenting::Physics::HarnessGeometryFor(Equipment)
-            .carabinerSeparationM);
-    const FVector InRig(
-        -2.0f, bLeft ? -HalfSeparationCm : HalfSeparationCm, 34.0f);
-    return PilotRigToActor().TransformPosition(InRig);
+    const auto& InRig = RenderRigSnapshot.carabinerRigCm[bLeft ? 0 : 1];
+    return PilotRigToActor().TransformPosition(
+        FVector(InRig.x, InRig.y, InRig.z));
 }
 
 FVector AParagliderPawn::RiserTopLocalCm(int32 Group, bool bLeft) const
@@ -1292,15 +1320,10 @@ FVector AParagliderPawn::RiserTopLocalCm(int32 Group, bool bLeft) const
     // A, A', B, C front to back. Real risers are about 45 cm of webbing with
     // the groups separated by a few centimetres fore and aft; that separation
     // is what makes the mains fan instead of running as one parallel sheet.
-    static constexpr float ForeAftCm[4] = {6.0f, 1.0f, -5.0f, -11.0f};
-    static constexpr float RiserLengthCm = 45.0f;
     const int32 Index = FMath::Clamp(Group, 0, 3);
-    const FVector Carabiner = CarabinerLocalCm(bLeft);
-    const FVector Up = PilotRigToActor().TransformVector(
-        FVector(0.0f, 0.0f, 1.0f));
-    const FVector Fore = PilotRigToActor().TransformVector(
-        FVector(1.0f, 0.0f, 0.0f));
-    return Carabiner + Up * RiserLengthCm + Fore * ForeAftCm[Index];
+    const auto& InRig = RenderRigSnapshot.riserTopRigCm[bLeft ? 0 : 1][Index];
+    return PilotRigToActor().TransformPosition(
+        FVector(InRig.x, InRig.y, InRig.z));
 }
 
 FVector AParagliderPawn::BrakeHandLocalCm(bool bLeft) const
@@ -1309,26 +1332,104 @@ FVector AParagliderPawn::BrakeHandLocalCm(bool bLeft) const
     // from the carabiner and the brake input, so the brake lines converged
     // somewhere near the pilot rather than into their fists.
     const Parapenting::Physics::Vec3& Hand = bLeft
-        ? LastPilotPose.leftHandCm : LastPilotPose.rightHandCm;
+        ? RenderRigSnapshot.pilot.leftHandCm : RenderRigSnapshot.pilot.rightHandCm;
     return PilotRigToActor().TransformPosition(
         FVector(Hand.x, Hand.y, Hand.z));
 }
 
-void AParagliderPawn::UpdatePilotVisual()
+FVector AParagliderPawn::CanopyAttachmentLocalCm(
+    double SpanFraction, double ChordFraction) const
+{
+    constexpr float MetresToCm = static_cast<float>(
+        Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+    constexpr float SuspensionRiseCm = 730.0f;
+    const auto& T = RenderRigSnapshot.telemetry;
+    const float Span01 = FMath::Clamp(static_cast<float>(SpanFraction), -1.0f, 1.0f);
+    const float Chord01 = FMath::Clamp(static_cast<float>(ChordFraction), 0.0f, 1.0f);
+    const float AbsSpan = FMath::Abs(Span01);
+    const bool bLeft = Span01 < 0.0f;
+    const float TipBlend = FMath::SmoothStep(0.42f, 1.0f, AbsSpan);
+    const float Collapse = static_cast<float>(bGroundLaunching ? 0.0
+        : (bLeft ? T.leftCollapse : T.rightCollapse)) * TipBlend;
+    const float Cravat = static_cast<float>(bGroundLaunching ? 0.0
+        : (bLeft ? T.leftCravat : T.rightCravat)) * TipBlend;
+    const auto LoadPose = Parapenting::Physics::EvaluateCanopyLoadPose(
+        bGroundLaunching ? 0.0 : T.highLoadDeformation,
+        bGroundLaunching ? 1.0 : T.loadFactor);
+    const auto Station = Canopy.StationAt(Span01);
+    const float Pressure = static_cast<float>(bLanded ? State.canopyPressure
+        : (bGroundLaunching ? LaunchOutput.canopyPressure : T.canopyPressure));
+    const float Frontal = static_cast<float>(bGroundLaunching ? 0.0
+        : T.frontalCollapse) * (1.0f - FMath::SmoothStep(0.0f, 0.45f, Chord01));
+    const float LocalPressure = FMath::Clamp(Pressure
+        * (1.0f - 0.72f * Collapse - 0.82f * Cravat)
+        * (1.0f - 0.65f * Frontal), 0.0f, 1.0f);
+    const float LoadedChord = static_cast<float>(Station.chordM) * MetresToCm
+        * static_cast<float>(LoadPose.chordScale);
+    const float Arch = SuspensionRiseCm
+        + static_cast<float>(Station.positionM.z) * MetresToCm
+        - static_cast<float>(LoadPose.extraArchDropCm) * FMath::Pow(AbsSpan, 1.65f)
+        + static_cast<float>(LoadPose.lineStretchCm);
+    const float Camber = static_cast<float>(Canopy.InflatedSectionAt(Chord01).sagittaM)
+        * MetresToCm * Pressure * static_cast<float>(LoadPose.camberScale)
+        * (1.0f - 0.65f * Collapse) * (1.0f - 0.75f * Frontal);
+    const float Brake = static_cast<float>(RenderRigSnapshot.brakeTravel[
+        bLeft ? 0 : 1]);
+    const float Trailing = FMath::SmoothStep(0.68f, 1.0f, Chord01)
+        * Brake * 55.0f;
+    const float RotorFlutter = static_cast<float>(bGroundLaunching ? 0.0
+        : T.rotorStrength) * TipBlend * 15.0f * FMath::Sin(
+            static_cast<float>(RenderRigSnapshot.simulationTimeSeconds * 11.0
+                + Span01 * 8.0));
+    const float CellThickness = (FMath::Sin(Chord01 * PI)
+        * (38.0f - 12.0f * AbsSpan) + FMath::Pow(1.0f - Chord01, 8.0f)
+        * (18.0f - 6.0f * AbsSpan)) * LocalPressure;
+    return FVector(
+        (0.48f - Chord01) * LoadedChord
+            + static_cast<float>((bGroundLaunching ? 0.0 : T.recoverySurge) * 350.0),
+        static_cast<float>(Station.positionM.y) * MetresToCm
+            * (1.0f - 0.28f * Collapse - 0.38f * Cravat)
+            * static_cast<float>(LoadPose.spanScale),
+        Arch + Camber - (255.0f * Collapse + 330.0f * Cravat) - Trailing
+            + RotorFlutter - Frontal * 125.0f
+            - static_cast<float>(bGroundLaunching ? 0.0 : T.deepStall) * 75.0f
+            - CellThickness);
+}
+
+void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
 {
     const auto& T = Dynamics.LastTelemetry();
-    const auto Pose = Parapenting::Physics::EvaluatePilotPose({
+    constexpr double MetresToCm =
+        Parapenting::Physics::WorldAxes::MetresToUnrealUnits;
+    const double HalfCarabinerSeparationCm = 0.5 * MetresToCm
+        * Parapenting::Physics::HarnessGeometryFor(Equipment)
+            .carabinerSeparationM;
+    PreviousRigSnapshot = CurrentRigSnapshot;
+    CurrentRigSnapshot = Parapenting::Physics::BuildGliderRigSnapshot({
+        TimestampSeconds,
         T.harnessRollRad,
         T.harnessPitchRad,
-        AppliedControls.weightShift,
-        AppliedControls.leftBrake,
-        AppliedControls.rightBrake,
+        // The flight model's CG displacement is achieved harness motion. It
+        // intentionally replaces the command value in the visual rig.
+        FMath::Clamp(T.pilotCgOffsetM / 0.16, -1.0, 1.0),
+        State.leftBrakeTravel,
+        State.rightBrakeTravel,
         T.leftBrakeForceN,
         T.rightBrakeForceN,
-        FMath::Max(FMath::Max(
-            T.leftCollapse, T.rightCollapse), T.frontalCollapse),
-        T.recoverySurge
-    });
+        FMath::Max(FMath::Max(T.leftCollapse, T.rightCollapse),
+            T.frontalCollapse),
+        T.recoverySurge,
+        HalfCarabinerSeparationCm,
+        45.0,
+        T},
+        CurrentRigSnapshot.simulationTimeSeconds > 0.0
+            ? &CurrentRigSnapshot : nullptr);
+}
+
+void AParagliderPawn::UpdatePilotVisual()
+{
+    const auto& T = RenderRigSnapshot.telemetry;
+    const auto& Pose = RenderRigSnapshot.pilot;
     // Cached for the suspension draw, which hangs the risers off this same
     // body rather than off an independently reconstructed anchor.
     LastPilotPose = Pose;
@@ -1364,7 +1465,7 @@ void AParagliderPawn::UpdatePilotVisual()
             ? 4.0f
             : -10.0f - static_cast<float>(T.recoverySurge) * 10.0f,
         0.0f,
-        static_cast<float>(AppliedControls.weightShift) * -4.0f));
+        static_cast<float>(RenderRigSnapshot.weightShift) * -4.0f));
     PilotHead->SetRelativeLocation(FVector(-12.0f, 0.0f, 53.0f));
     PilotHead->SetRelativeScale3D(FVector(0.18f, 0.18f, 0.20f));
 
@@ -1644,7 +1745,7 @@ void AParagliderPawn::UpdateCanopyMesh()
         static_cast<float>(Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
     // Height of the canopy above the harness, from the suspension geometry.
     constexpr float SuspensionRiseCm = 730.0f;
-    const auto& T = Dynamics.LastTelemetry();
+    const auto& T = RenderRigSnapshot.telemetry;
     const double VisualCanopyPressure = bLanded
         ? State.canopyPressure
         : (bGroundLaunching ? LaunchOutput.canopyPressure : T.canopyPressure);
@@ -1709,9 +1810,8 @@ void AParagliderPawn::UpdateCanopyMesh()
                 * static_cast<float>(VisualCanopyPressure)
                 * static_cast<float>(LoadPose.camberScale)
                 * (1.0f - 0.65f * Collapse) * (1.0f - 0.75f * Frontal);
-            const float Brake = Span01 < 0.0f
-                ? static_cast<float>(AppliedControls.leftBrake)
-                : static_cast<float>(AppliedControls.rightBrake);
+            const float Brake = static_cast<float>(
+                RenderRigSnapshot.brakeTravel[Span01 < 0.0f ? 0 : 1]);
             const float TrailingEdge = FMath::SmoothStep(0.68f, 1.0f, Chord01)
                 * Brake * 55.0f;
             const int32 Index = S * ChordCount + C;
@@ -1941,6 +2041,12 @@ void AParagliderPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
     PlayerInputComponent->BindAction(
         TEXT("TogglePreflightBriefing"), IE_Pressed,
         this, &AParagliderPawn::TogglePreflightBriefing);
+    PlayerInputComponent->BindAction(
+        TEXT("OpenFlightDeck"), IE_Pressed,
+        this, &AParagliderPawn::OpenFlightDeck);
+    PlayerInputComponent->BindAction(
+        TEXT("CloseFlightDeck"), IE_Pressed,
+        this, &AParagliderPawn::CloseFlightDeck);
     PlayerInputComponent->BindAction(
         TEXT("NextScenario"), IE_Pressed, this, &AParagliderPawn::NextTrainingScenario);
     PlayerInputComponent->BindAction(
@@ -2195,6 +2301,17 @@ void AParagliderPawn::SetVisualQALocalHour(double LocalHour)
     AirModel.SetStartLocalHour(LocalHour);
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("VISUAL QA TIME OVERRIDE");
+    ResetFlight();
+}
+
+void AParagliderPawn::SetVisualQAWeatherPreset(
+    Parapenting::Physics::WeatherPresetId Preset)
+{
+    AirModel.SetPreset(Preset);
+    ManualWindFromDegrees = AirModel.GetSnapshot().windFromDegrees;
+    ManualWindSpeedMps = AirModel.GetSnapshot().windSpeedMps;
+    bLiveWeatherActive = false;
+    LiveWeatherStatus = TEXT("VISUAL QA PRESET");
     ResetFlight();
 }
 
@@ -2741,6 +2858,35 @@ void AParagliderPawn::DrawCanopyGeometryDebug()
     // says it is makes a mismatch immediately visible.
     const auto& Suspension =
         Parapenting::Physics::Epic2MlSuspensionGeometry();
+    // Control-chain landmarks live in the same actor space as the rendered
+    // rig. They make a one-frame endpoint mismatch visible immediately.
+    const auto DrawRigNode = [&](const FVector& local, const TCHAR* label,
+        const FColor& colour)
+    {
+        const FVector world = ActorTransform.TransformPosition(local);
+        DrawDebugSphere(World, world, 7.0f, 8, colour, false, 0.0f, 0, 1.5f);
+        DrawDebugString(World, world + FVector(0.0f, 0.0f, 14.0f),
+            FString(label), nullptr, colour, 0.0f, true, 1.0f);
+    };
+    DrawRigNode(BrakeHandLocalCm(true), TEXT("LEFT HAND"), FColor::Green);
+    DrawRigNode(BrakeHandLocalCm(false), TEXT("RIGHT HAND"), FColor::Green);
+    for (int32 Side = -1; Side <= 1; Side += 2)
+    {
+        const bool bLeft = Side < 0;
+        DrawRigNode(CarabinerLocalCm(bLeft),
+            bLeft ? TEXT("LEFT CARABINER") : TEXT("RIGHT CARABINER"),
+            FColor(205, 205, 210));
+        for (int32 Group = 0; Group < 4; ++Group)
+        {
+            static const TCHAR* GroupNames[] = {TEXT("A"), TEXT("A'"),
+                TEXT("B"), TEXT("C")};
+            DrawRigNode(RiserTopLocalCm(Group, bLeft),
+                *FString::Printf(TEXT("%s RISER %s"),
+                    bLeft ? TEXT("LEFT") : TEXT("RIGHT"),
+                    GroupNames[Group]),
+                FColor(255, 210, 70));
+        }
+    }
     for (const auto& Attachment : Suspension.attachments)
     {
         const FVector Node = ToWorld(Canopy.SurfacePointM(
@@ -2834,6 +2980,16 @@ void AParagliderPawn::DrawCanopyGeometryDebug()
                 bCarabiner ? 6.0f : 3.5f, 8,
                 bCarabiner ? FColor(205, 205, 210) : RowColour(Node.row),
                 false, 0.0f, 0, 1.2f);
+            const TCHAR* NodeLabel = bCarabiner
+                ? (Node.side < 0.0 ? TEXT("LEFT CARABINER")
+                                   : TEXT("RIGHT CARABINER"))
+                : TEXT("CASCADE");
+            DrawDebugString(World,
+                ToWorldPayload(LineSolution.nodePositionM[Index])
+                    + FVector(0.0f, 0.0f, 10.0f),
+                FString(NodeLabel), nullptr,
+                bCarabiner ? FColor(205, 205, 210) : RowColour(Node.row),
+                false, 0.0f, true, 0.8f);
         }
 
         DrawDebugString(World,
@@ -3202,6 +3358,18 @@ void AParagliderPawn::TogglePreflightBriefing()
     bBriefingVisible = !bBriefingVisible;
 }
 
+void AParagliderPawn::OpenFlightDeck()
+{
+    bFlightDeckVisible = true;
+    FlightDeckAutoCloseSeconds = 5.0f;
+}
+
+void AParagliderPawn::CloseFlightDeck()
+{
+    bFlightDeckVisible = false;
+    FlightDeckAutoCloseSeconds = 0.0f;
+}
+
 void AParagliderPawn::CycleGraphicsProfile()
 {
     GraphicsProfile =
@@ -3229,8 +3397,8 @@ const char* AParagliderPawn::GetCameraModeDisplayName() const
     switch (CameraMode)
     {
         case 1: return "CLOSE CHASE";
-        case 2: return "PILOT";
-        default: return "CINEMATIC CHASE";
+        case 2: return "SIDE TECHNICAL";
+        default: return "REAR CHASE";
     }
 }
 

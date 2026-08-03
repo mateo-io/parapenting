@@ -4,6 +4,76 @@
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
 
+void AParapentingHUD::DrawFlightDeck(const AParagliderPawn* Glider)
+{
+    if (!Canvas || !Glider || !Glider->IsFlightDeckVisible()) return;
+
+    // A conservative Canvas implementation is deliberate for this first
+    // front-end slice: it is packaged today, scales from a reference canvas,
+    // and consumes the existing engine-independent settings contracts.  The
+    // visual language can migrate to UMG without duplicating any flight state.
+    const float Scale = FMath::Clamp(FMath::Min(
+        Canvas->SizeX / 1440.0f, Canvas->SizeY / 900.0f), 0.72f, 1.45f);
+    const float Width = 680.0f * Scale;
+    const float Height = 510.0f * Scale;
+    const float X = (Canvas->SizeX - Width) * 0.5f;
+    const float Y = (Canvas->SizeY - Height) * 0.5f;
+    const FLinearColor Panel(0.006f, 0.016f, 0.028f, 0.93f);
+    const FLinearColor White(0.92f, 0.97f, 1.0f);
+    const FLinearColor Cyan(0.36f, 0.86f, 1.0f);
+    const FLinearColor Muted(0.55f, 0.70f, 0.80f);
+    const auto Text = [this, Scale](const FString& Value, const FLinearColor& Colour,
+        float InX, float InY, UFont* Font, float FontScale = 1.0f)
+    {
+        DrawText(Value, Colour, InX, InY, Font, FontScale * Scale);
+    };
+
+    DrawRect(Panel, X, Y, Width, Height);
+    DrawRect(Cyan, X, Y, Width, 3.0f * Scale);
+    Text(TEXT("PARAPENTING"), White, X + 32.0f * Scale, Y + 28.0f * Scale,
+        GEngine->GetMediumFont(), 1.35f);
+    Text(TEXT("FLIGHT DECK  ·  A focused setup layer over the live simulator"),
+        Cyan, X + 34.0f * Scale, Y + 70.0f * Scale, GEngine->GetSmallFont(), 0.88f);
+    Text(TEXT("ESC  CLOSE   ·   AUTO-CLOSE 5 s"), Muted, X + Width - 245.0f * Scale,
+        Y + 36.0f * Scale, GEngine->GetSmallFont(), 0.82f);
+
+    const float Left = X + 34.0f * Scale;
+    const float Row = 42.0f * Scale;
+    float Cursor = Y + 125.0f * Scale;
+    const auto Setting = [&Text, &Cursor, Left, Row, Scale, this](const TCHAR* Label,
+        const FString& Value, const FString& Hint)
+    {
+        Text(Label, FLinearColor(0.55f, 0.70f, 0.80f), Left, Cursor,
+            GEngine->GetSmallFont(), 0.88f);
+        Text(Value, FLinearColor(0.92f, 0.97f, 1.0f), Left + 170.0f * Scale,
+            Cursor, GEngine->GetSmallFont(), 0.98f);
+        Text(Hint, FLinearColor(0.36f, 0.86f, 1.0f), Left + 420.0f * Scale,
+            Cursor, GEngine->GetSmallFont(), 0.78f);
+        Cursor += Row;
+    };
+    Setting(TEXT("ROUTE"), ANSI_TO_TCHAR(Glider->GetRouteDisplayName()),
+        TEXT("[ / ] CHANGE"));
+    Setting(TEXT("WEATHER"), ANSI_TO_TCHAR(Glider->GetWeatherPresetDisplayName()),
+        TEXT("O CYCLE"));
+    Setting(TEXT("TIME"), Glider->GetLocalTimeDisplay(), TEXT("F11 CYCLE"));
+    Setting(TEXT("WING"), ANSI_TO_TCHAR(Glider->GetWingDisplayName()), TEXT("Q CYCLE"));
+    Setting(TEXT("GRAPHICS"), ANSI_TO_TCHAR(Glider->GetGraphicsProfileName()),
+        TEXT("F10 CYCLE"));
+    Setting(TEXT("MOTION"), ANSI_TO_TCHAR(Glider->GetAccessibilityProfileName()),
+        TEXT("F8 CYCLE"));
+    Setting(TEXT("CONTROLS"), ANSI_TO_TCHAR(Glider->GetKeyboardLayoutName()),
+        TEXT("F6 / F7 BIND"));
+
+    DrawRect(FLinearColor(0.05f, 0.13f, 0.20f, 0.82f), Left,
+        Y + Height - 104.0f * Scale, Width - 68.0f * Scale, 68.0f * Scale);
+    Text(TEXT("START: ESC closes this layer.  N prepares a launch; SPACE commits the run."),
+        White, Left + 16.0f * Scale, Y + Height - 87.0f * Scale,
+        GEngine->GetSmallFont(), 0.82f);
+    Text(TEXT("F5 weather briefing · TAB HUD mode · M camera · R reset"), Muted,
+        Left + 16.0f * Scale, Y + Height - 61.0f * Scale,
+        GEngine->GetSmallFont(), 0.82f);
+}
+
 void AParapentingHUD::DrawPreflightBriefing(
     const AParagliderPawn* Glider)
 {
@@ -301,6 +371,7 @@ void AParapentingHUD::DrawHUD()
     {
         DrawCompactHUD(Glider, Glider->GetHudMode() == 2);
         DrawPreflightBriefing(Glider);
+        DrawFlightDeck(Glider);
         return;
     }
 
@@ -310,6 +381,7 @@ void AParapentingHUD::DrawHUD()
 
     if (Glider)
     {
+        DrawFlightDeck(Glider);
         const auto& Telemetry = Glider->GetFlightTelemetry();
         const auto& State = Glider->GetFlightState();
         const auto& Controls = Glider->GetControlInput();

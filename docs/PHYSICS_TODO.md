@@ -560,10 +560,33 @@ stands in for, and it is checkable against a real wing in a way "the period is
 - Spurious heavily-damped rows (26.96 s at ζ 0.77, half-life 2.5 s) appear only
   at T=2 and not below; treat anything with ζ > 0.5 from this tool as
   discretisation until it survives a change of T.
-- **Next:** with a working modal instrument, sweep `swingDampingRatio` through
-  the departure boundary and watch the fast mode's eigenvalue cross into the
-  right half plane. That is the measurement `--fast-mode` failed to make, and it
-  needs no excitation, so the reason it failed does not apply.
+- **The sweep ran, and the prediction in this bullet was wrong.** `--sweep` takes
+  the spectrum through the boundary. The fast mode's eigenvalue **does not cross
+  into the right half plane** — it moves −0.368 to −0.304 /s from ratio 0.90 to
+  0.10 and its period does not move at all, so the pendulum is not what pins the
+  ratio at 0.35. What crosses, between **0.28 and 0.25**, is the **16 s
+  phugoid**, arriving by its damping while its frequency stays real. Three
+  independent runs agree: T = 0.25, T = 0.10, and again about each ratio's own
+  from-scratch trim (which also shows 0.15 departing during the settle at α
+  20.5°, so no trim exists there to linearise about).
+- **This contradicts §35's acquittal of the phugoid, and §35's arithmetic was
+  fine.** It predicted the lift exponent `n` crossing zero — a claim about the
+  mode's *frequency*, `ω = g√n/V`. n holds at 0.14–0.19, which rules out the
+  oscillation becoming a divergence and nothing more. The phugoid arrives by the
+  half of the eigenvalue that prediction did not address. See `PHYSICS_LEARNINGS`
+  §38.
+- **Load-bearing caveat:** the quantity that crosses is the slow mode's damping —
+  the one number the linearity check above says is *not* converged. The ordering
+  is solid and monotone across three runs; the 0.28–0.25 interval is not, and
+  should not be quoted tighter.
+- **Next:** confirm the crossing in the time domain, which the sweep's own flown
+  column failed to do — it fitted at 2 ratios of 12, at R² 0.26–0.43, because it
+  watches the *link* over 40 s and the crossing mode is a 16 s oscillation
+  growing at 0.008/s. It needs the phugoid's own observable over several hundred
+  seconds. Undersampling a mode into invisibility, third instrument running.
+- **Also open:** §35 measured the growing mode at 3.6–5.7 s on a departing wing,
+  and no such mode is in this spectrum at any ratio. Large amplitude, outside
+  what a linearisation claims — not a contradiction, not reconciled either.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

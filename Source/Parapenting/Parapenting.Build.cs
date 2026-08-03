@@ -15,7 +15,8 @@ public class Parapenting : ModuleRules
         bUseUnity = false;
         PublicDependencyModuleNames.AddRange(new[] {
             "Core", "CoreUObject", "Engine", "InputCore", "RenderCore",
-            "ProceduralMeshComponent", "AudioMixer", "HTTP", "Json"
+            "ProceduralMeshComponent", "Niagara", "UMG", "Slate", "SlateCore",
+            "AudioMixer", "HTTP", "Json"
         });
     }
 }

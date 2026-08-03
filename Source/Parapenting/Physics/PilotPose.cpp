@@ -8,6 +8,48 @@ namespace Parapenting::Physics
 namespace
 {
 constexpr double RadToDeg = 180.0 / 3.14159265358979323846;
+
+Vec3 NormalizedOr(const Vec3& value, const Vec3& fallback)
+{
+    const double length = std::sqrt(value.x * value.x + value.y * value.y
+        + value.z * value.z);
+    return length > 1e-6
+        ? Vec3{value.x / length, value.y / length, value.z / length}
+        : fallback;
+}
+
+Vec3 SolveElbow(const Vec3& shoulder, const Vec3& requestedHand,
+    const Vec3& pole, double upperArmCm, double forearmCm)
+{
+    const Vec3 run = requestedHand - shoulder;
+    const double requestedDistance = std::sqrt(
+        run.x * run.x + run.y * run.y + run.z * run.z);
+    const double minimumReach = std::abs(upperArmCm - forearmCm) + 0.01;
+    const double maximumReach = upperArmCm + forearmCm - 0.01;
+    const Vec3 axis = NormalizedOr(run, {0.0, 0.0, 1.0});
+    const double reach = std::clamp(requestedDistance, minimumReach, maximumReach);
+    const double along = (upperArmCm * upperArmCm - forearmCm * forearmCm
+        + reach * reach) / (2.0 * reach);
+    const double height = std::sqrt(std::max(0.0,
+        upperArmCm * upperArmCm - along * along));
+    Vec3 perpendicular = pole - axis * (pole.x * axis.x + pole.y * axis.y
+        + pole.z * axis.z);
+    perpendicular = NormalizedOr(perpendicular,
+        NormalizedOr(Vec3{-axis.z, 0.0, axis.x}, {0.0, 1.0, 0.0}));
+    return shoulder + axis * along + perpendicular * height;
+}
+
+Vec3 ConstrainHandReach(const Vec3& shoulder, const Vec3& requestedHand,
+    double upperArmCm, double forearmCm)
+{
+    const Vec3 run = requestedHand - shoulder;
+    const double distance = std::sqrt(run.x * run.x + run.y * run.y
+        + run.z * run.z);
+    const double minimumReach = std::abs(upperArmCm - forearmCm) + 0.01;
+    const double maximumReach = upperArmCm + forearmCm - 0.01;
+    const double reach = std::clamp(distance, minimumReach, maximumReach);
+    return shoulder + NormalizedOr(run, {0.0, 0.0, 1.0}) * reach;
+}
 }
 
 PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
@@ -48,14 +90,16 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
         32.0 + rightForce * 3.0,
         48.0 - rightBrake * 78.0
     };
-    pose.leftElbowCm =
-        pose.leftShoulderCm
-        + (pose.leftHandCm - pose.leftShoulderCm) * 0.48
-        + Vec3{9.0 + leftForce * 5.0, -8.0, 5.0};
-    pose.rightElbowCm =
-        pose.rightShoulderCm
-        + (pose.rightHandCm - pose.rightShoulderCm) * 0.48
-        + Vec3{9.0 + rightForce * 5.0, 8.0, 5.0};
+    pose.leftHandCm = ConstrainHandReach(pose.leftShoulderCm,
+        pose.leftHandCm, PilotUpperArmLengthCm, PilotForearmLengthCm);
+    pose.rightHandCm = ConstrainHandReach(pose.rightShoulderCm,
+        pose.rightHandCm, PilotUpperArmLengthCm, PilotForearmLengthCm);
+    pose.leftElbowCm = SolveElbow(pose.leftShoulderCm, pose.leftHandCm,
+        {9.0 + leftForce * 5.0, -8.0, 5.0}, PilotUpperArmLengthCm,
+        PilotForearmLengthCm);
+    pose.rightElbowCm = SolveElbow(pose.rightShoulderCm, pose.rightHandCm,
+        {9.0 + rightForce * 5.0, 8.0, 5.0}, PilotUpperArmLengthCm,
+        PilotForearmLengthCm);
     return pose;
 }
 }

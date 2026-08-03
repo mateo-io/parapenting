@@ -12,6 +12,10 @@ physical system.
 The game is entertainment and simulation, not flight instruction or a source
 of live aviation safety information.
 
+The focused production plan for making the pilot, harness, controls, risers,
+lines and canopy read as one connected physical system is
+`docs/GLIDER_PILOT_VISUAL_MASTER_PLAN.md`.
+
 ## Product principles
 
 1. Physics is measured and regression-tested before it is made spectacular.

@@ -29,6 +29,12 @@ adjacent meshes remain watertight. Landing and ground clearance use
 `TerrainModel::HeightM` directly; disabling visual-mesh collision therefore
 removes redundant work without changing flight behavior.
 
+Terrain triangles are submitted in Unreal's clockwise front-face order. This
+is part of the render contract: an earlier reverse order let a one-sided
+material cull entire distant slopes, which read as transparent blue mountains
+against the sky. The terrain material remains one-sided; correct winding keeps
+the normal and lighting path honest without doubling raster work.
+
 The game mode loads the heightfield during `InitGame`, before Unreal spawns the
 default pawn. The pawn's first route reset therefore uses the surveyed launch
 elevation; it cannot be embedded later by replacing an analytic fallback
@@ -75,13 +81,23 @@ Vertex shading combines surveyed elevation and normal with:
 - local heightfield curvature for gully occlusion and ridge definition;
 - terrain exposure consistent with the authored alpine sun direction.
 
+Surface bands convert the simulation's local Z back to metres above sea level
+using the 565 m Lehn datum before applying alpine and snow thresholds. This is
+important on the high Grindelwald shelf: applying a sea-level snow line directly
+to local Z silently prevents snow from ever appearing.
+
 The Amisbühl vertical slice uses a tapered procedural Lake Thun footprint at
 the established -6.8 m local datum. It replaces the former rectangular Engine
 plane, whose straight boundary read as a false horizon and occluded terrain far
 beyond the intended shoreline. This polygon is render-only and has no collision;
 flight and clearance continue to query `TerrainModel`. Its dedicated
 `M_WaterSurface` material uses a Fresnel-weighted deep/grazing colour response;
-Brienz, the Aare and shoreline transition remain later Level 3 work.
+the Aare reuses it through a darker, rougher dynamic instance on a continuous
+terrain-following ribbon. Lake Thun's water edge is softened by an 18 m
+render-only wet-bank strip: its inner edge follows the water datum and its outer
+edge samples `TerrainModel`, without changing collision or flight height
+queries. Brienz and less uniform authored shoreline variation remain later
+Level 3 work.
 
 The fixed midday capture showed that the broad straight blue division remains
 after removing the rectangular lake proxy; it is therefore the atmospheric

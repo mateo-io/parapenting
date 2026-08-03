@@ -55,6 +55,9 @@ void AParapentingGameMode::InitGame(
     }
     FParse::Value(
         FCommandLine::Get(), TEXT("VisualQAWarmup="), VisualQAWarmupSeconds);
+    FParse::Value(
+        FCommandLine::Get(), TEXT("VisualQAWeatherPreset="),
+        VisualQAWeatherPreset);
     VisualQAWarmupSeconds = FMath::Max(1.0f, VisualQAWarmupSeconds);
 
     // InitGame runs before the default pawn is spawned. Loading the
@@ -180,17 +183,18 @@ void AParapentingGameMode::BeginPlay()
     Clouds->RegisterComponent();
 
     AExponentialHeightFog* Fog = World->SpawnActor<AExponentialHeightFog>();
-    Fog->GetComponent()->SetFogDensity(0.00025f);
-    Fog->GetComponent()->SetFogHeightFalloff(0.12f);
+    FogComponent = Fog->GetComponent();
+    FogComponent->SetFogDensity(0.00025f);
+    FogComponent->SetFogHeightFalloff(0.12f);
     // Inscattering is a luminance, not a tint. At 0.55/0.72/0.88 the fog was
     // brighter than most of the terrain it covered, so it painted distant
     // ground pale blue and fought the atmosphere's own aerial perspective.
     // Keep it dim: the SkyAtmosphere supplies distance colour, and this layer
     // only adds valley haze on top.
-    Fog->GetComponent()->SetFogInscatteringColor(
+    FogComponent->SetFogInscatteringColor(
         FLinearColor(0.055f, 0.075f, 0.105f));
-    Fog->GetComponent()->SetStartDistance(18000.0f);
-    Fog->GetComponent()->SetVolumetricFog(false);
+    FogComponent->SetStartDistance(18000.0f);
+    FogComponent->SetVolumetricFog(false);
 
     UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(
         nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
@@ -215,21 +219,37 @@ void AParapentingGameMode::BeginPlay()
         UHierarchicalInstancedStaticMeshComponent* Deciduous =
             NewObject<UHierarchicalInstancedStaticMeshComponent>(
                 Forest, TEXT("DeciduousCrowns"));
+        UHierarchicalInstancedStaticMeshComponent* ForestEdges =
+            NewObject<UHierarchicalInstancedStaticMeshComponent>(
+                Forest, TEXT("ForestEdgeConifers"));
+        UHierarchicalInstancedStaticMeshComponent* Shrubs =
+            NewObject<UHierarchicalInstancedStaticMeshComponent>(
+                Forest, TEXT("ForestEdgeShrubs"));
         Forest->SetRootComponent(Crowns);
         Crowns->SetStaticMesh(ConeMesh);
         Trunks->SetupAttachment(Crowns);
         Trunks->SetStaticMesh(CylinderMesh);
         Deciduous->SetupAttachment(Crowns);
         Deciduous->SetStaticMesh(SphereMesh);
+        ForestEdges->SetupAttachment(Crowns);
+        ForestEdges->SetStaticMesh(ConeMesh);
+        Shrubs->SetupAttachment(Crowns);
+        Shrubs->SetStaticMesh(SphereMesh);
         Crowns->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Trunks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Deciduous->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        ForestEdges->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Shrubs->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Crowns->SetCullDistances(120000, 950000);
         Trunks->SetCullDistances(90000, 650000);
         Deciduous->SetCullDistances(100000, 750000);
+        ForestEdges->SetCullDistances(100000, 1000000);
+        Shrubs->SetCullDistances(70000, 500000);
         Crowns->RegisterComponent();
         Trunks->RegisterComponent();
         Deciduous->RegisterComponent();
+        ForestEdges->RegisterComponent();
+        Shrubs->RegisterComponent();
         if (ShapeMaterial)
         {
             UMaterialInstanceDynamic* CrownMaterial =
@@ -247,6 +267,16 @@ void AParapentingGameMode::BeginPlay()
             DeciduousMaterial->SetVectorParameterValue(
                 TEXT("Color"), FLinearColor(0.075f, 0.24f, 0.045f));
             Deciduous->SetMaterial(0, DeciduousMaterial);
+            UMaterialInstanceDynamic* ForestEdgeMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
+            ForestEdgeMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.018f, 0.095f, 0.028f));
+            ForestEdges->SetMaterial(0, ForestEdgeMaterial);
+            UMaterialInstanceDynamic* ShrubMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
+            ShrubMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.065f, 0.20f, 0.042f));
+            Shrubs->SetMaterial(0, ShrubMaterial);
         }
 
         for (int32 XIndex = -10; XIndex <= 48; ++XIndex)
@@ -290,6 +320,50 @@ void AParapentingGameMode::BeginPlay()
                     FRotator::ZeroRotator,
                     FVector(X, Y, Ground + 3.8f) * 100.0f,
                     FVector(0.45f, 0.45f, 7.6f) * HeightScale));
+            }
+        }
+
+        // The flyable corridor needs an intentional edge: broken belts of
+        // taller conifers and low shrubs make field clearings legible from the
+        // air without adding obstacle clutter directly beneath the pilot.
+        for (int32 XIndex = -8; XIndex <= 48; ++XIndex)
+        {
+            const float X = XIndex * 86.0f
+                + FMath::Sin(XIndex * 6.31f) * 34.0f;
+            const float CorridorWidth = X < 850.0f ? 230.0f : 520.0f;
+            for (const float Side : {-1.0f, 1.0f})
+            {
+                const float EdgeNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
+                    FVector2D(X * 0.0042f, Side * 17.0f));
+                // Gaps avoid an artificial hedge and preserve approach views.
+                if (EdgeNoise < 0.42f) continue;
+                const float Y = Side * (CorridorWidth + 55.0f
+                    + 125.0f * EdgeNoise);
+                const float Ground = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(X, Y));
+                const auto Normal =
+                    Parapenting::Physics::TerrainModel::Normal(X, Y);
+                if (Ground < 12.0f || Normal.z < 0.76) continue;
+                const float Scale = 0.85f + 0.30f * EdgeNoise;
+                ForestEdges->AddInstance(FTransform(
+                    FRotator(0.0f, XIndex * 23.0f, 0.0f),
+                    FVector(X, Y, Ground + 10.0f) * 100.0f,
+                    FVector(3.5f, 3.5f, 11.5f) * Scale));
+                for (int32 ShrubIndex = 0; ShrubIndex < 3; ++ShrubIndex)
+                {
+                    const float OffsetX = (ShrubIndex - 1) * 19.0f
+                        + FMath::Sin(XIndex * 3.1f + ShrubIndex) * 7.0f;
+                    const float OffsetY = Side * (18.0f + ShrubIndex * 12.0f);
+                    const float ShrubGround = static_cast<float>(
+                        Parapenting::Physics::TerrainModel::HeightM(
+                            X + OffsetX, Y + OffsetY));
+                    Shrubs->AddInstance(FTransform(
+                        FRotator::ZeroRotator,
+                        FVector(X + OffsetX, Y + OffsetY,
+                            ShrubGround + 1.5f) * 100.0f,
+                        FVector(1.4f, 1.4f, 1.1f)
+                            * (0.75f + 0.18f * ShrubIndex)));
+                }
             }
         }
         // Sparse Grindelwald regional lane. It shares the global orientation
@@ -476,7 +550,10 @@ void AParapentingGameMode::BeginPlay()
         if (UMaterialInterface* AuthoredWater = LoadObject<UMaterialInterface>(
             nullptr, TEXT("/Game/Materials/M_WaterSurface.M_WaterSurface")))
         {
-            LakeSurface->SetMaterial(0, AuthoredWater);
+            UMaterialInstanceDynamic* LakeMaterial =
+                UMaterialInstanceDynamic::Create(AuthoredWater, Lake);
+            LakeSurface->SetMaterial(0, LakeMaterial);
+            WaterMaterialInstances.Add(LakeMaterial);
         }
         else
         {
@@ -487,51 +564,179 @@ void AParapentingGameMode::BeginPlay()
             LakeSurface->SetMaterial(0, WaterMaterial);
         }
 
+        // A narrow wet bank breaks the perfect water/terrain cut without
+        // modifying the surveyed heightfield used by flight physics. The
+        // inner edge hugs the water datum; the outer edge samples terrain so
+        // the strip naturally disappears into steeper banks.
+        UProceduralMeshComponent* Shoreline =
+            NewObject<UProceduralMeshComponent>(Lake, TEXT("LakeThunShoreline"));
+        Shoreline->SetupAttachment(LakeSurface);
+        Shoreline->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Shoreline->SetCastShadow(false);
+        Shoreline->RegisterComponent();
+        TArray<FVector> ShoreVertices;
+        TArray<int32> ShoreTriangles;
+        TArray<FVector> ShoreNormals;
+        TArray<FVector2D> ShoreUVs;
+        TArray<FColor> ShoreColors;
+        TArray<FProcMeshTangent> ShoreTangents;
+        const FVector2D ShoreCentreM(700.0f, 1450.0f);
+        constexpr float ShoreWidthM = 18.0f;
+        for (int32 PointIndex = 0; PointIndex < ShoreM.Num(); ++PointIndex)
+        {
+            const FVector2D InnerM = ShoreM[PointIndex];
+            const FVector2D Outward =
+                (InnerM - ShoreCentreM).GetSafeNormal();
+            const FVector2D OuterM = InnerM + Outward * ShoreWidthM;
+            const float OuterGroundM = static_cast<float>(
+                Parapenting::Physics::TerrainModel::HeightM(
+                    OuterM.X, OuterM.Y));
+            ShoreVertices.Add(FVector(
+                InnerM.X * 100.0f, InnerM.Y * 100.0f,
+                LakeHeightCm + 3.0f));
+            ShoreVertices.Add(FVector(
+                OuterM.X * 100.0f, OuterM.Y * 100.0f,
+                OuterGroundM * 100.0f + 8.0f));
+            ShoreNormals.Append({FVector::UpVector, FVector::UpVector});
+            ShoreUVs.Append({
+                FVector2D(PointIndex / static_cast<float>(ShoreM.Num()), 0.0f),
+                FVector2D(PointIndex / static_cast<float>(ShoreM.Num()), 1.0f)});
+            ShoreColors.Append({FColor::White, FColor::White});
+            ShoreTangents.Append({
+                FProcMeshTangent(FVector::ForwardVector, false),
+                FProcMeshTangent(FVector::ForwardVector, false)});
+            const int32 Next = (PointIndex + 1) % ShoreM.Num();
+            ShoreTriangles.Append({
+                PointIndex * 2, Next * 2 + 1, Next * 2,
+                PointIndex * 2, PointIndex * 2 + 1, Next * 2 + 1});
+        }
+        Shoreline->CreateMeshSection(
+            0, ShoreVertices, ShoreTriangles, ShoreNormals, ShoreUVs,
+            ShoreColors, ShoreTangents, false);
+        if (UMaterialInterface* Soil = LoadObject<UMaterialInterface>(
+            nullptr, TEXT("/Game/Materials/MI_Soil.MI_Soil")))
+        {
+            Shoreline->SetMaterial(0, Soil);
+        }
+        else
+        {
+            UMaterialInstanceDynamic* WetBankMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, Lake);
+            WetBankMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.055f, 0.07f, 0.035f, 1.0f));
+            Shoreline->SetMaterial(0, WetBankMaterial);
+        }
+
         // The Aare and the main valley road form strong visual references
         // during the final glide into Interlaken and Lehn.
         AActor* ValleyLines = World->SpawnActor<AActor>();
-        UHierarchicalInstancedStaticMeshComponent* River =
-            NewObject<UHierarchicalInstancedStaticMeshComponent>(
+        UProceduralMeshComponent* River =
+            NewObject<UProceduralMeshComponent>(
                 ValleyLines, TEXT("AareRiver"));
         UHierarchicalInstancedStaticMeshComponent* Road =
             NewObject<UHierarchicalInstancedStaticMeshComponent>(
                 ValleyLines, TEXT("ValleyRoad"));
         ValleyLines->SetRootComponent(River);
-        River->SetStaticMesh(CubeMesh);
         Road->SetupAttachment(River);
         Road->SetStaticMesh(CubeMesh);
         River->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        River->SetCastShadow(false);
         Road->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        River->SetCullDistances(80000, 1200000);
         Road->SetCullDistances(60000, 900000);
         River->RegisterComponent();
         Road->RegisterComponent();
-        UMaterialInstanceDynamic* RiverMaterial =
-            UMaterialInstanceDynamic::Create(ShapeMaterial, ValleyLines);
-        RiverMaterial->SetVectorParameterValue(
-            TEXT("Color"), FLinearColor(0.025f, 0.28f, 0.42f));
-        River->SetMaterial(0, RiverMaterial);
+        if (UMaterialInterface* AuthoredWater = LoadObject<UMaterialInterface>(
+            nullptr, TEXT("/Game/Materials/M_WaterSurface.M_WaterSurface")))
+        {
+            UMaterialInstanceDynamic* RiverMaterial =
+                UMaterialInstanceDynamic::Create(AuthoredWater, ValleyLines);
+            RiverMaterial->SetVectorParameterValue(
+                TEXT("DeepWaterColor"),
+                FLinearColor(0.004f, 0.035f, 0.045f, 1.0f));
+            RiverMaterial->SetVectorParameterValue(
+                TEXT("GrazingWaterColor"),
+                FLinearColor(0.012f, 0.085f, 0.095f, 1.0f));
+            RiverMaterial->SetScalarParameterValue(
+                TEXT("WaterRoughness"), 0.34f);
+            RiverMaterial->SetScalarParameterValue(
+                TEXT("WaterSpecular"), 0.32f);
+            River->SetMaterial(0, RiverMaterial);
+            WaterMaterialInstances.Add(RiverMaterial);
+        }
+        else
+        {
+            UMaterialInstanceDynamic* RiverMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, ValleyLines);
+            RiverMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.025f, 0.28f, 0.42f));
+            River->SetMaterial(0, RiverMaterial);
+        }
         UMaterialInstanceDynamic* RoadMaterial =
             UMaterialInstanceDynamic::Create(ShapeMaterial, ValleyLines);
         RoadMaterial->SetVectorParameterValue(
             TEXT("Color"), FLinearColor(0.12f, 0.125f, 0.12f));
         Road->SetMaterial(0, RoadMaterial);
+        // Build one continuous ribbon instead of 52 scaled cubes. The old
+        // segment gaps flashed as cyan runway markings from the flight camera
+        // and made the river disappear whenever the view aligned with them.
+        TArray<FVector> RiverVertices;
+        TArray<int32> RiverTriangles;
+        TArray<FVector> RiverNormals;
+        TArray<FVector2D> RiverUVs;
+        TArray<FColor> RiverColors;
+        TArray<FProcMeshTangent> RiverTangents;
+        constexpr int32 RiverPointCount = 53;
+        constexpr float RiverStepM = 92.0f;
+        constexpr float RiverHalfWidthM = 7.0f;
+        for (int32 Point = 0; Point < RiverPointCount; ++Point)
+        {
+            const float X = 1500.0f + Point * RiverStepM;
+            const float RiverY = 610.0f
+                - 125.0f * FMath::Sin(Point * 0.21f);
+            const float PreviousY = 610.0f
+                - 125.0f * FMath::Sin(FMath::Max(0, Point - 1) * 0.21f);
+            const float NextY = 610.0f
+                - 125.0f * FMath::Sin(
+                    FMath::Min(RiverPointCount - 1, Point + 1) * 0.21f);
+            const FVector2D Tangent = FVector2D(
+                Point == 0 || Point == RiverPointCount - 1
+                    ? RiverStepM : RiverStepM * 2.0f,
+                NextY - PreviousY).GetSafeNormal();
+            const FVector2D Across(-Tangent.Y, Tangent.X);
+            for (int32 Side = -1; Side <= 1; Side += 2)
+            {
+                const float VertexX = X + Across.X * RiverHalfWidthM * Side;
+                const float VertexY = RiverY
+                    + Across.Y * RiverHalfWidthM * Side;
+                const float Ground = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(
+                        VertexX, VertexY));
+                RiverVertices.Add(
+                    FVector(VertexX, VertexY, Ground + 0.35f) * 100.0f);
+                RiverNormals.Add(FVector::UpVector);
+                RiverUVs.Add(FVector2D(
+                    Point * RiverStepM / 100.0f,
+                    Side < 0 ? 0.0f : 1.0f));
+                RiverColors.Add(FColor::White);
+                RiverTangents.Add(FProcMeshTangent(
+                    FVector(Tangent.X, Tangent.Y, 0.0f), false));
+            }
+            if (Point > 0)
+            {
+                const int32 Previous = (Point - 1) * 2;
+                const int32 Current = Point * 2;
+                RiverTriangles.Append({
+                    Previous, Current + 1, Current,
+                    Previous, Previous + 1, Current + 1});
+            }
+        }
+        River->CreateMeshSection(
+            0, RiverVertices, RiverTriangles, RiverNormals, RiverUVs,
+            RiverColors, RiverTangents, false);
+
         for (int32 Segment = 0; Segment < 52; ++Segment)
         {
             const float X = 1500.0f + Segment * 92.0f;
-            const float RiverY = 610.0f
-                - 125.0f * FMath::Sin(Segment * 0.21f);
-            const float NextY = 610.0f
-                - 125.0f * FMath::Sin((Segment + 1) * 0.21f);
-            const float RiverYaw = FMath::RadiansToDegrees(
-                FMath::Atan2(NextY - RiverY, 92.0f));
-            const float RiverGround = static_cast<float>(
-                Parapenting::Physics::TerrainModel::HeightM(X, RiverY));
-            River->AddInstance(FTransform(
-                FRotator(0.0f, RiverYaw, 0.0f),
-                FVector(X, RiverY, RiverGround + 0.35f) * 100.0f,
-                FVector(96.0f, 13.0f, 0.22f)));
-
             const float RoadY = -310.0f
                 - 70.0f * FMath::Sin(Segment * 0.17f + 1.4f);
             const float NextRoadY = -310.0f
@@ -651,6 +856,31 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
         }
     }
     const auto Cloud = Glider->GetCloudFieldState();
+    const auto& Weather = Glider->GetWeatherSnapshot();
+    const float WeatherEnergy = FMath::Clamp(
+        static_cast<float>((Weather.windSpeedMps + Weather.gustSpeedMps)
+            / 11.0), 0.0f, 1.0f);
+    const float CloudVeil = FMath::Clamp(
+        static_cast<float>(Cloud.coverage * (0.35 + 0.65 * Cloud.development)),
+        0.0f, 1.0f);
+    if (FogComponent)
+    {
+        // This is a pure view of the deterministic weather snapshot: calm
+        // air remains clear, while stronger/gustier presets develop a bounded
+        // valley veil. It changes no atmosphere samples, forces or replays.
+        // Coverage and development are the available humidity proxy.  They
+        // shape distance presentation only; they are not treated as rain or
+        // surface wetness because WeatherSnapshot has no precipitation state.
+        FogComponent->SetFogDensity(FMath::Lerp(
+            0.00008f, 0.00019f, FMath::Max(WeatherEnergy, CloudVeil)));
+        FogComponent->SetFogHeightFalloff(FMath::Lerp(
+            0.18f, 0.08f, WeatherEnergy));
+        FogComponent->SetStartDistance(FMath::Lerp(
+            26000.0f, 9000.0f, WeatherEnergy));
+        FogComponent->SetFogInscatteringColor(FLinearColor::LerpUsingHSV(
+            FLinearColor(0.075f, 0.095f, 0.115f),
+            FLinearColor(0.080f, 0.075f, 0.070f), WeatherEnergy));
+    }
     if (CloudComponent)
     {
         CloudComponent->SetLayerBottomAltitude(
@@ -671,6 +901,18 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
                 static_cast<float>(Cloud.driftM.x / 10000.0),
                 static_cast<float>(Cloud.driftM.y / 10000.0),
                 0.0f, 0.0f));
+    }
+    for (UMaterialInstanceDynamic* Water : WaterMaterialInstances)
+    {
+        if (!Water) continue;
+        // Wind adds short ripples and breaks reflections.  The material has no
+        // wave displacement yet, so roughness/specular are deliberately the
+        // only response rather than pretending that a visual normal map is
+        // physical water motion.
+        Water->SetScalarParameterValue(TEXT("WaterRoughness"),
+            FMath::Lerp(0.10f, 0.42f, WeatherEnergy));
+        Water->SetScalarParameterValue(TEXT("WaterSpecular"),
+            FMath::Lerp(0.68f, 0.28f, WeatherEnergy));
     }
     if (SunComponent)
     {
@@ -739,6 +981,14 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
 void AParapentingGameMode::StartVisualQACapture(AParagliderPawn& Glider)
 {
     bVisualQATimeApplied = true;
+    if (VisualQAWeatherPreset >= 0
+        && VisualQAWeatherPreset <= static_cast<int32>(
+            Parapenting::Physics::WeatherPresetId::EveningDrainage))
+    {
+        Glider.SetVisualQAWeatherPreset(
+            static_cast<Parapenting::Physics::WeatherPresetId>(
+                VisualQAWeatherPreset));
+    }
     Glider.SetVisualQALocalHour(VisualQALocalHour);
 
     FString SafeName = VisualQACaptureName;

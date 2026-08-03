@@ -21,13 +21,15 @@ FLinearColor TerrainColour(double X, double Y, double Z,
                            const Parapenting::Physics::Vec3& N,
                            bool bBakeShading)
 {
-    // Meadow gives way to alpine pasture and scree across the treeline, which
-    // in this region runs roughly 1800-2100 m. Reaching full alpine tone by
-    // 1280 m drained the colour out of the whole flyable band.
+    // Heights in the simulation frame are relative to Lehn (565 m MSL), not
+    // absolute elevations. Classify the landscape in MSL so Interlaken's
+    // valley stays green while the upper shelves turn to alpine pasture.
+    constexpr double LandingElevationMsl = 565.0;
+    const double ElevationMsl = Z + LandingElevationMsl;
     const float HeightTint = FMath::Clamp(
-        static_cast<float>((Z - 900.0) / 1500.0), 0.0f, 1.0f);
+        static_cast<float>((ElevationMsl - 1350.0) / 850.0), 0.0f, 1.0f);
     const float Steepness = FMath::Clamp(
-        static_cast<float>((0.62 - N.z) / 0.30), 0.0f, 1.0f);
+        static_cast<float>((0.78 - N.z) / 0.30), 0.0f, 1.0f);
     const float BroadNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
         FVector2D(X * 0.00075, Y * 0.00075));
     const float DetailNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
@@ -53,16 +55,14 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     // North-facing bowls retain snow lower than sun-exposed faces.
     const float NorthAspect = FMath::Clamp(
         static_cast<float>(0.5 - 0.5 * N.y), 0.0f, 1.0f);
-    // Summer snow line in the Bernese Oberland sits around 2600-2900 m, and
-    // north-facing bowls hold it a few hundred metres lower. The previous
-    // 1160 m line put permanent snow below every launch in the region:
-    // Amisbuehl, Beatenberg and the whole Grindelwald shelf came out white.
+    // Summer snow line in the Bernese Oberland sits around 2600-2900 m MSL,
+    // and north-facing bowls hold it a few hundred metres lower.
     constexpr double SnowLineM = 2650.0;
     constexpr double NorthAspectDropM = 260.0;
     constexpr double SnowTransitionM = 340.0;
     const float SnowBlend = FMath::Clamp(
         static_cast<float>(
-            (Z - (SnowLineM - NorthAspectDropM * NorthAspect))
+            (ElevationMsl - (SnowLineM - NorthAspectDropM * NorthAspect))
                 / SnowTransitionM)
             * (0.68f + 0.32f * static_cast<float>(N.z)),
         0.0f, 1.0f);
@@ -85,10 +85,10 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     const FLinearColor FieldB(0.11f, 0.43f, 0.035f);
     const FLinearColor ForestFloor(0.025f, 0.15f, 0.025f);
     const FLinearColor Alpine(0.24f, 0.38f, 0.12f);
-    // Limestone in this summer landscape is rarely a uniform grey mass:
-    // grass, moss and scrub occupy ledges until faces become genuinely sheer.
-    const FLinearColor RockA(0.16f, 0.24f, 0.085f);
-    const FLinearColor RockB(0.31f, 0.34f, 0.18f);
+    // Limestone retains lichen and scrub on ledges, but steep exposed faces
+    // must remain visibly distinct from grass in the flight view.
+    const FLinearColor RockA(0.25f, 0.265f, 0.22f);
+    const FLinearColor RockB(0.39f, 0.37f, 0.30f);
     const FLinearColor Snow(0.80f, 0.84f, 0.86f);
 
     FLinearColor Colour = FMath::Lerp(Meadow, Alpine, HeightTint);
@@ -265,7 +265,12 @@ void AParapentingTerrain::BuildTerrainMesh()
                     const int32 B = (LocalX + 1) * VertexSide + LocalY;
                     const int32 C = B + 1;
                     const int32 D = A + 1;
-                    Triangles.Append({A, B, C, A, C, D});
+                    // Unreal's procedural-mesh front face is clockwise in
+                    // this local X/Y frame. The previous counter-clockwise
+                    // order made the entire terrain back-facing: a one-sided
+                    // material showed sky through distant slopes, while a
+                    // two-sided diagnostic rendered their unlit backs black.
+                    Triangles.Append({A, C, B, A, D, C});
                 }
             }
 

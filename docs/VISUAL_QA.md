@@ -31,7 +31,11 @@ The first production material library lives in `/Game/Materials`:
   A restrained vegetation tint preserves an alpine-green landscape mass under
   the atmosphere without flattening the vertex-authored surface classes;
 - `M_WaterSurface`: opaque, roughness-controlled lake surface with a Fresnel
-  transition from deep blue-green to a brighter grazing reflection;
+  transition from deep blue-green to a brighter grazing reflection. The Aare
+  uses a darker, rougher runtime instance so a narrow river does not blow out
+  into a glowing navigation line at grazing angles;
+- Lake Thun's wet-bank ribbon is render-only and must remain hidden cleanly
+  where terrain occludes the lake in the standard Amisbühl chase-camera test;
 - `M_VisualError`: unmistakable magenta diagnostic material;
 - `M_SurfaceMaster`: parameterized PBR base for the first calibrated swatches;
 - `MI_*`: grass, soil, limestone, snow, water, ripstop nylon, webbing, metal
@@ -46,6 +50,24 @@ commandlet process before regenerating a deliberately changed surface master.
 before launch. Commit the resulting `.uasset` files with the scripts.
 Use `reset_level1_terrain_asset.py` in a separate commandlet before deliberately
 changing the generated `M_TerrainLit` graph.
+
+The standard midday chase capture must show no sky-coloured gaps through the
+terrain. Such gaps are a geometry-winding regression, not a permissible haze
+or material-opacity effect.
+
+Check both surveyed regions when tuning seasonal bands: Interlaken should keep
+its summer-green valley at midday, while high Grindelwald ridges may reach the
+MSL-calibrated snow transition.
+
+Level 4 forest QA checks that the open approach remains readable while broken
+conifer and shrub belts define the clearing edges. Do not accept a uniform tree
+grid or foliage that obscures the launch/landing corridor.
+
+Level 7 deterministic weather captures can select an authored preset with
+`-VisualQAWeatherPreset=0..4` (Morning Calm, Valley Breeze, Thermal Day,
+Foehn Rotor, Evening Drainage) alongside `-VisualQAHour`. The selector is
+capture setup only; verify that visual changes never alter replay inputs or
+flight state.
 
 ## Required Level 1 captures
 

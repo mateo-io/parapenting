@@ -14,6 +14,7 @@
 #include "Physics/WeatherSnapshot.h"
 #include "Physics/EquipmentSetup.h"
 #include "Physics/PilotPose.h"
+#include "Physics/GliderRigSnapshot.h"
 #include "Physics/HapticFeedback.h"
 #include "Physics/PilotProgression.h"
 #include "Physics/AccessibilityProfile.h"
@@ -86,6 +87,8 @@ public:
         { return AirModel.GetMode(); }
     Parapenting::Physics::Vec3 GetBaseWindMps() const
         { return AirModel.GetBaseWind(); }
+    const Parapenting::Physics::WeatherSnapshot& GetWeatherSnapshot() const
+        { return AirModel.GetSnapshot(); }
     const char* GetHarnessDisplayName() const;
     double GetPilotMassKg() const { return Equipment.pilotMassKg; }
     double GetBallastKg() const { return Equipment.ballastKg; }
@@ -108,6 +111,7 @@ public:
     const char* GetGraphicsProfileName() const;
     int32 GetHudMode() const { return HudMode; }
     const char* GetHudModeName() const;
+    bool IsFlightDeckVisible() const { return bFlightDeckVisible; }
     const char* GetSiteWindAssessmentName() const;
     const char* GetLaunchHazardText() const;
     const char* GetLandingCircuitText() const;
@@ -125,6 +129,8 @@ public:
     // Deterministic visual-QA entry point. Kept separate from player input so
     // packaged capture jobs can select an exact sun state without cycling F11.
     void SetVisualQALocalHour(double LocalHour);
+    void SetVisualQAWeatherPreset(
+        Parapenting::Physics::WeatherPresetId Preset);
     FString GetLocalTimeDisplay() const;
     const char* GetLandingPhaseName() const
         { return Parapenting::Physics::LandingPhaseName(LandingGuidance.phase); }
@@ -247,6 +253,8 @@ private:
     void ApplyGraphicsProfile();
     void CycleHudMode();
     void TogglePreflightBriefing();
+    void OpenFlightDeck();
+    void CloseFlightDeck();
     void SaveReplayManifest();
     void RefreshReplayCatalogue();
     bool LoadReplayFile(const FString& Path);
@@ -266,6 +274,7 @@ private:
     void BuildCanopyMesh();
     void UpdateCanopyMesh();
     void UpdatePilotVisual();
+    void CaptureGliderRigSnapshot(double SimulationTimeSeconds);
     void BeginSuspensionMesh();
     void AddSuspensionSegment(
         const FVector& start, const FVector& end,
@@ -294,6 +303,8 @@ private:
     // than at the carabiner, which is what makes them fan.
     FVector RiserTopLocalCm(int32 Group, bool bLeft) const;
     FVector BrakeHandLocalCm(bool bLeft) const;
+    FVector CanopyAttachmentLocalCm(double SpanFraction,
+        double ChordFraction) const;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> Root;
@@ -403,6 +414,10 @@ private:
     // every wing, weather, preset and time change, each of which also resets
     // the flight, so it covered the viewport almost continuously.
     bool bBriefingVisible = false;
+    // This is presentation-only.  It intentionally reads existing settings
+    // rather than becoming a second owner for route, weather or accessibility.
+    bool bFlightDeckVisible = true;
+    float FlightDeckAutoCloseSeconds = 5.0f;
     bool bHardLanding = false;
     bool bRolloutFinalized = false;
     double LandingDistanceM = 0.0;
@@ -445,6 +460,11 @@ private:
     // hang the risers off the same body the arms and torso were built from,
     // rather than recomputing an anchor that then disagrees with it.
     Parapenting::Physics::PilotPose LastPilotPose{};
+    // Previous/current fixed-step snapshots are the only control source for
+    // presentation. RenderRigSnapshot is their bounded frame interpolation.
+    Parapenting::Physics::GliderRigSnapshot PreviousRigSnapshot{};
+    Parapenting::Physics::GliderRigSnapshot CurrentRigSnapshot{};
+    Parapenting::Physics::GliderRigSnapshot RenderRigSnapshot{};
     Parapenting::Physics::ParagliderSolverClock SolverClock{
         PhysicsStepSeconds};
     double SimulationTimeSeconds = 0.0;

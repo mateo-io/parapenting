@@ -29,5 +29,8 @@ struct PilotPose
     Vec3 rightHandCm{};
 };
 
+constexpr double PilotUpperArmLengthCm = 39.0;
+constexpr double PilotForearmLengthCm = 37.0;
+
 PilotPose EvaluatePilotPose(const PilotPoseInput& input);
 }

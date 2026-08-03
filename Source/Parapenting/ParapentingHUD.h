@@ -15,4 +15,5 @@ public:
 private:
     void DrawCompactHUD(const class AParagliderPawn* Glider, bool bMinimal);
     void DrawPreflightBriefing(const class AParagliderPawn* Glider);
+    void DrawFlightDeck(const class AParagliderPawn* Glider);
 };

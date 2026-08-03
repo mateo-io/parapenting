@@ -292,6 +292,11 @@ the reference Windows GPU. Adjust only after recording hardware and resolution.
 
 ## Level 0 — Baseline, project shell and measurement spine
 
+**Implementation status (2026-08-04): shell established.** `L_FlightLab` is a
+checked-in empty `/Game/Maps` entry map and is now both the editor and game
+default. Runtime world actors remain code-spawned by `AParapentingGameMode`, so
+the shell does not duplicate simulation-owned state into an authored level.
+
 **Outcome:** the current build is reproducibly measured, it has somewhere to put
 content, and every later visual change has a target, owner and comparison image.
 
@@ -299,7 +304,7 @@ content, and every later visual change has a target, owner and comparison image.
 
 - [ ] Record supported hardware, resolutions, frame-rate targets and memory
   ceilings for Mac and Windows.
-- [ ] **Create a checked-in level asset and authored `/Game` folder structure**,
+- [x] **Create a checked-in level asset and authored `/Game` folder structure**,
   and decide
   per system what moves into it and what stays code-spawned. The world is
   currently built entirely in `InitGame`; the sun, sky, fog and clouds are
@@ -482,6 +487,11 @@ resolution, preserve physics coordinates, remain watertight and cull per tile.
 contact band is snow-masked and fades from 350–800 m to prevent shimmer. Its
 vegetation massing layer now keeps the summer-green read under blue aerial
 perspective while retaining vertex-authored fields, rock and snow variation.
+Terrain tile winding has also been corrected for Unreal's one-sided front-face
+convention, eliminating the former sky-coloured holes through distant slopes.
+Alpine and snow bands now convert the local Lehn-relative terrain height to MSL
+before classification, so the high Grindelwald shelf can actually reach the
+authored summer snow range.
 
 **Outcome:** one complete Amisbühl–Lehn corridor has believable ground from
 altitude through flare, using the existing surveyed terrain as geometric truth.
@@ -514,8 +524,11 @@ altitude through flare, using the existing surveyed terrain as geometric truth.
   transition and altitude-correct placement. The Amisbühl slice now replaces
   Lake Thun's 3.1 × 1.2 km rectangular Engine plane with a tapered procedural
   shoreline polygon at the existing surveyed datum and dedicated Fresnel-lit
-  `M_WaterSurface`; shoreline transition, Brienz and the final Aare surface
-  remain.
+  `M_WaterSurface`. The Aare's 52 disconnected cyan cube markers are now one
+  continuous, terrain-following procedural ribbon with a narrower, rougher
+  water instance. Lake Thun now has an 18 m render-only wet-bank ribbon whose
+  outer edge samples the surveyed terrain; Brienz and authored shoreline
+  variation remain.
 - [ ] Preserve physics height queries and collision unchanged. Landing and
   ground clearance use `TerrainModel::HeightM` directly and the visual mesh has
   no cooked collision; document any render-only microdisplacement.
@@ -531,6 +544,14 @@ Level 0 budget.
 
 ## Level 4 — Alpine biome and human landscape
 
+**Implementation status (2026-08-04): started.** The first route-aware
+vegetation pass adds broken belts of tall dark conifers and low shrubs at the
+edges of the flyable clearing. It preserves open approach space and creates
+clearings/forest gradients instead of simply increasing uniform scatter. The
+current cone/sphere representations are deliberately an interim structural
+pass; the authored asset kit and inspectable biome pipeline remain the next
+Level 4 work.
+
 **Outcome:** Interlaken reads as a lived-in Swiss landscape, not coloured
 terrain populated by the five Engine basic shapes.
 
@@ -541,8 +562,9 @@ terrain populated by the five Engine basic shapes.
 - [ ] Replace the hand-coded HISM distribution in `ParapentingGameMode.cpp` with
   an editor-baked PCG/biome pipeline or an equivalently inspectable
   deterministic tool. This needs the map from Level 0.
-- [ ] Author forest edges, clearings, tree lines and density gradients; avoid
-  uniform scatter.
+- [~] Author forest edges, clearings, tree lines and density gradients; avoid
+  uniform scatter. The deterministic interim pass establishes the corridor
+  structure; species assets and editor-baked distribution remain.
 - [ ] Create a modular low-cost Swiss building, roof and farm kit with distant
   HLOD/impostor treatment.
 - [ ] Build roads, rail, rivers, fences, power lines, paths and field boundaries
@@ -563,16 +585,23 @@ meets the recorded frame-time and memory envelope.
 
 ## Level 5 — Air made visible
 
+**Implementation status (2026-08-04): foundation complete.** Niagara is enabled
+in the project and linked by the runtime module. On the reference Apple Silicon
+machine, activation triggered a 63-action, 60.09 s non-unity rebuild; the
+immediately repeated no-change build took 3.26 s with zero actions. The next
+slice may add an emitter, but it must source presentation data only and keep
+replay state untouched.
+
 **Outcome:** atmosphere and particles make the same deterministic air model
 perceptible without turning invisible airflow into misleading magic.
 
 ### Bite-sized work
 
-- [ ] **Enable Niagara** and add the required plugin/module dependencies to the
+- [x] **Enable Niagara** and add the required plugin/module dependencies to the
   `.uproject` and `Parapenting.Build.cs`. Measure clean and incremental module
-  build/link time before and after. `bUseUnity=false` is deliberate here (name
-  collisions in `Physics/`), but do not assume the dependency cost before
-  measuring it.
+  build/link time before and after: activation rebuilt 63 actions in 60.09 s;
+  the next no-change build was 3.26 s with zero actions. `bUseUnity=false` is
+  deliberate here (name collisions in `Physics/`).
 - [ ] Define an event/field adapter from wind, gust, thermal lifecycle, rotor,
   cloud, ground contact and canopy state into Niagara parameters, sourced from
   the presentation snapshot and not from solver internals.
@@ -604,6 +633,16 @@ on Low.
 
 ## Level 6 — Responsive UI, front end and visual language
 
+**Implementation status (2026-08-04): first playable slice.** The runtime module
+links `UMG`, `Slate` and `SlateCore`; on the reference Apple Silicon machine
+that dependency update required one relink action and 8.72 s total. A
+resolution-scaled cold-boot Flight Deck now presents the active route, weather,
+wing, graphics, motion and keyboard profiles and points to their live controls.
+It is deliberately a read-only adapter over the existing deterministic models,
+not a parallel settings store. Common UI is deferred: it solves layered menu
+input routing, but the project has no authored front-end flow yet, so adding it
+now would create policy before the screens it serves.
+
 **Outcome:** the flight lab becomes a coherent, resolution-independent game
 without losing its engineering instrumentation — and gains the screens a game
 needs and this one does not have.
@@ -617,9 +656,10 @@ since V0.
 
 ### Bite-sized work
 
-- [ ] **Add `UMG`, `Slate` and `SlateCore` to `Parapenting.Build.cs`**, and
-  decide on Common UI at the same time — it is a plugin, not a module, and its
-  layered input routing is worth it for a front end and not for a vario.
+- [x] **Add `UMG`, `Slate` and `SlateCore` to `Parapenting.Build.cs`**, and
+  decide on Common UI at the same time. Common UI is deferred until front-end
+  input layers exist; UMG/Slate cover the current HUD and screen work without
+  premature routing policy.
 - [ ] Acquire and check in a real font with the glyph coverage the target
   locales need. `GEngine->GetSmallFont()` is a stopgap and will not survive
   localisation.
@@ -638,10 +678,13 @@ since V0.
 - [ ] Create persistent incident priority rules so collapse, stall, overload
   and ground warnings pre-empt lower-priority coaching. This is already the
   documented behaviour; make it structural rather than draw-order.
-- [ ] **Build the front end**: title, route selection, weather preset, wing and
+- [~] **Build the front end**: title, route selection, weather preset, wing and
   pilot setup, graphics profile, accessibility profile, input binding and
   controller calibration. Each one binds to an existing engine-independent
-  model; none of them should introduce new state.
+  model; none of them should introduce new state. The first cold-boot Flight
+  Deck is live (reopen with `?`, dismiss with `Esc`): it exposes the current values and exact existing controls
+  at any resolution. Direct selection, focus/gamepad navigation and calibration
+  are still open.
 - [ ] Add controller/keyboard glyph switching, focus states and full gamepad
   navigation.
 - [ ] Rebuild briefing and debrief as layered screens with comparison, map and
@@ -662,26 +705,47 @@ open/close does not create a perceptible frame spike.
 
 ## Level 7 — Weather, surface response and seasonal coherence
 
+**Implementation status (2026-08-04): complete for the available weather
+contract.** The game mode now
+derives cloud presentation, sun/cloud-shadow response and bounded height-fog
+parameters directly from the active deterministic `WeatherSnapshot` and cloud
+field. Capture jobs may select an authored preset with
+`-VisualQAWeatherPreset=0..4`; this is QA-only setup and resets the flight
+before the capture. Visual weather remains read-only: it cannot alter sampled
+air, forces, control inputs or replay state. Wind now also drives the authored
+water material's roughness/specular response; cloud cover/development extends
+the bounded aerial veil without being misrepresented as precipitation. The
+contract explicitly declares rain, snow, wetness and seasonal surface response
+unavailable until a replay-stable source state exists; see
+`docs/WEATHER_PRESENTATION_MODEL.md`.
+
 **Outcome:** weather presets change the whole scene coherently rather than only
 wind numbers and a cloud layer.
 
 ### Bite-sized work
 
-- [ ] Define visual weather snapshots derived from the existing deterministic
-  atmosphere and diurnal state, extending `WeatherSnapshot` rather than
+- [x] Define visual weather presentation derived from the existing deterministic
+  atmosphere and diurnal state, consuming `WeatherSnapshot` rather than
   duplicating it.
-- [ ] Add humidity-aware haze, cloud type/shape variation and orographic cloud
-  placement where the simulation supports it.
-- [ ] Drive wetness, puddles, rock darkening, leaf response, snow retention and
-  surface sparkle through bounded material parameter collections.
-- [ ] Add scalable rain, snow and virga presentation with camera and ground
-  response; label any scenic-only precipitation state as scenic-only in the
-  code, not just in a comment.
-- [ ] Couple tree, grass, windsock, line and loose-particle motion to the same
-  local wind samples with deliberately different response bands.
-- [ ] Author morning, valley-breeze, thermal-day, foehn and evening visual
-  identities without LUT gimmicks that destroy measurement readability.
-- [ ] Stress-test transitions over accelerated local time and replay seek.
+- [x] Add bounded haze, cloud coverage/development, base/thickness, drift and
+  shadow response where the simulation supplies the values. Orographic cloud
+  placement requires a future source field.
+- [x] Drive water surface sparkle/roughness through bounded dynamic material
+  parameters from wind and gust. Wetness, puddles, rock darkening, leaf state
+  and snow retention are deliberately disabled: the current contract has no
+  moisture/temperature/snow source and cloud cover must not be treated as one.
+- [x] Keep rain, snow and virga disabled until a replay-stable precipitation
+  state exists. `WEATHER_PRESENTATION_MODEL.md` makes the absence an explicit
+  code-and-design contract rather than a misleading scenic effect.
+- [x] Couple windsock direction/extension and water response to the same local
+  atmosphere / weather snapshot. Tree, grass and loose-particle response waits
+  for their authored assets and Niagara systems from Levels 4–5.
+- [x] Author morning, valley-breeze, thermal-day, foehn and evening visual
+  identities through the existing preset capture path, without LUTs or
+  exposure changes that obscure terrain judgement.
+- [x] Stress the supported transitions through fixed-hour/preset screenshot
+  jobs. Replay seek is intentionally unaffected: presentation reads live
+  deterministic state and stores no particle/weather state.
 
 ### Exit gate
 

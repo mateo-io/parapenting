@@ -983,6 +983,64 @@ One thing did follow the ratio, and it is the part of §34 that survives: dα/dV
 moves −1.27 to −1.72 as the ratio rises. The coefficient does buy pendulum
 tracking. Tracking is just not what the departure is made of.
 
+## 36. Five instruments for one number, and the fifth said "not reportable"
+
+Measuring the fast mode's damping against `swingDampingRatio` should have been
+the easy half of item 11. It took five instruments and still did not land. The
+sequence is worth keeping, because every step was a smaller assumption than the
+one before and four of them produced **confident, wrong output**.
+
+| zero line | assumes about the interfering slow mode | result |
+|---|---|---|
+| window mean | it is an offset | 0 crossings at every ratio |
+| fitted line | it is a ramp | 1–3 crossings; its bow left over |
+| band pass | only that it is slower | unchanged; the extra "peaks" were the 10 Hz aero staircase |
+| control run | nothing at all | clean response — and the mode is already gone |
+| damped-sinusoid fit | — | fits at R² 0.9, and the answers are incoherent |
+
+**The first output was the most dangerous.** Seven dashes reading "no
+oscillation to identify" — which is indistinguishable from *this aircraft has no
+fast mode* and was in fact *my zero line is in the wrong place*. What made it
+recoverable was printing crossings, peaks and signal amplitude on the failing
+rows. An instrument that cannot say why it failed is not reporting a result, it
+is declining to speak, and those look identical in a table.
+
+**Three of the five failures were diagnosed by guessing from summary
+statistics, and two of those guesses were wrong.** Printing the trace ended it
+in one run: the fast mode decays ~83% per cycle, so it is dead by 2.5 s, and a
+centred 2.5 s moving average cannot report anything before 2.5 s. The filter was
+being asked to recover a mode from the part of the record it had already ended
+in — no cutoff fixes that. **Look at the signal before designing the filter.**
+
+**The control run is the right idea and worth reusing.** Two runs identical
+except for the input; the solver is deterministic, so the interfering mode is
+bit-identical in both and subtracts exactly, with no assumption about its shape.
+Its own assumption — superposition — is *checkable*, and it visibly fails past
+4 s where the two runs diverge instead of converging. A checkable assumption
+beats a filter cutoff, which is only ever a guess wearing a number.
+
+**Knowing when to stop.** The final fits explain 90% of the signal and say
+damping is positive at every ratio including the ones that depart, and
+non-monotonic in the coefficient — more damper buying less damping. That is a
+fit trading decay against frequency across two cycles, not a wing. The bar was
+set before the run (the ratio-0.35 row must reproduce the suite's number), the
+bar was missed, and the table is published marked NOT REPORTABLE rather than
+quietly polished until it agreed.
+
+**And it found something anyway, pointed at a number that is gated.** The
+`CalibrationManeuver` pitch identification runs on a window starting 2 s after
+the release — after this mode has largely ended. Its "period 2.91 s, damping
+0.28" is therefore suspect. It has not been changed: doubt is not a measurement.
+But a gate resting on a suspect number is worse than no gate, and that now has
+to be resolved.
+
+The real lesson is structural. Every time-trace method here ran aground on the
+same rock — two modes an order of magnitude apart sharing one signal, the fast
+one gone before the slow one has moved. That is not a windowing problem to be
+out-thought. **Linearise about trim and take the eigenvalues**: every mode at
+once, no excitation, no window, no filter, no superposition. Four instruments
+were built to avoid a harder one that would have answered the question outright.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

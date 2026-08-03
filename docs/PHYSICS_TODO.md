@@ -489,14 +489,32 @@ stands in for, and it is checkable against a real wing in a way "the period is
   goes −1.27 to −1.72 as the ratio rises. `swingDampingRatio` really is buying
   pendulum tracking, exactly as the exponent work implied. Tracking is simply
   not what the departure is made of.
-- **Next:** the fast mode's damping, and what is taking it negative.
-  `swingDampingRatio` is the only *explicit* damper in that mode — it divides
-  the link rate against the world every step — so a mode that still diverges at
-  0.25 means something else is feeding it. Measure the pendulum mode's damping
-  against the ratio directly, rather than inferring it from whether the
-  aircraft survived; note that `calibration_tests` reports 0.28 for the
-  brake-pulse pendulum at ratio 0.35, which does not extrapolate to the −0.017
-  measured at 0.25, so those two may not be the same mode either.
+- **Measuring the fast mode's damping directly was attempted and did NOT
+  succeed.** `parapenting_pitch_axis_trace --fast-mode` excites it with the same
+  30% pulse `calibration_tests` uses, subtracts a control run to remove the slow
+  mode exactly, and fits `C + A e^{−σt} cos(ωt+φ)` by grid search. The sweep is
+  printed and marked not reportable, on three counts: the ratio-0.35 check row
+  fits to R² 0.89 against this file's own 0.90 bar; damping comes out positive
+  at every ratio including the two that depart, so it never crosses the zero
+  `--departure` places between 0.25 and 0.30; and it is not monotonic in the
+  ratio (0.21, 0.51, 0.61, 0.60, 0.51, 0.25, 0.15), which has more damper buying
+  less damping over half its range. Two cycles at R² 0.9 is a fit trading decay
+  against frequency, not a measurement.
+- **What the attempt did establish, and it matters: the fast mode is dead by
+  about 2.5 s.** `--fast-mode-dump` prints the swing trace; from 2.65 s to
+  8.95 s it is monotonic, with no zero crossings at all. **`CalibrationManeuver`
+  identifies its "period 2.91 s, damping 0.28" on a window that STARTS at 2 s**,
+  so it is reading a mode that has largely ended. That number is gated in
+  `calibration_tests` and is now in doubt. It was not changed, because doubt is
+  not a measurement — but nothing should lean on it until this is settled.
+- **Next, and this is a build rather than a run:** linearise the coupled solver
+  about trim numerically and take the eigenvalues. Perturb each state, difference
+  the derivatives, assemble the Jacobian, solve. That gives every mode's period
+  and damping at once with no excitation, no window, no filter and no
+  superposition assumption — and it would independently check the phugoid's
+  16.4 s and 0.031 as a side effect. Every time-trace method tried here has run
+  aground on the same rock: two modes an order of magnitude apart in period,
+  sharing one signal, with the fast one gone before the slow one has moved.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

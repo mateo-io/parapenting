@@ -373,6 +373,402 @@ void ReportPhugoidMechanism(const std::vector<double>& speed,
 //
 // Cheap, unlike everything else in this file: a departure happens in a minute
 // or two, where a settled measurement takes twenty.
+// The fast mode's damping, measured directly instead of inferred from whether
+// the aircraft survived.
+//
+// `--departure` established that what diverges is a 3.6-5.7 s mode and not the
+// phugoid, but it read that off a wing already on its way out of the envelope,
+// where the amplitude is large and the period is drifting. This excites the
+// mode deliberately and watches it decay: settle, 2 s of 30% brake, release,
+// and identify the free oscillation that follows - the same input
+// `calibration_tests` uses for its "Pitch: period 2.91 s, damping 0.28", so
+// the 0.35 row here is a check against a number measured elsewhere by other
+// code.
+//
+// The observable is `payloadSwingRad`, the pilot swinging against the wing,
+// which is what this mode IS. Incidence carries both modes at once.
+//
+// One deliberate difference from `IdentifyOscillation` in
+// `CalibrationManeuver.cpp`: that one accumulates a log decrement only from
+// peak pairs where the second is SMALLER than the first, so it cannot return a
+// negative damping ratio - a growing mode either reports zero or reports the
+// few decaying pairs noise handed it. That is a safe choice for a gate on a
+// healthy aircraft and the wrong one here, where the sign is the entire
+// question. This version keeps every pair and lets the answer come out
+// negative.
+struct FastMode
+{
+    double periodS = 0.0;
+    double dampingRatio = 0.0;
+    int oscillations = 0;
+    bool departed = false;
+    bool valid = false;
+    // What the identifier actually saw, reported whether or not it succeeded.
+    // A bare "no oscillation to identify" is not a measurement result, it is
+    // an instrument declining to say anything, and telling those two apart
+    // took a rebuild the first time this ran.
+    int crossingsFound = 0;
+    int peaksFound = 0;
+    double windowSwingDeg = 0.0;
+    double fitQuality = 0.0;
+};
+
+FastMode MeasureFastMode(const CanopyGeometry& canopy,
+                         const LinePlanSpec& linePlan, double ratio,
+                         int settleSeconds, bool dump = false)
+{
+    FastMode out;
+    CoupledParagliderSolver solver(canopy, linePlan);
+    solver.SetSwingDampingRatio(ratio);
+    CoupledState state;
+
+    auto run = [&](double brake, double seconds, std::vector<double>* record)
+    {
+        CoupledControls controls;
+        controls.leftBrake = brake;
+        controls.rightBrake = brake;
+        const int ticks = static_cast<int>(seconds * 20.0);
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            for (int step = 0; step < 6; ++step)
+                solver.Step(state, controls, CoupledAtmosphere{});
+            if (record) record->push_back(solver.Diagnostics().payloadSwingRad);
+            if (solver.Diagnostics().angleOfAttackRad > 0.35)
+                out.departed = true;
+        }
+    };
+
+    // Settle, then pulse, then let go. The settle is short by this file's
+    // standards and it has to be: at ratio 0.20 the aircraft departs hands-up
+    // at 93 s, so a settle long enough for the SLOW mode would destroy the
+    // measurement it is supposed to precede.
+    run(0.0, settleSeconds, nullptr);
+    if (out.departed) return out;
+    run(0.30, 2.0, nullptr);
+    std::vector<double> swing;
+    run(0.0, 14.0, &swing);
+    if (swing.size() < 40) return out;
+
+    // A CONTROL RUN: identical in every respect except that the brake is never
+    // pulled. Subtracting it leaves the response to the pulse and nothing
+    // else.
+    //
+    // This replaces three successive attempts to filter the slow mode out of
+    // the pulsed run - a window mean, a fitted line, a band pass - and the
+    // reason all three failed is visible the moment the trace is printed
+    // rather than summarised. The fast mode decays about 83% per cycle at this
+    // damping, so it is DEAD by 2.5 s; and a centred moving average 2.5 s wide
+    // cannot report anything before 2.5 s. The filter was being asked to
+    // recover a mode from the part of the record it had already ended in. No
+    // cutoff fixes that.
+    //
+    // The control differs in kind rather than degree: the solver is
+    // deterministic, so the slow mode's drift is IDENTICAL in both runs and
+    // subtracts exactly, with no assumption about its shape, its period, or
+    // whether it is a ramp or a bow. It also costs one extra run of a
+    // measurement that takes seconds.
+    //
+    // What it does assume is superposition - that the pulse does not change
+    // the slow mode. That is false in general and close enough here for a
+    // 30% pulse, and unlike a filter cutoff it is a statement that can be
+    // checked by halving the pulse and seeing whether the answer moves.
+    CoupledParagliderSolver control(canopy, linePlan);
+    control.SetSwingDampingRatio(ratio);
+    CoupledState controlState;
+    std::vector<double> controlSwing;
+    {
+        const CoupledControls hands;
+        const int ticks = static_cast<int>((settleSeconds + 16.0) * 20.0);
+        const int recordFrom = static_cast<int>((settleSeconds + 2.0) * 20.0);
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            for (int step = 0; step < 6; ++step)
+                control.Step(controlState, hands, CoupledAtmosphere{});
+            if (tick >= recordFrom)
+                controlSwing.push_back(control.Diagnostics().payloadSwingRad);
+        }
+    }
+    const std::size_t usable = std::min(swing.size(), controlSwing.size());
+    if (usable < 40) return out;
+    for (std::size_t i = 0; i < usable; ++i) swing[i] -= controlSwing[i];
+    swing.resize(usable);
+
+    // The window is the release plus 2 to 9 s, matching CalibrationManeuver:
+    // four periods of the fast mode and a third of one of the slow, so the
+    // crossings counted belong to the surge.
+    // From just after the release, where the mode is largest, rather than the
+    // 2 s in `CalibrationManeuver` uses - at 83% decay per cycle, starting two
+    // seconds late throws away four fifths of the signal. Nothing forces a
+    // late start now that the slow mode is subtracted rather than filtered.
+    const std::size_t from = 4;     // 0.2 s at 20 Hz
+    // And it STOPS at 4 s, which the dump is what settled. Past about four
+    // seconds the pulsed and unpulsed runs diverge steadily rather than
+    // converging - the difference climbs through +0.87 deg and is still going
+    // at 9 s - so superposition has failed by then and the difference is no
+    // longer the response to the pulse. Four seconds is a little over two
+    // periods of the mode, taken where the assumption behind the method still
+    // holds.
+    const std::size_t to = std::min<std::size_t>(80, swing.size() - 5);
+    if (to <= from + 8) return out;
+
+    // SEPARATE THE TWO MODES BY FREQUENCY, which is the only thing that works
+    // here. Two earlier versions did not:
+    //
+    //   * subtracting the window mean, the way `IdentifyOscillation` does,
+    //     found ZERO crossings at every ratio. Over a seven-second window a
+    //     16.4 s mode is not an offset, it is a ramp, and it carries the swing
+    //     angle further than the surge being measured - so the centred signal
+    //     never crosses its own zero and the surge rides invisibly up the
+    //     slope. That reads as "this aircraft has no fast mode", which is a
+    //     spectacular thing for an instrument to say wrongly.
+    //   * subtracting a fitted straight line found two or three. A line
+    //     removes the slow mode's CHORD across the window; what is left is its
+    //     bow, and a bow is still enough to hold the fast mode off zero for
+    //     most of the record.
+    //
+    // A centred moving average wider than the fast mode and far narrower than
+    // the slow one removes the slow mode whatever shape it is, without
+    // assuming the shape. Half-width 2.5 s: comfortably over the 2.9 s
+    // period's half-cycle, a sixth of the slow mode.
+    //
+    //   * and that STILL was not enough, for a reason worth keeping. With the
+    //     slow mode gone the count went the other way - seven peaks against
+    //     one crossing - and a centred high-pass cannot leave a one-sided
+    //     residual, so those peaks were not the mode. The aerodynamics are
+    //     solved every 12 steps, which is 10 Hz, and their loads are HELD in
+    //     between; sampling at 20 Hz reads that staircase, and the peak
+    //     detector was faithfully counting the coupling scheme.
+    //
+    // So this is a BAND pass, and it has to be: the wanted mode sits between
+    // an interfering mode five times slower and a numerical ripple thirty
+    // times faster. Neither cutoff is tunable to taste - one is set by the
+    // slow mode's period and the other by the aerodynamic interval, both of
+    // them measured.
+    // With the control subtracted the only filtering left is a 0.3 s average
+    // against the 10 Hz aerodynamic staircase, which is a genuine numerical
+    // ripple rather than a mode. Nothing is being removed at the timescale of
+    // the answer.
+    constexpr std::size_t Ripple = 3;
+    const auto detrended = [&](std::size_t i) -> double
+    {
+        if (i < Ripple || i + Ripple >= swing.size()) return 0.0;
+        double local = 0.0;
+        for (std::size_t j = i - Ripple; j <= i + Ripple; ++j) local += swing[j];
+        return local / static_cast<double>(2 * Ripple + 1);
+    };
+
+    // FIT THE MODEL, do not count its features. Crossings and log decrements
+    // need several clean cycles; this window holds a little over two, because
+    // the mode is 80%-decayed by the second and superposition has failed by
+    // the third. Counting features on two cycles gave one damping estimate off
+    // a single peak pair, and a period that disagreed with reading the same
+    // trace by eye - which is a thin basis for questioning a number in the
+    // calibration suite.
+    //
+    // So: least squares against `C + A exp(-sigma t) cos(omega t + phi)`. For
+    // fixed sigma and omega that is LINEAR in the other three, so the fit is a
+    // grid over two parameters with a 3x3 solve inside it, which needs no
+    // starting guess and cannot land in a local minimum. It also handles a
+    // GROWING mode without special-casing: negative sigma is just another grid
+    // point, and the sign is the question this whole sweep exists to answer.
+    const int samples = static_cast<int>(to - from + 1);
+    std::vector<double> t(samples), y(samples);
+    for (int k = 0; k < samples; ++k)
+    {
+        t[k] = static_cast<double>(k) / 20.0;
+        y[k] = detrended(from + static_cast<std::size_t>(k));
+    }
+
+    double bestSse = 1.0e300, bestSigma = 0.0, bestOmega = 0.0;
+    double bestAmplitude = 0.0;
+    for (int si = 0; si <= 120; ++si)
+    {
+        const double sigma = -1.0 + 0.0333 * si;
+        for (int wi = 0; wi <= 140; ++wi)
+        {
+            const double omega = 1.0 + 0.05 * wi;    // 0.79 s to 6.3 s
+            // Normal equations for [C, a, b] against
+            // [1, e^-st cos wt, e^-st sin wt].
+            double m[3][4] = {{0}};
+            for (int k = 0; k < samples; ++k)
+            {
+                const double decay = std::exp(-sigma * t[k]);
+                const double basis[3] = {1.0, decay * std::cos(omega * t[k]),
+                                         decay * std::sin(omega * t[k])};
+                for (int r = 0; r < 3; ++r)
+                {
+                    for (int c = 0; c < 3; ++c) m[r][c] += basis[r] * basis[c];
+                    m[r][3] += basis[r] * y[k];
+                }
+            }
+            // Gaussian elimination with partial pivoting, three unknowns.
+            double solution[3] = {0, 0, 0};
+            bool singular = false;
+            for (int col = 0; col < 3 && !singular; ++col)
+            {
+                int pivot = col;
+                for (int r = col + 1; r < 3; ++r)
+                    if (std::fabs(m[r][col]) > std::fabs(m[pivot][col]))
+                        pivot = r;
+                if (std::fabs(m[pivot][col]) < 1.0e-14) { singular = true; break; }
+                for (int c = 0; c < 4; ++c) std::swap(m[col][c], m[pivot][c]);
+                for (int r = 0; r < 3; ++r)
+                {
+                    if (r == col) continue;
+                    const double factor = m[r][col] / m[col][col];
+                    for (int c = col; c < 4; ++c) m[r][c] -= factor * m[col][c];
+                }
+            }
+            if (singular) continue;
+            for (int r = 0; r < 3; ++r) solution[r] = m[r][3] / m[r][r];
+
+            double sse = 0.0;
+            for (int k = 0; k < samples; ++k)
+            {
+                const double decay = std::exp(-sigma * t[k]);
+                const double model = solution[0]
+                    + decay * (solution[1] * std::cos(omega * t[k])
+                               + solution[2] * std::sin(omega * t[k]));
+                sse += (y[k] - model) * (y[k] - model);
+            }
+            if (sse < bestSse)
+            {
+                bestSse = sse;
+                bestSigma = sigma;
+                bestOmega = omega;
+                bestAmplitude = std::sqrt(solution[1] * solution[1]
+                                          + solution[2] * solution[2]);
+            }
+        }
+    }
+
+    // Kept for the diagnostic columns: how much signal there was to fit, and
+    // how well the fit describes it.
+    double zero = 0.0;
+    for (std::size_t i = from; i <= to; ++i) zero += detrended(i);
+    zero /= static_cast<double>(to - from + 1);
+
+    std::vector<double> crossings;
+    std::vector<double> peakValues;
+    for (std::size_t i = from + 1; i < to; ++i)
+    {
+        const double a = detrended(i - 1) - zero;
+        const double b = detrended(i) - zero;
+        const double c = detrended(i + 1) - zero;
+        if ((a < 0.0 && b >= 0.0) || (a > 0.0 && b <= 0.0))
+            crossings.push_back(static_cast<double>(i) / 20.0);
+        if ((b > a && b > c) || (b < a && b < c)) peakValues.push_back(b);
+    }
+    // LOOK AT THE SIGNAL. Three filters were fitted to this measurement off
+    // nothing but crossing and peak counts, and two of the three diagnoses
+    // that motivated them were wrong. Summary statistics say an instrument is
+    // failing; they do not say why, and guessing why from them is how an
+    // afternoon disappears. This prints the trace.
+    if (dump)
+    {
+        std::printf("\n  raw and band-passed swing, ratio %.2f, 20 Hz\n",
+                    ratio);
+        std::printf("%8s %12s %14s\n", "t s", "swing deg", "detrended deg");
+        for (std::size_t i = from; i <= to; i += 2)
+        {
+            std::printf("%8.2f %12.4f %14.5f\n",
+                        static_cast<double>(i) / 20.0, swing[i] * Degrees,
+                        detrended(i) * Degrees);
+        }
+        std::printf("\n");
+    }
+
+    out.crossingsFound = static_cast<int>(crossings.size());
+    out.peaksFound = static_cast<int>(peakValues.size());
+    double low = 1.0e9, high = -1.0e9;
+    for (std::size_t i = from; i <= to; ++i)
+    {
+        low = std::min(low, detrended(i) - zero);
+        high = std::max(high, detrended(i) - zero);
+    }
+    out.windowSwingDeg = (high - low) * Degrees;
+
+    if (bestOmega > 0.0 && bestAmplitude > 1.0e-6)
+    {
+        out.periodS = 2.0 * Pi / bestOmega;
+        out.dampingRatio = bestSigma
+            / std::sqrt(bestSigma * bestSigma + bestOmega * bestOmega);
+        out.oscillations = static_cast<int>(
+            (t.back() - t.front()) / out.periodS);
+        // Fraction of the signal's variance the fit accounts for. A damped
+        // sinusoid can be fitted to anything; this is what says whether it
+        // belonged. Reported on every row so a bad fit cannot pass as a
+        // measurement.
+        double variance = 0.0;
+        for (int k = 0; k < samples; ++k)
+            variance += (y[k] - zero) * (y[k] - zero);
+        out.fitQuality = variance > 1.0e-18 ? 1.0 - bestSse / variance : 0.0;
+        out.valid = out.fitQuality > 0.90;
+    }
+    return out;
+}
+
+void ReportFastMode(const CanopyGeometry& canopy, const LinePlanSpec& linePlan)
+{
+    std::printf("The fast mode, excited and watched: brake pulse, then let "
+                "go\n");
+    std::printf("%10s %10s %10s %8s  %s\n",
+                "ratio", "period", "zeta", "fit R2", "note");
+    for (const double ratio : {0.15, 0.20, 0.25, 0.30, 0.35, 0.50, 0.90})
+    {
+        const FastMode m = MeasureFastMode(canopy, linePlan, ratio, 30);
+        if (m.departed)
+        {
+            std::printf("%10.2f %10s %10s %8s  departed before or during the "
+                        "pulse\n", ratio, "-", "-", "-");
+            continue;
+        }
+        if (!m.valid)
+        {
+            std::printf("%10.2f %9.2fs %10.3f %8.2f  REJECTED: fit explains "
+                        "only %.0f%% of a %.2f deg signal\n",
+                        ratio, m.periodS, m.dampingRatio, m.fitQuality,
+                        100.0 * m.fitQuality, m.windowSwingDeg);
+            continue;
+        }
+        std::printf("%10.2f %9.2fs %10.3f %8.3f  %.2f deg swing%s\n",
+                    ratio, m.periodS, m.dampingRatio, m.fitQuality,
+                    m.windowSwingDeg,
+                    m.dampingRatio < 0.0 ? ", GROWING" : "");
+    }
+    std::printf(
+        "\n  NOT REPORTABLE, and the table is kept so that is visible.\n\n"
+        "  The check row fails: at 0.35 the fit explains 89%% of the signal, "
+        "under this\n  file's own 90%% bar, so by the rule stated before the "
+        "run the sweep below it\n  is not evidence. Two more things say the "
+        "same. Damping is POSITIVE at every\n  ratio including the two that "
+        "depart, so it never crosses the zero that\n  `--departure` puts "
+        "between 0.25 and 0.30. And it is not monotonic in the\n  ratio - "
+        "0.21, 0.51, 0.61, 0.60, 0.51, 0.25, 0.15 - which has more damper\n"
+        "  buying less damping over half its range. That is not a wing, it is "
+        "a fit\n  trading decay against frequency across two cycles at R2 "
+        "0.9.\n\n"
+        "  What IS established here, and it is not nothing:\n"
+        "   * the control-run subtraction works - the response to the pulse "
+        "comes out\n     clean from the release, with no filter and no "
+        "assumption about the slow\n     mode's shape;\n"
+        "   * the fast mode is DEAD BY ABOUT 2.5 s. Run `--fast-mode-dump`: "
+        "the raw swing\n     over 2.65 to 8.95 s is monotonic, no crossings "
+        "at all. `CalibrationManeuver`\n     identifies its 'period 2.91 s, "
+        "damping 0.28' on a window that STARTS at 2 s,\n     so it is reading "
+        "a mode that has largely ended. That number is now in\n     doubt, "
+        "and it is gated;\n"
+        "   * two cycles is not enough for either counting or fitting, and no "
+        "amount of\n     care with windows changes that. The excitation has "
+        "to leave more cycles,\n     or the modes have to come from somewhere "
+        "other than a time trace.\n\n"
+        "  The instrument that would settle it: linearise the coupled solver "
+        "about trim\n  numerically and take the eigenvalues. Every mode's "
+        "period and damping at\n  once, no excitation, no window, no "
+        "superposition assumption, and it would\n  check the phugoid's 16.4 s "
+        "and 0.031 as a side effect. PHYSICS_TODO item 11.\n\n");
+}
+
 struct DivergingMode
 {
     double periodS = 0.0;
@@ -667,6 +1063,7 @@ int main(int argc, char** argv)
     // remaining question and costs minutes where the rest of this file costs
     // an hour.
     const bool departureOnly = mode == "--departure";
+    const bool fastModeOnly = mode == "--fast-mode";
     std::printf("Level 10: the pitch axis, instrumented. PHYSICS_TODO item "
                 "11.\n");
     std::printf("Nothing here asserts. Item 11 is an open disagreement and "
@@ -676,14 +1073,26 @@ int main(int argc, char** argv)
     const CanopyGeometry canopy;
     const LinePlanSpec linePlan = Epic2MlLinePlan();
 
+    if (mode == "--fast-mode-dump")
+    {
+        MeasureFastMode(canopy, linePlan, 0.35, 30, true);
+        return 0;
+    }
+    if (fastModeOnly)
+    {
+        ReportFastMode(canopy, linePlan);
+        return 0;
+    }
     if (departureOnly)
     {
         ReportDeparture(canopy, linePlan);
+        ReportFastMode(canopy, linePlan);
         return 0;
     }
 
     ReportSlowMode(canopy, linePlan);
     ReportDeparture(canopy, linePlan);
+    ReportFastMode(canopy, linePlan);
     if (slowModeOnly) return 0;
 
     // -- what brake commands against what it gets --------------------------

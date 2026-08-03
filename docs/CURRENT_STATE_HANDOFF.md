@@ -267,6 +267,16 @@ the boundary, and `--departure` shows the thing actually growing is a
 −0.042 at 0.20. So item 11 is two problems, not one: the slow mode is explained,
 the fast one is not. `PHYSICS_LEARNINGS` §35.
 
+**Measuring the fast mode directly was then attempted and failed**, through five
+instruments; the sweep is printed by `--fast-mode` and marked NOT REPORTABLE
+rather than tidied into agreement. It did establish one thing that needs acting
+on: **the fast mode is dead by about 2.5 s** (`--fast-mode-dump` shows the swing
+monotonic from 2.65 s onward), while `CalibrationManeuver` identifies its
+gated "period 2.91 s, damping 0.28" on a window starting at 2 s. That number is
+in doubt and was deliberately left alone. The fix for all of it is the same
+build: linearise the coupled solver about trim and take the eigenvalues.
+`PHYSICS_LEARNINGS` §36.
+
 What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
 pendulum mode — the wing swinging against the pilot after a brake pulse — which
 is a different and healthy mode. Settled properly: hands-up **4.925°**, 25%

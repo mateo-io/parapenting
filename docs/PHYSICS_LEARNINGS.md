@@ -805,6 +805,44 @@ suspension pitch response that is too weak, and the compensation was what made
 the model look calibrated. The measurement worth having is the one that says
 which half was propping up the other.
 
+## 33. Before comparing two numbers, measure the noise they sit in
+
+The pitch axis had a symptom everybody could state: brake slows the wing while
+lowering its incidence, which is the wrong sign. It was written into the TODO,
+the calibration report, the handoff and two commit messages, and a plan was
+built on it — the suspension must be too weak, so find the lever.
+
+There was no lever, and there was no sign error. Sixty seconds of still air,
+hands up, no input: incidence is still swinging **0.60°** over the last ten
+seconds, and under 25% brake it swings **2.26°**. The differences being read as
+a sign error were 0.5–1.8°. The signal was smaller than the oscillation it was
+being read from, and had been the whole time.
+
+The calibration harness had been printing `NOT SETTLED` next to that exact row
+for as long as the row existed. Nobody read the column, because the number
+beside it looked like an answer.
+
+Three things generalise.
+
+**A difference is not a measurement until you know the spread.** Two settled
+values and a subtraction is only meaningful if "settled" was checked rather
+than assumed. The fix in the instrument was four lines: track min and max over
+the last ten seconds and print them beside the mean. Every table this project
+produces should carry that column.
+
+**§30 was the same lesson and it did not take.** "Measure a steady state from a
+steady state" was written after a brake ramp was started before the wing had
+settled. That was read as a procedural fix — settle longer — when it was really
+a claim about instrumentation: you cannot know you settled without watching.
+Settling longer does nothing when the aircraft has a limit cycle, and sixty
+seconds is not more settled than thirty.
+
+**The direction of a wrong answer is not evidence about its cause.** The
+"suspension is too weak" theory was consistent with the observation, survived
+several passes, and sent the search toward a number — the specific stiffness of
+6.13 m — that turned out not to be an input to the solver at all. A theory that
+explains a measurement you cannot actually resolve explains nothing.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

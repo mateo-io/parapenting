@@ -232,13 +232,28 @@ the four span stations the brake fan lands on — the 0.62 m divides as **0.120 
 of sewn-in slack, 0.298 m of fabric, 0.202 m of rotation**, and full brake
 rotates the canopy 5.0° where it used to rotate it 12.4°.
 
-What that exposed is that the double count had been propping up a suspension
-that cannot otherwise produce the right sign. Brake now slows the wing while
-*lowering* its incidence — 4.4° at 25% against 5.14° at trim — and 40% departs
-nose-down through the same low-CL loop-gain path as full bar, rather than
-stalling. Both section-side levers are now measured: the pitching moment agrees
-with thin-airfoil flap theory to 10%, and the take-up comes off the geometry. So
-item 11 is down to **one** unmeasured number, the specific stiffness of 6.13 m.
+What that exposed is that the double count had been propping up a pitch axis
+that does not settle at all.
+
+> **Retracted.** This section previously read the 25% brake row as brake
+> *lowering* incidence — 4.4° against 5.14° at trim — and concluded that the
+> suspension could not produce the right sign, leaving "one unmeasured number,
+> the specific stiffness of 6.13 m". Both halves were wrong.
+>
+> The aircraft never reaches a steady state: hands-up in still air it swings
+> **0.60°** of incidence after sixty seconds, and **2.26°** under 25% brake, so
+> the 0.5–1.8° differences the sign was read from were smaller than the
+> oscillation containing them. The `NOT SETTLED` flag beside that row in this
+> report's own manoeuvre table was saying so.
+>
+> And 6.13 m is not a lever: it is registered *Validated*, measured off the
+> built graph at four loads, and is not an input to the solver — the stiffness
+> curve is measured and 6.13 is its slope written down afterwards.
+>
+> The real finding, with the evidence, is `PHYSICS_TODO` item 11 and
+> `parapenting_pitch_axis_trace`. The section-side measurements below still
+> stand: the pitching moment agrees with thin-airfoil flap theory to 10%, and
+> the brake take-up comes off the geometry.
 
 Bounded, not fitted. `calibration_tests` gates the direction and caps the
 incidence drop at 1.7°; `coupled_tests` gates the direction and the glide and

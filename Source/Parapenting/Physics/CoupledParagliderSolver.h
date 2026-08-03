@@ -328,6 +328,10 @@ struct CoupledDiagnostics
     // claim worth measuring rather than asserting.
     double pendulumWeightMomentNm = 0.0;
     double aeroPitchMomentNm = 0.0;
+    // The nose-up rotation the shortened brake line commands geometrically,
+    // before the section's nose-down couple has argued with it. Item 11 is the
+    // gap between this and `payloadSwingRad`.
+    double brakeCommandedSwingRad = 0.0;
     // Power leaving through the pendulum's damper. A real sink rather than a
     // solver artefact, so the energy accounting subtracts it instead of
     // reporting it as energy that went missing.
@@ -406,6 +410,11 @@ public:
     // nanoseconds - always-on timers would be a tenth of a percent of the
     // answer, which is fine, but they would also be a permanent claim on a hot
     // loop for a number nobody reads in flight.
+    // Item 11's only free number, 0.35, registered Tuned/Unvalidated. Exposed
+    // for `pitch_axis_trace` to sweep; nothing in flight changes it.
+    void SetSwingDampingRatio(double ratio) { SwingDampingRatioValue = ratio; }
+    double SwingDampingRatio() const { return SwingDampingRatioValue; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
@@ -491,6 +500,7 @@ private:
         double travel = 0.0;
         double offsetRad = 0.0;
     };
+    double SwingDampingRatioValue = 0.35;
     bool Profiling = false;
     CoupledStepProfile ProfileValue{};
     std::vector<BrakeSwingSample> BrakeSwingCurve;

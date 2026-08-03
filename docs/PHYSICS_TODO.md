@@ -341,7 +341,53 @@ tuned. The remaining tuned coefficients are concentrated in the legacy model,
 and item 7 is what retires them — with one loud exception in the geometry-driven
 stack, `swingDampingRatio`, which is item 11.
 
-**11. The pendulum damping ratio is a stated number holding up the pitch axis.**
+**11. REWRITTEN. The aircraft never reaches a steady state, and everything
+else in this item was a symptom of that.** Run `parapenting_pitch_axis_trace`.
+
+Hands-up, still air, no input, sixty seconds: incidence is still swinging
+**0.60°** over the last ten. A phugoid with this wing's measured period near
+3 s and damping ratio near 0.28 is dead after twenty periods, so this is not a
+decaying mode — it is a limit cycle. Under 25% brake it is **1.75–2.26°**.
+
+- **It is not the schedule.** The aerodynamics run every 12 steps with their
+  loads held between, which is a 10 Hz staircase driving the structure and was
+  the obvious suspect. Solving them at 120 Hz instead moves the spread from
+  0.597° to 0.528°. The cycle is in the model, not in the discretisation.
+- **It is not the section's stall hysteresis.** Hands-up this wing flies at
+  4.7° against a section stall near 12°, so that loop is nowhere near active.
+- **It is the pendulum's tracking lag, and the evidence is monotone.** Cycle
+  amplitude against `swingDampingRatio`: 2.68° at 0.25, 0.60 at 0.35, 0.20 at
+  0.50, 0.07 at 0.70, 0.04 at 0.90. More damping, smaller cycle — the
+  signature of a lag inside a feedback loop, not of a stiffness error. The
+  link is damped against the WORLD and therefore tracks apparent gravity with
+  a time constant of its own; the solver's own comment already called that "a
+  cost paid knowingly".
+- **So `swingDampingRatio` is not damping friction.** It is suppressing a
+  limit cycle, and 0.35 is simply where the cycle stops growing fast enough to
+  depart — below it, 0.25 gives 2.68° and 0.15 and 0.06 depart outright. The
+  registry entry guessed exactly this ("standing in for a stabilising
+  mechanism the model does not have"). It is now measured rather than guessed.
+- **This retires the "brake has the wrong sign" claim, which was never
+  measurable.** At 0.35 the cycle is 0.60° hands-up and up to 2.26° under
+  brake, and the incidence differences being read as a sign error were
+  0.5–1.8°. The signal was smaller than the oscillation it was read from, in
+  either direction. `calibration_tests` had been saying so all along in its
+  own output — the 25% brake row is printed `NOT SETTLED`.
+- Done when: hands-up in still air settles to under 0.02° of spread with a
+  damping ratio derived from pilot and line drag (~0.06), rather than one
+  chosen to keep a cycle small.
+- **Correction on the record.** Earlier passes this session named the
+  suspension's specific stiffness of 6.13 m as this item's one remaining
+  unmeasured lever. That was wrong twice over: it is registered *Validated*,
+  measured off the built graph at four loads, and it is not an input to the
+  solver at all — `LineStiffnessAt` interpolates the measured curve, and 6.13
+  is the slope of that measurement written down afterwards. Changing it means
+  moving where the lines attach. The only free number in this axis is
+  `swingDampingRatio`.
+
+**11a. The pendulum damping ratio, as originally written.** Kept because the
+reasoning below is still what has to be replaced, and only the diagnosis above
+it changed.
 `swingDampingRatio` is 0.35. Hands-off stability depends on it: at 0.20 - what
 a wing settling in three swings implies, and what this solver used to use - the
 aircraft's pitch diverges and it is fully separated inside a minute.
@@ -481,15 +527,22 @@ numbers show.** Worst network residual over a run including the cold start is
   That would recover the transient without paying for it in cruise, and it is
   the only remaining idea here that is not just a smaller number.
 
-**16. Research visualisation toggles are the unstarted Level 10 strand.** The
-per-solver debug views exist but there is no way to turn individual solver
-outputs on and off for inspection. Item 5 (the collapse debug view) is a
-special case of this and is separately blocked on item 7.
+**16. Research visualisation toggles are the unstarted Level 10 strand.** There
+are two hard-coded bools in `ParagliderPawn` — airflow and geometry — each with
+its own toggle and its own binding, and no general way to turn individual
+solver outputs on and off. Item 5 (the collapse debug view) is a special case
+and is separately blocked on item 7.
 
-- Worth doing before item 11 rather than after: the pitch axis is the open
-  physics problem, and being able to watch the line network and the section
-  moment against each other in flight is the cheapest instrument nobody has
-  built.
+- **It cannot be the instrument for item 11, and an earlier note here claiming
+  it could was wrong.** `ParagliderPawn` holds `ParagliderDynamics` and nothing
+  else, so a view in the pawn shows the LEGACY model. The line network and the
+  section moment live in the coupled solver, which the game does not run at
+  all. Any in-engine instrument for the pitch axis is blocked behind item 17,
+  which is itself blocked on item 11.
+- The headless instrument that does work today is
+  `parapenting_pitch_axis_trace`, and it is what found the limit cycle. Build
+  the in-engine views for what they are actually for — inspecting a flight a
+  pilot is having — not as a debugging route to item 11.
 
 **17. Removing the legacy path is Level 10's exit gate and is BLOCKED.** See
 item 7 for what it is and item 11 for why it cannot start. The exit gate is "no

@@ -235,15 +235,21 @@ line ends at 98% chord, so there is one length, not two. Counted once, the
 0.62 m divides as 0.120 slack / 0.298 fabric / 0.202 rotation, and full brake
 rotates the canopy 5.0° where it used to rotate it 12.4°.
 
-Removing it made the flying worse, and that is the useful part: the double
-count had been propping up a suspension that cannot otherwise produce the
-right sign. Brake now slows the wing while *lowering* incidence (4.4° at 25%
-against 5.14° at trim), and 40% departs nose-down on the low-CL loop gain
-rather than stalling. Both section-side levers are now measured — the pitching
-moment agrees with thin-airfoil flap theory to 10%, the take-up comes off the
-geometry — so item 11 is down to **one** unmeasured number, the specific
-stiffness of 6.13 m. Four gates were loosened to bound this rather than fit it;
-they are tabulated with their strict thresholds under item 11.
+**The bigger finding is that none of these numbers were settled.** Hands-up in
+still air, sixty seconds, no input, the wing still swings **0.60°** of
+incidence; under 25% brake, **2.26°**. That is a limit cycle, not a decaying
+phugoid — and it is larger than the incidence differences that were being read
+off these runs and called a sign error. It is not the aerodynamic interval
+(120 Hz moves it to 0.528°) and not the section's stall hysteresis (the wing
+flies at 4.7° against a 12° stall). It is the pendulum's tracking lag: cycle
+amplitude falls monotonically with `swingDampingRatio` — 2.68° at 0.25, 0.60 at
+0.35, 0.04 at 0.90.
+
+So `swingDampingRatio` is suppressing a limit cycle rather than damping
+friction, and 0.35 is where the cycle stops growing fast enough to depart. See
+`PHYSICS_TODO` item 11, rewritten, and `parapenting_pitch_axis_trace`. Four
+gates were loosened to bound the brake behaviour rather than fit it; they are
+tabulated with their strict thresholds under item 11.
 
 **The largest disagreement is now drag** (`PHYSICS_TODO` item 12): glide
 **11.33 against 9.5** and sink **0.97 against 1.14**. It is one error — trim

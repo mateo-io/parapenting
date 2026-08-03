@@ -1122,7 +1122,11 @@ structureSolve:
     // written up in PHYSICS_TODO as the largest known weakness in the pitch
     // axis. It should be retired by finding the missing mechanism, not by
     // being measured more precisely.
-    constexpr double SwingDampingRatio = 0.35;
+    // Item 11's one genuinely free number. A member rather than a constant so
+    // `pitch_axis_trace` can sweep it - it is registered Tuned/Unvalidated and
+    // the registry says it stands in for a stabilising mechanism the model does
+    // not have, so being able to ask what it is worth is the point.
+    const double SwingDampingRatio = SwingDampingRatioValue;
     const double swingFrequency =
         std::sqrt(GravityMps2 / std::max(0.5, PendulumLengthM));
     // Where the lines are unstressed, which the accelerator moves. Linear in
@@ -1132,11 +1136,18 @@ structureSolve:
     // hands, because this is the symmetric coordinate; the asymmetric part of
     // a brake input reaches the wing through the aerodynamics and the roll
     // spring, not through here.
+    const double brakeCommandedSwing = BrakeSwingOffsetRad(
+        0.5 * (controls.leftBrake + controls.rightBrake));
+    // Reported because it is one half of item 11's open question. This is the
+    // nose-up rotation the SHORTENED BRAKE LINE commands geometrically, before
+    // the section's nose-down couple has argued with it. What the wing ends up
+    // at is `payloadSwingRad`, and the difference between the two is how much
+    // of the command the aerodynamics took back.
+    diagnostics.brakeCommandedSwingRad = brakeCommandedSwing;
     const double unstressedSwing = TrimSwingRad
         + (AcceleratedSwingRad - TrimSwingRad)
             * std::clamp(controls.accelerator, 0.0, 1.0)
-        + BrakeSwingOffsetRad(
-            0.5 * (controls.leftBrake + controls.rightBrake));
+        + brakeCommandedSwing;
 
     // The link starts hanging where the lines are unstressed, in world axes,
     // and the canopy starts pointing where that link puts it. Starting both at

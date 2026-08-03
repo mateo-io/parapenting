@@ -18,8 +18,12 @@
 // What it reports:
 //
 //   * the slow mode itself, period and damping off successive peaks, against
-//     the classical phugoid - which it disagrees with by 3.4x on period, and
-//     that disagreement is now item 11's lead;
+//     the classical phugoid - which it disagrees with by 3.4x on period;
+//   * WHY, as an exponent rather than an adjective. The classical formulas
+//     assume incidence is held fixed, so lift and drag both go as V^2.
+//     Measured off the flight path of the same run this wing's go as V^0.17
+//     and V^0.31, and those two numbers predict the measured period and
+//     damping to within 2%. The pendulum holds LIFT, not incidence;
 //   * what brake COMMANDS against what the wing does. Pulling brake shortens
 //     the brake run and rotates the canopy nose-up on its suspension - that is
 //     geometry, off the built graph, reported as `brakeCommandedSwingRad` -

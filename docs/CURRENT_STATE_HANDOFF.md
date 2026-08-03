@@ -244,8 +244,21 @@ over a ten-second window, still air, no input, hands-up: **1.010°** at 30 s,
 It settles — it takes eight to sixteen minutes. Measured off 35 peaks of a
 1200 s run, the mode is **period 16.3 s, damping ratio ≈0.030**, with incidence
 and airspeed in antiphase: it is the phugoid, and classical theory for this
-wing gives 4.80 s and 0.062. The period is **3.4× longer than theory**, which
-is the most specific lead this problem has ever had.
+wing gives 4.80 s and 0.062. The period is **3.4× longer than theory**.
+
+**Both numbers are now explained.** The classical formulas assume incidence is
+held fixed, so lift and drag go as V². Measured off the flight path of the same
+run — no aerodynamic loads trusted — this wing's go as **V^0.171** and
+**V^0.313**, and those two exponents predict the period to 16.42 s against
+16.39 measured and the damping to 0.034 against 0.031. The mechanism: **the
+pendulum holds lift, not incidence.** The wing rotates nose-up on its lines at
+−1.69°/(m/s) as it slows, so lift varies by 0.97% of weight over the whole mode
+and the phugoid's restoring force is only the leftover. `PHYSICS_LEARNINGS` §34.
+
+Consequence for anyone picking this up: the slow mode is **not** evidence about
+`swingDampingRatio` — the tuned coefficient appears in neither formula. What
+still pins it at 0.35 is that the aircraft departs at 0.25, and that is now
+item 11's remaining question.
 
 What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
 pendulum mode — the wing swinging against the pilot after a brake pulse — which

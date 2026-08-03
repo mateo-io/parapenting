@@ -376,10 +376,41 @@ in antiphase — 5.46° at 10.30 m/s, 4.63° at 10.78 — which is what a phugoi
 | period | 16.3 s | 4.80 s (πV√2/g at 10.6 m/s) |
 | damping ratio | 0.030 | 0.062 (1/(√2·L/D) at glide 11.33) |
 
-So the period is **3.4× longer than theory** and the damping about half. Some
-lengthening is expected — the classical formula is for a rigid aircraft with no
-pendulum, and this one carries its mass 8 m below the wing — but 3.4× is a
-specific, checkable discrepancy and it is the best lead this item has ever had.
+So the period is **3.4× longer than theory** and the damping about half.
+
+**Both are now explained, by one mechanism, and the explanation is measured
+rather than argued.** The classical formulas assume incidence is held fixed, so
+lift and drag both go as V². Write the exponents as L ∝ Vⁿ, D ∝ V^d and the
+phugoid is `ω = g√n/V`, `ζ = (d/2)/((L/D)√n)`. Measured off the flight path of
+the same 1200 s run — `L = m(g cos γ + V γ̇)`, `D = −m(g sin γ + V̇)`, so the
+aerodynamic loads under suspicion are not what is being trusted:
+
+| | measured | classical | prediction from the measurement |
+|---|---|---|---|
+| lift exponent n | **0.171** | 2 | period **16.42 s** against 16.39 measured |
+| drag exponent d | **0.313** | 2 | ζ **0.034** against 0.031 measured |
+
+And 0.172 is the n the 3.4× period implies, arrived at from the other side.
+
+**The pendulum does not hold incidence through the oscillation, it holds LIFT.**
+Slowing down, the wing rotates nose-up on its lines at −1.69°/(m/s) and recovers
+in incidence nearly everything it lost in dynamic pressure — lift varies by
+**0.97% of weight** over the whole mode. The restoring force is the leftover,
+and the leftover is almost nothing. That is the long period, and the same
+flatness in drag is the low damping.
+
+Taking n without d would have been worse than taking neither: it predicts
+ζ = 0.221 against 0.031 measured, where untouched classical says 0.065. Lift
+and drag are flat for the *same* reason, so they are one finding. See
+`PHYSICS_LEARNINGS` §34.
+
+**What this does not settle.** Whether −1.69°/(m/s) is *right*. Both roads come
+off one trace, so what is established is that this is a phugoid whose restoring
+gradient is nearly cancelled — not that the cancellation is the size a real
+wing's would be. But the open question is now physical: that slope is the
+pendulum tracking apparent gravity, which is exactly what `swingDampingRatio`
+stands in for, and it is checkable against a real wing in a way "the period is
+3.4× theory" never was.
 
 - **What `calibration_tests` calls "Pitch: period 2.91 s, damping 0.28" is not
   this mode and never claimed to be.** It measures the wing oscillating
@@ -419,18 +450,27 @@ specific, checkable discrepancy and it is the best lead this item has ever had.
   depend on the one tuned coefficient in this axis. The ratio buys settling
   speed, not a trim. At 0.25 the aircraft departs, which is what actually pins
   it at 0.35 rather than the 0.06 that pilot and line drag imply.
-- **Next, and specific for once:** find why the phugoid period is 3.4× the
-  classical value. The formula assumes lift ∝ V² at fixed incidence with the
-  mass at the wing; this aircraft holds incidence through the pendulum's
-  tracking of apparent gravity, which is exactly the mechanism `swingDamping
-  Ratio` is standing in for. A pendulum that tracks late lengthens the mode —
-  so the period discrepancy and the damping-ratio fudge are plausibly one
-  thing, and the period is measurable to three digits where "the ratio should
-  be 0.06" never was.
-- Done when: the phugoid period and damping are explained rather than
-  observed, and the wing settles in a time a pilot would recognise with a
-  damping ratio derived from pilot and line drag (~0.06) rather than chosen to
-  make short runs look steady.
+- **DONE: the phugoid period and damping are explained rather than observed.**
+  Both fall out of n = 0.171 and d = 0.313, measured off the flight path, and
+  each predicts its number to within 2%. See the table above.
+- **A consequence worth stating separately: the slow mode is NOT evidence about
+  `swingDampingRatio`.** Its period and damping are accounted for by the wing's
+  own lift and drag gradients and the glide ratio, with the tuned coefficient
+  appearing nowhere in either formula. So the 0.031 damping ratio can no longer
+  be read as "the pendulum damping is wrong" — it is what a wing with a nearly
+  cancelled speed-lift gradient does regardless.
+- **Next, and narrower than the item has ever been:** why does the aircraft
+  DEPART at `swingDampingRatio` 0.25? That is now the only thing pinning the
+  value at 0.35 rather than the ~0.06 that pilot and line drag imply, and it is
+  a stability question about the fast pendulum mode, not about the phugoid the
+  last two levels went after. The phugoid explanation above also predicts what
+  to look at: the incidence excursion of −1.69°/(m/s) is the pendulum's
+  tracking, so if tracking is what 0.35 is buying, that slope should move with
+  the ratio and the departure should be the point where it stops tracking at
+  all.
+- Done when: the wing settles in a time a pilot would recognise with a damping
+  ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
+  aircraft from departing.
 
 **Two corrections on the record, because both were written into these docs and
 acted on before being checked.**

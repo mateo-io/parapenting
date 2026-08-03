@@ -880,6 +880,71 @@ to ask whether 90 s was enough for it — five and a half periods at damping
 propagate to the constant three functions away that depends on it. When a
 measurement lands, the useful question is which *other* numbers it invalidates.
 
+## 34. Turn the disagreement into an exponent, then measure the exponent
+
+The slow pitch mode had a lead rather than a question: "the phugoid period is
+3.4× the classical value, find out why." That is not answerable as stated,
+because "the pendulum changes things" explains any discrepancy of any size.
+
+What made it answerable was noticing that the classical period rests on exactly
+one assumption. Incidence is held fixed, so lift goes as V², and that is the
+entire restoring force. Write the exponent as `n` in L ∝ Vⁿ and the phugoid is
+
+    ω = g √n / V          ζ = (d/2) / ((L/D) √n)          D ∝ V^d
+
+with the textbook pair at n = d = 2. Now "3.4× too long" stops being a mood and
+becomes arithmetic: it says **n = 2/3.4² ≈ 0.17**, and n is measurable off the
+trace without going near the period.
+
+Measured, on a 1200 s hands-up run:
+
+| | measured | classical | note |
+|---|---|---|---|
+| lift exponent n | **0.171** | 2 | 0.172 is what the period implies |
+| drag exponent d | **0.313** | 2 | |
+| period | 16.39 s | 4.80 s | 16.42 s predicted from measured n |
+| damping ratio | 0.031 | 0.065 | 0.034 predicted from measured n and d |
+
+**The mechanism, in one sentence: the pendulum does not hold incidence through
+the oscillation, it holds LIFT.** Slowing down, the wing rotates nose-up on its
+lines at −1.69°/(m/s) and recovers in incidence very nearly all it lost in
+dynamic pressure. Lift varies by 0.97% of weight across the whole mode. The
+restoring force that drives a phugoid is only what is left over, and what is
+left over is almost nothing — hence a period 3.4× long and a mode that needs
+eight to sixteen minutes to stand still.
+
+Three things generalise.
+
+**Convert a ratio into a parameter of the theory before hunting for causes.**
+The 3.4× had been sitting in the docs for a level as "the best lead this item
+has ever had", and it was — but it only became actionable once it was rewritten
+as a claim about a number the trace could produce on its own terms.
+
+**Measure the force off the PATH, not off the force bookkeeping.** Lift here is
+`m(g cos γ + V γ̇)` and drag is `−m(g sin γ + V̇)`, both read from the velocity
+vector. That is deliberate: the aerodynamic loads are the thing under
+suspicion, so a check that reads them proves less. The path does not know what
+the solver believes.
+
+**Half an explanation was worse than none, and the arithmetic said so before
+the run did.** Substituting the measured n while leaving the drag term at its
+classical d = 2 predicts ζ = 0.221 against 0.031 measured — three times worse
+than the untouched classical 0.065 it was meant to improve on. Fixing the
+period alone would have looked like progress in the only column anyone was
+watching while silently wrecking the other. Lift and drag are both flat against
+speed here **for the same reason** — the incidence excursion that holds lift up
+when the wing slows holds drag up with it — so the two exponents are one
+finding, not two, and taking either without the other is not a partial result.
+
+What this does NOT settle: whether n = 0.17 is *right*. It explains the model's
+period from the model's own trajectory, which rules out the alternatives — a
+mode governed by pitch stiffness rather than path-energy exchange would not have
+produced this agreement — but both roads come off one trace. The open question
+is now specific and physical instead of numerological: −1.69°/(m/s) is the
+pendulum's tracking of apparent gravity, which is exactly what
+`swingDampingRatio` stands in for, and whether a real wing tracks that
+completely is checkable against a real wing.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -918,3 +983,7 @@ measurement lands, the useful question is which *other* numbers it invalidates.
 | tip line gap, built graph | 0.178 m | how far a fold must reach to cravat |
 | gust that folds a half wing | 4 m/s descending, 1 s | 0.70 fold, full recovery |
 | gust the wing does not survive | 5 m/s and up | deep-stall attractor, 7.5 m/s vertical |
+| phugoid lift exponent, L ~ V^n | 0.171 | classical 2; this is the long period - §34 |
+| phugoid drag exponent, D ~ V^d | 0.313 | classical 2; this is the low damping |
+| incidence against speed, slow mode | -1.69 deg/(m/s) | the pendulum holds lift, not incidence |
+| lift swing over the slow mode | 0.97% of weight | what is left to restore with |

@@ -830,6 +830,18 @@ than assumed. The fix in the instrument was four lines: track min and max over
 the last ten seconds and print them beside the mean. Every table this project
 produces should carry that column.
 
+**And then the same mistake was made again, one level up.** The first
+correction concluded the wing had a *limit cycle*, because the spread at sixty
+seconds did not go away and grew with brake, and because more `swingDampingRatio`
+made it smaller. All three observations were real. The conclusion was wrong: the
+wing settles, it just takes eight to sixteen minutes, and a damping ratio that
+makes a mode decay faster looks exactly like one that suppresses a cycle **if
+you only ever sample at a fixed time**. The second fix was to stop sampling at a
+fixed time at all — settle to a criterion and report how long it took. A spread
+measured at one horizon cannot tell a slow decay from a sustained oscillation,
+and no amount of care about the first mistake protects you from making it again
+with a bigger unit.
+
 **§30 was the same lesson and it did not take.** "Measure a steady state from a
 steady state" was written after a brake ramp was started before the wing had
 settled. That was read as a procedural fix — settle longer — when it was really
@@ -842,6 +854,21 @@ seconds is not more settled than thirty.
 several passes, and sent the search toward a number — the specific stiffness of
 6.13 m — that turned out not to be an input to the solver at all. A theory that
 explains a measurement you cannot actually resolve explains nothing.
+
+**And the specific trap that made all of it possible: a mode nobody had
+characterised.** The argument for "this cannot be a decaying oscillation" was
+that the phugoid's period is 2.91 s and its damping 0.28, so twenty periods
+would have killed it. Both numbers were real, both were measured by
+`calibration_tests`, and both belong to a *different mode* — the wing swinging
+against the pilot after a brake pulse, which that test names and gates
+correctly. The mode actually decaying is the phugoid proper: **period 16.3 s,
+damping ratio 0.030**, incidence and airspeed in antiphase, needing eight to
+sixteen minutes. It had never been measured because nothing had ever been flown
+long enough to see one full cycle, let alone thirty.
+
+When a number is used to rule something out, check that it describes the thing
+being ruled out. "The phugoid is well damped" was true of a mode that was not
+the phugoid.
 
 ## Numbers worth remembering
 

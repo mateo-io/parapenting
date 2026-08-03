@@ -1,24 +1,34 @@
 // Level 10, strand 4: an instrument for item 11.
 //
-// The pitch axis is the open physics problem. Brake slows the wing while
-// LOWERING its incidence, which is the wrong sign, and 40% of travel departs
-// nose-down. What has been missing is not another opinion about why - it is a
-// way to watch the two things that argue with each other.
+// The pitch axis is the open physics problem, and this is what measures it.
 //
-// They are:
+// It was built to settle an argument about whether brake reaches the wing with
+// the wrong sign. It answered a different question instead: NOTHING HERE HAD
+// EVER BEEN SETTLED. This aircraft has a second, slow pitch mode - period
+// 16.3 s, damping ratio 0.030 - and it needs eight to sixteen minutes to stand
+// still. Every settle this project has used was 20, 40 or 60 seconds, and two
+// conclusions were drawn off those runs and both were wrong: that brake had
+// the wrong sign, and that the wing had a limit cycle. Settled to a criterion,
+// brake raises incidence, which is correct.
 //
-//   * what the shortened brake line COMMANDS. Pulling brake shortens the
-//     brake run, which rotates the canopy nose-up on its suspension. That is
-//     geometry, it comes off the built graph, and it is now reported as
-//     `brakeCommandedSwingRad`.
-//   * what the section's flap couple TAKES BACK. A deflected trailing edge is
-//     a large nose-down pitching moment, and it acts against the line spring.
+// So the rule this file exists to enforce: FLY TO A CRITERION, NOT A CLOCK,
+// and print how long it took beside every number. A fixed settle is a guess
+// whatever value is in it. See PHYSICS_LEARNINGS section 33.
 //
-// The wing's incidence moves by the difference. This prints both, settled, at
-// each brake setting, so the difference is a number rather than an argument.
+// What it reports:
 //
-// It is NOT a gate. It is a measurement, and item 11 is registered as an open
-// disagreement precisely so that nobody is tempted to gate this into agreeing.
+//   * the slow mode itself, period and damping off successive peaks, against
+//     the classical phugoid - which it disagrees with by 3.4x on period, and
+//     that disagreement is now item 11's lead;
+//   * what brake COMMANDS against what the wing does. Pulling brake shortens
+//     the brake run and rotates the canopy nose-up on its suspension - that is
+//     geometry, off the built graph, reported as `brakeCommandedSwingRad` -
+//     while the section's flap couple pushes the other way;
+//   * whether the aerodynamic interval or the swing damping ratio move any of
+//     it.
+//
+// It is NOT a gate. Item 11 is registered as an open disagreement precisely so
+// that nobody is tempted to gate this into agreeing with itself.
 //
 // A note on where this lives. This was going to be the in-engine research
 // visualisation of PHYSICS_TODO item 16, until the obvious was checked:
@@ -35,6 +45,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 using namespace Parapenting::Physics;
@@ -60,6 +71,7 @@ struct Settled
     // reading a trim number off an unsettled run is the mistake this project
     // has already made once and written down (PHYSICS_LEARNINGS section 30).
     double incidenceSpreadRad = 0.0;
+    int settleSeconds = 0;
     double airspeedSpreadMps = 0.0;
     bool settled = false;
     bool departed = false;
@@ -77,36 +89,49 @@ Settled Fly(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     CoupledControls controls;
     controls.leftBrake = brake;
     controls.rightBrake = brake;
-    // Settled properly: this wing's phugoid has a period near 3 s and a
-    // damping ratio near 0.28, so a short run reads the tail of an oscillation
-    // and calls it a trim point. That mistake is on the record - see
-    // PHYSICS_LEARNINGS section 30.
-    for (int step = 0; step < 120 * 50; ++step)
-        solver.Step(state, controls, CoupledAtmosphere{});
+    // Fly until it is settled, not for a fixed time, and report how long that
+    // took. This wing's long mode decays with a time constant of minutes, so
+    // ANY fixed settle is either wrong or a guess - and the guesses this
+    // project has made were 20, 40 and 60 seconds, all far too short. Settling
+    // to a criterion is the only version of this that is a measurement.
+    constexpr int WindowSteps = 120 * 10;
+    constexpr double SpreadToleranceRad = 1.7e-4;   // 0.01 deg
+    constexpr int MaximumSeconds = 1200;
 
-    // The last ten seconds, watched rather than assumed.
-    double lowAlpha = 1.0e9, highAlpha = -1.0e9;
-    double lowSpeed = 1.0e9, highSpeed = -1.0e9;
-    for (int step = 0; step < 120 * 10; ++step)
+    double lowAlpha = 0.0, highAlpha = 0.0;
+    double lowSpeed = 0.0, highSpeed = 0.0;
+    int elapsedSeconds = 0;
+    bool converged = false;
+    while (elapsedSeconds < MaximumSeconds)
     {
-        solver.Step(state, controls, CoupledAtmosphere{});
-        const double alpha = solver.Diagnostics().angleOfAttackRad;
-        const double speed = solver.Diagnostics().airspeedMps;
-        lowAlpha = std::min(lowAlpha, alpha);
-        highAlpha = std::max(highAlpha, alpha);
-        lowSpeed = std::min(lowSpeed, speed);
-        highSpeed = std::max(highSpeed, speed);
+        lowAlpha = 1.0e9; highAlpha = -1.0e9;
+        lowSpeed = 1.0e9; highSpeed = -1.0e9;
+        for (int step = 0; step < WindowSteps; ++step)
+        {
+            solver.Step(state, controls, CoupledAtmosphere{});
+            const double alpha = solver.Diagnostics().angleOfAttackRad;
+            const double speed = solver.Diagnostics().airspeedMps;
+            lowAlpha = std::min(lowAlpha, alpha);
+            highAlpha = std::max(highAlpha, alpha);
+            lowSpeed = std::min(lowSpeed, speed);
+            highSpeed = std::max(highSpeed, speed);
+        }
+        elapsedSeconds += 10;
+        if (highAlpha - lowAlpha < SpreadToleranceRad
+            && highSpeed - lowSpeed < 0.01)
+        {
+            converged = true;
+            break;
+        }
+        if (solver.Diagnostics().angleOfAttackRad > 0.35) break;
     }
 
     const CoupledDiagnostics& d = solver.Diagnostics();
     Settled out;
+    out.settleSeconds = elapsedSeconds;
     out.incidenceSpreadRad = highAlpha - lowAlpha;
     out.airspeedSpreadMps = highSpeed - lowSpeed;
-    // A tenth of a degree and a hundredth of a metre per second over ten
-    // seconds. Tighter than the differences the table is asked to resolve,
-    // which is the only definition of settled that means anything here.
-    out.settled = out.incidenceSpreadRad < 0.0017
-        && out.airspeedSpreadMps < 0.01;
+    out.settled = converged;
     // Past about 20 degrees this wing is separated and what it reports is a
     // departure, not a trim. Comparing two departures and announcing which had
     // the higher incidence is nonsense, so it is labelled instead.
@@ -126,10 +151,98 @@ Settled Fly(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
         : 0.0;
     return out;
 }
+
+// The slow mode itself: period and damping, off successive peaks of a long
+// hands-up run. This is what identified it, and it is the measurement the item
+// now turns on, so it lives here rather than in a scratch file.
+void ReportSlowMode(const CanopyGeometry& canopy, const LinePlanSpec& linePlan)
+{
+    CoupledParagliderSolver solver(canopy, linePlan);
+    CoupledState state;
+    constexpr int Seconds = 1200;
+    std::vector<double> alpha;
+    std::vector<double> speed;
+    alpha.reserve(Seconds);
+    speed.reserve(Seconds);
+    for (int second = 0; second < Seconds; ++second)
+    {
+        for (int step = 0; step < 120; ++step)
+            solver.Step(state, CoupledControls{}, CoupledAtmosphere{});
+        alpha.push_back(solver.Diagnostics().angleOfAttackRad * Degrees);
+        speed.push_back(solver.Diagnostics().airspeedMps);
+    }
+
+    // Local maxima, one second apart being far finer than a mode this slow -
+    // but ONLY those still carrying real amplitude. Once the mode has decayed
+    // into the last thousandth of a degree the trace is numerical noise, and a
+    // bare local-maximum test fires on every wiggle of it: the first version
+    // of this found 106 peaks in 1200 s where the mode has about 75, pulling
+    // the measured period down by a third. A peak detector needs a floor.
+    const double settledAlpha = alpha.back();
+    constexpr double MinimumAmplitudeDeg = 0.005;
+    std::vector<int> peaks;
+    for (std::size_t i = 3; i + 3 < alpha.size(); ++i)
+    {
+        if (alpha[i] - settledAlpha < MinimumAmplitudeDeg) continue;
+        if (alpha[i] > alpha[i - 3] && alpha[i] > alpha[i + 3]
+            && alpha[i] > alpha[i - 1] && alpha[i] >= alpha[i + 1])
+        {
+            peaks.push_back(static_cast<int>(i));
+        }
+    }
+
+    std::printf("The slow mode: period and damping off %zu peaks of a %d s "
+                "hands-up run\n", peaks.size(), Seconds);
+    if (peaks.size() < 6)
+    {
+        std::printf("  too few peaks to measure\n\n");
+        return;
+    }
+
+    // Skip the first peaks: the run starts on a transient that is not this
+    // mode, and a log decrement measured across it is measuring both.
+    const std::size_t first = 2;
+    const std::size_t last = peaks.size() - 2;
+    const double periodS =
+        static_cast<double>(peaks[last] - peaks[first])
+            / static_cast<double>(last - first);
+    const double firstAmplitude = alpha[peaks[first]] - settledAlpha;
+    const double lastAmplitude = alpha[peaks[last]] - settledAlpha;
+    double dampingRatio = 0.0;
+    if (firstAmplitude > 0.0 && lastAmplitude > 0.0)
+    {
+        const double decrement = std::log(firstAmplitude / lastAmplitude)
+            / static_cast<double>(last - first);
+        dampingRatio = decrement / (2.0 * Pi);
+    }
+
+    // Classical phugoid, for something to disagree with. Both formulas are for
+    // a rigid aircraft with its mass at the wing, which this is not - so a
+    // discrepancy is expected. Its SIZE is the finding.
+    const double settledSpeed = speed.back();
+    const double classicalPeriodS =
+        Pi * std::sqrt(2.0) * settledSpeed / 9.80665;
+    constexpr double GlideRatio = 11.33;
+    const double classicalDamping = 1.0 / (std::sqrt(2.0) * GlideRatio);
+
+    std::printf("  incidence settles at %.4f deg, airspeed %.4f m/s\n",
+                settledAlpha, settledSpeed);
+    std::printf("  period        %6.2f s   against %5.2f s classical "
+                "(pi V sqrt2 / g)\n", periodS, classicalPeriodS);
+    std::printf("  damping ratio %6.3f     against %5.3f classical "
+                "(1 / (sqrt2 L/D))\n", dampingRatio, classicalDamping);
+    std::printf("  period is %.1fx theory\n", periodS / classicalPeriodS);
+    std::printf("\n  Incidence and airspeed move in antiphase, which is what "
+                "makes this the\n  phugoid rather than the pendulum mode "
+                "calibration_tests measures. Why the\n  period is so much "
+                "longer than theory is item 11's open question.\n\n");
+}
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    const bool slowModeOnly =
+        argc > 1 && std::string(argv[1]) == "--slow-mode";
     std::printf("Level 10: the pitch axis, instrumented. PHYSICS_TODO item "
                 "11.\n");
     std::printf("Nothing here asserts. Item 11 is an open disagreement and "
@@ -139,29 +252,29 @@ int main()
     const CanopyGeometry canopy;
     const LinePlanSpec linePlan = Epic2MlLinePlan();
 
+    ReportSlowMode(canopy, linePlan);
+    if (slowModeOnly) return 0;
+
     // -- what brake commands against what it gets --------------------------
     std::printf("Brake: what the line commands against what the wing does\n");
-    std::printf("%8s %9s %11s %11s %10s %10s %s\n",
-                "brake", "v m/s", "commanded", "delivered", "alpha",
-                "spread", "state");
-    const Settled trim = Fly(canopy, linePlan, 0.0, 0.35);
+    std::printf("%8s %9s %11s %10s %9s %8s %s\n",
+                "brake", "v m/s", "commanded", "alpha", "spread",
+                "settle", "state");
     for (const double brake : {0.0, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35})
     {
         const Settled s = Fly(canopy, linePlan, brake, 0.35);
-        std::printf("%8.2f %9.3f %10.2fd %10.2fd %9.2fd %9.3fd  %s\n",
+        std::printf("%8.2f %9.3f %10.2fd %9.3fd %8.4fd %7ds  %s\n",
                     brake, s.airspeedMps, s.commandedSwingRad * Degrees,
-                    (s.actualSwingRad - trim.actualSwingRad) * Degrees,
                     s.incidenceRad * Degrees,
-                    s.incidenceSpreadRad * Degrees,
-                    s.departed ? "DEPARTED - not a trim point"
-                        : s.settled ? "settled"
-                        : "NOT SETTLED - this row is an oscillation");
+                    s.incidenceSpreadRad * Degrees, s.settleSeconds,
+                    s.departed ? "DEPARTED"
+                        : s.settled ? "settled to 0.01d"
+                        : "still moving at 1200 s");
     }
-    std::printf("\n  'commanded' is the nose-up rotation the shortened brake "
-                "line asks for,\n  off the built graph. 'delivered' is what "
-                "the wing actually rotated,\n  against hands-up. The "
-                "difference is what the section's flap couple took\n  back, "
-                "and item 11 is why it is so much.\n\n");
+    std::printf("\n  Every row is flown until its incidence stops moving, not "
+                "for a fixed time.\n  'settle' is how long that took. The "
+                "20 to 60 second settles this project\n  has used everywhere "
+                "else are off the bottom of this column.\n\n");
 
     // -- is the oscillation the wing, or the schedule? ---------------------
     //
@@ -178,27 +291,27 @@ int main()
     // to the coupling scheme and not to the aircraft - which would mean every
     // trim number this project has quoted is a sample of a scheme artefact.
     std::printf("Hands-up spread against the aerodynamic interval\n");
-    std::printf("%12s %11s %12s %12s %s\n",
-                "interval", "Hz", "alpha", "spread", "state");
+    std::printf("%12s %11s %12s %12s %10s\n",
+                "interval", "Hz", "alpha", "spread", "settle s");
     for (const int interval : {12, 6, 3, 2, 1})
     {
         const Settled s = Fly(canopy, linePlan, 0.0, 0.35, interval);
-        std::printf("%12d %11.1f %11.2fd %11.4fd  %s\n",
+        std::printf("%12d %11.1f %11.2fd %11.4fd %10.3f\n",
                     interval, 120.0 / interval, s.incidenceRad * Degrees,
                     s.incidenceSpreadRad * Degrees,
-                    s.settled ? "settled" : "not settled");
+                    static_cast<double>(s.settleSeconds));
     }
-    std::printf("\n  And the same under 25%% brake, where the spread above was "
-                "four times larger:\n");
-    std::printf("%12s %11s %12s %12s %s\n",
-                "interval", "Hz", "alpha", "spread", "state");
+    std::printf("\n  And the same under 25%% brake, which takes far longer to "
+                "settle:\n");
+    std::printf("%12s %11s %12s %12s %10s\n",
+                "interval", "Hz", "alpha", "spread", "settle s");
     for (const int interval : {12, 6, 3, 1})
     {
         const Settled s = Fly(canopy, linePlan, 0.25, 0.35, interval);
-        std::printf("%12d %11.1f %11.2fd %11.4fd  %s\n",
+        std::printf("%12d %11.1f %11.2fd %11.4fd %10.3f\n",
                     interval, 120.0 / interval, s.incidenceRad * Degrees,
                     s.incidenceSpreadRad * Degrees,
-                    s.settled ? "settled" : "not settled");
+                    static_cast<double>(s.settleSeconds));
     }
     std::printf("\n");
 
@@ -225,9 +338,9 @@ int main()
     // other classic limit-cycle mechanism here. Hands-up this wing flies at
     // 4.7 degrees against a section stall near 12, so the hysteresis loop is
     // nowhere near active and cannot be driving the hands-up cycle.
-    std::printf("Swing damping ratio: does more damping shrink the cycle?\n");
+    std::printf("Swing damping ratio: what does the one tuned number actually buy?\n");
     std::printf("%10s %9s %10s %11s %12s\n",
-                "ratio", "v m/s", "alpha", "spread", "vs trim");
+                "ratio", "v m/s", "alpha", "settle", "vs trim");
     for (const double ratio : {0.25, 0.35, 0.50, 0.70, 0.90})
     {
         const Settled clean = Fly(canopy, linePlan, 0.0, ratio);
@@ -240,30 +353,29 @@ int main()
                     : braked.incidenceRad > clean.incidenceRad
                         ? "brake raises incidence, which is correct"
                         : "brake LOWERS incidence - wrong sign";
-        std::printf("%10.2f %9.3f %9.2fd %10.4fd %11.2fd  %s\n",
+        std::printf("%10.2f %9.3f %9.3fd %9ds %11.3fd  %s\n",
                     ratio, braked.airspeedMps,
                     braked.incidenceRad * Degrees,
-                    clean.incidenceSpreadRad * Degrees,
+                    clean.settleSeconds,
                     (braked.incidenceRad - clean.incidenceRad) * Degrees,
                     verdict);
     }
     std::printf(
-        "\n  The spread column is the answer, and it is monotone: 2.68 deg at "
-        "0.25,\n  0.60 at 0.35, 0.20 at 0.50, 0.07 at 0.70, 0.04 at 0.90. "
-        "More damping,\n  smaller cycle - which is what a LAG-driven limit "
-        "cycle looks like and what\n  a stiffness problem does not.\n\n"
-        "  So swingDampingRatio is not damping friction and is not setting a "
-        "trim.\n  It is suppressing a limit cycle, and 0.35 is where the "
-        "cycle stops growing\n  fast enough to depart. The registry guessed "
-        "this ('standing in for a\n  stabilising mechanism the model does not "
-        "have'); it is now measured.\n\n"
-        "  And the consequence for every other number: at 0.35 the cycle is "
-        "0.60 deg\n  hands-up and 1.75 to 2.26 deg under 25%% brake, which is "
-        "LARGER than the\n  incidence differences that were being read off "
-        "these runs and called a sign\n  error. That question was never "
-        "resolvable at this amplitude, in either\n  direction. Shrink the "
-        "cycle first; the sign is not a separate problem to\n  chase until "
-        "then.\n");
+        "\n  The settle column is the answer, and the trim is NOT in it. From "
+        "0.35 to 0.90\n  the wing settles at the same 5.72 deg and brake "
+        "raises incidence by the same\n  0.79 deg - only the time to get "
+        "there changes, 410 s down to 80 s. So the\n  ratio buys settling "
+        "speed, not a trim, and the settled numbers do not depend\n  on the "
+        "one tuned coefficient in this axis. That is worth more than it "
+        "sounds.\n\n"
+        "  At 0.25 the aircraft DEPARTS, which is what pins the value at 0.35 "
+        "rather\n  than the 0.06 that pilot and line drag imply. Finding the "
+        "stabilising\n  mechanism that would allow 0.06 is still the item.\n\n"
+        "  Retracted: an earlier version of this text read the same sweep as "
+        "evidence\n  of a LIMIT CYCLE whose amplitude the ratio suppressed. "
+        "It is a decay rate,\n  not an amplitude. Sampling a decaying mode at "
+        "a fixed time makes the two\n  look identical - see PHYSICS_LEARNINGS "
+        "section 33.\n");
 
     return 0;
 }

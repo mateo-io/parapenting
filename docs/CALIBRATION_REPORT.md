@@ -240,11 +240,17 @@ that does not settle at all.
 > suspension could not produce the right sign, leaving "one unmeasured number,
 > the specific stiffness of 6.13 m". Both halves were wrong.
 >
-> The aircraft never reaches a steady state: hands-up in still air it swings
-> **0.60°** of incidence after sixty seconds, and **2.26°** under 25% brake, so
+> The runs were not settled. Hands-up in still air the wing still swings
+> **0.60°** of incidence after sixty seconds and **2.26°** under 25% brake, so
 > the 0.5–1.8° differences the sign was read from were smaller than the
-> oscillation containing them. The `NOT SETTLED` flag beside that row in this
+> spread containing them. The `NOT SETTLED` flag beside that row in this
 > report's own manoeuvre table was saying so.
+>
+> Flown to a settling criterion instead of a clock, it takes **eight to sixteen
+> minutes** — hands-up settles at **4.925°** and 25% brake at **5.724°**, so
+> brake raises incidence, which is the correct sign. **Every manoeuvre in the
+> table above is measured after a settle far shorter than that** and should be
+> re-measured; see item 11.
 >
 > And 6.13 m is not a lever: it is registered *Validated*, measured off the
 > built graph at four loads, and is not an input to the solver — the stiffness

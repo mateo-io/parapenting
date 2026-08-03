@@ -341,49 +341,108 @@ tuned. The remaining tuned coefficients are concentrated in the legacy model,
 and item 7 is what retires them — with one loud exception in the geometry-driven
 stack, `swingDampingRatio`, which is item 11.
 
-**11. REWRITTEN. The aircraft never reaches a steady state, and everything
-else in this item was a symptom of that.** Run `parapenting_pitch_axis_trace`.
+**11. REWRITTEN TWICE. This aircraft has a second, much slower pitch mode that
+nobody had flown long enough to see.** Run `parapenting_pitch_axis_trace`.
 
-Hands-up, still air, no input, sixty seconds: incidence is still swinging
-**0.60°** over the last ten. A phugoid with this wing's measured period near
-3 s and damping ratio near 0.28 is dead after twenty periods, so this is not a
-decaying mode — it is a limit cycle. Under 25% brake it is **1.75–2.26°**.
+Incidence spread over a ten-second window, still air, no input:
 
-- **It is not the schedule.** The aerodynamics run every 12 steps with their
-  loads held between, which is a 10 Hz staircase driving the structure and was
-  the obvious suspect. Solving them at 120 Hz instead moves the spread from
-  0.597° to 0.528°. The cycle is in the model, not in the discretisation.
-- **It is not the section's stall hysteresis.** Hands-up this wing flies at
-  4.7° against a section stall near 12°, so that loop is nowhere near active.
-- **It is the pendulum's tracking lag, and the evidence is monotone.** Cycle
-  amplitude against `swingDampingRatio`: 2.68° at 0.25, 0.60 at 0.35, 0.20 at
-  0.50, 0.07 at 0.70, 0.04 at 0.90. More damping, smaller cycle — the
-  signature of a lag inside a feedback loop, not of a stiffness error. The
-  link is damped against the WORLD and therefore tracks apparent gravity with
-  a time constant of its own; the solver's own comment already called that "a
-  cost paid knowingly".
-- **So `swingDampingRatio` is not damping friction.** It is suppressing a
-  limit cycle, and 0.35 is simply where the cycle stops growing fast enough to
-  depart — below it, 0.25 gives 2.68° and 0.15 and 0.06 depart outright. The
-  registry entry guessed exactly this ("standing in for a stabilising
-  mechanism the model does not have"). It is now measured rather than guessed.
-- **This retires the "brake has the wrong sign" claim, which was never
-  measurable.** At 0.35 the cycle is 0.60° hands-up and up to 2.26° under
-  brake, and the incidence differences being read as a sign error were
-  0.5–1.8°. The signal was smaller than the oscillation it was read from, in
-  either direction. `calibration_tests` had been saying so all along in its
-  own output — the 25% brake row is printed `NOT SETTLED`.
-- Done when: hands-up in still air settles to under 0.02° of spread with a
-  damping ratio derived from pilot and line drag (~0.06), rather than one
-  chosen to keep a cycle small.
-- **Correction on the record.** Earlier passes this session named the
-  suspension's specific stiffness of 6.13 m as this item's one remaining
-  unmeasured lever. That was wrong twice over: it is registered *Validated*,
-  measured off the built graph at four loads, and it is not an input to the
-  solver at all — `LineStiffnessAt` interpolates the measured curve, and 6.13
-  is the slope of that measurement written down afterwards. Changing it means
-  moving where the lines attach. The only free number in this axis is
-  `swingDampingRatio`.
+| after | hands-up | 25% brake |
+|---|---|---|
+| 30 s | 1.010° | 3.426° |
+| 60 s | 0.597° | 2.260° |
+| 120 s | 0.361° | 2.100° |
+| 240 s | 0.074° | 1.017° |
+| 480 s | 0.004° | 0.319° |
+| 960 s | **0.000°** | **0.022°** |
+
+It settles. It just takes **eight to sixteen minutes**, and every settle this
+project has ever used was 20, 40 or 60 seconds.
+
+**The slow mode, measured.** Period **16.3 s**, damping ratio **≈0.030**, taken
+off 35 successive peaks of a 1200 s hands-up run. Incidence and airspeed move
+in antiphase — 5.46° at 10.30 m/s, 4.63° at 10.78 — which is what a phugoid is.
+
+| | measured | classical phugoid |
+|---|---|---|
+| period | 16.3 s | 4.80 s (πV√2/g at 10.6 m/s) |
+| damping ratio | 0.030 | 0.062 (1/(√2·L/D) at glide 11.33) |
+
+So the period is **3.4× longer than theory** and the damping about half. Some
+lengthening is expected — the classical formula is for a rigid aircraft with no
+pendulum, and this one carries its mass 8 m below the wing — but 3.4× is a
+specific, checkable discrepancy and it is the best lead this item has ever had.
+
+- **What `calibration_tests` calls "Pitch: period 2.91 s, damping 0.28" is not
+  this mode and never claimed to be.** It measures the wing oscillating
+  against the pilot after a brake pulse — the pendulum mode — and gates it as
+  "faster than a simple pendulum on the same lines". That is correct and
+  healthy. The error was mine: I used the pendulum mode's damping to argue
+  that a residual at 60 s "could not be a decaying mode", when the mode
+  actually decaying has a fifth of that damping and five times the period.
+  Two modes, and only the fast one had ever been characterised.
+- **It is not the schedule.** Solving the aerodynamics at 120 Hz instead of
+  10 Hz moves the 60 s spread from 0.597° to 0.528°. Consistent with a
+  physical mode rather than a discretisation artefact.
+- **It is not the section's stall hysteresis.** Hands-up the wing flies at
+  4.9° against a section stall near 12°, so that loop is nowhere near active.
+- Settled properly at 960 s: hands-up **4.925°**, 25% brake **5.724°**. Brake
+  raises incidence by 0.80°, **which is the correct sign.**
+**Settling time, flown to a 0.01° criterion rather than a clock:**
+
+| brake | settles at | took | note |
+|---|---|---|---|
+| 0.00–0.15 | 4.925° | 410 s | inside the sewn-in slack, so all identical |
+| 0.20 | 5.011° | 460 s | |
+| 0.25 | 5.719° | 1080 s | |
+| 0.30 | — | >1200 s | still moving, 0.52° spread |
+| 0.35 | — | >1200 s | still moving, 2.62° spread |
+
+- **Settling time grows far faster than the input.** Deep brake does not settle
+  inside twenty minutes of simulated flight at all, so *no* deep-brake number
+  anywhere in this project is a trim point. That includes the 40% departure
+  this item has quoted for several levels.
+- **Two things that do NOT change the settled answer.** The aerodynamic
+  interval moves it by 0.01° (though it halves the settling *time* under
+  brake, 1080 s to 560 s at 120 Hz). And `swingDampingRatio` from 0.35 to 0.90
+  gives the same 5.72° and the same +0.79° brake response every time — only
+  the settling time changes, 410 s down to 80 s.
+- **That second one matters more than it looks.** The settled numbers do not
+  depend on the one tuned coefficient in this axis. The ratio buys settling
+  speed, not a trim. At 0.25 the aircraft departs, which is what actually pins
+  it at 0.35 rather than the 0.06 that pilot and line drag imply.
+- **Next, and specific for once:** find why the phugoid period is 3.4× the
+  classical value. The formula assumes lift ∝ V² at fixed incidence with the
+  mass at the wing; this aircraft holds incidence through the pendulum's
+  tracking of apparent gravity, which is exactly the mechanism `swingDamping
+  Ratio` is standing in for. A pendulum that tracks late lengthens the mode —
+  so the period discrepancy and the damping-ratio fudge are plausibly one
+  thing, and the period is measurable to three digits where "the ratio should
+  be 0.06" never was.
+- Done when: the phugoid period and damping are explained rather than
+  observed, and the wing settles in a time a pilot would recognise with a
+  damping ratio derived from pilot and line drag (~0.06) rather than chosen to
+  make short runs look steady.
+
+**Two corrections on the record, because both were written into these docs and
+acted on before being checked.**
+
+*First:* that brake slows the wing while LOWERING its incidence — a sign error
+blamed on the suspension. It was read from 60-second runs whose own spread was
+0.6–2.3°, larger than the 0.5–1.8° differences it rested on. Settled, the sign
+is right. See `PHYSICS_LEARNINGS` §33.
+
+*Second:* that this is a **limit cycle** driven by the pendulum's tracking lag,
+with `swingDampingRatio` suppressing it. Also wrong, and wrong in the same way
+— it came from reading a fixed-time spread as an amplitude. The damping sweep
+that "proved" it (2.68° at 0.25, 0.60 at 0.35, 0.04 at 0.90) is real, but it
+measures **how fast the mode decays**, not how big a cycle it sustains. More
+damping settles sooner; at a fixed 60-second sample that looks identical to a
+smaller cycle, and it is not the same thing.
+
+*Third, and this one stands:* the suspension's specific stiffness of 6.13 m is
+not a lever. It is registered *Validated*, measured off the built graph at four
+loads, and is not an input to the solver — `LineStiffnessAt` interpolates the
+measured curve and 6.13 is that curve's slope written down afterwards.
 
 **11a. The pendulum damping ratio, as originally written.** Kept because the
 reasoning below is still what has to be replaced, and only the diagnosis above
@@ -556,6 +615,34 @@ currently departs at 40% brake with brake lowering incidence. Swapping it under
   and now item 11 is.
 - It is also not a switch flip: `ParagliderPawn` flies `ParagliderDynamics` and
   about twenty headers pull types from it.
+
+**18. Every calibration number was measured after too short a settle.** Item 11
+found that this wing's slow pitch mode needs eight to sixteen minutes to settle
+and that the harness gives it 20 to 60 seconds. `CalibrationManeuver` already
+computes and prints a settled/not-settled flag per manoeuvre, and it has been
+printing `NOT SETTLED` against the brake rows for as long as they have existed.
+
+- The whole Level 9 table in `docs/CALIBRATION_REPORT.md` is therefore
+  provisional, including the two published numbers that "land untuned" —
+  trim speed and incidence. Those two are the hands-up case, which settles
+  fastest, so they are the most likely to survive; that is a reason to expect
+  them to hold, not a reason not to check.
+- **Hands-up needs 410 s and the harness gives it 20.** Measured hands-up trim
+  settles at 4.925° and 10.603 m/s. The brake rows need 460 s at 20%, 1080 s
+  at 25%, and **more than 1200 s at 30% and beyond** — deep brake does not
+  reach a trim point inside twenty minutes of flight, so every deep-brake
+  number in the report is a snapshot of a transient, not a disagreement with
+  the manufacturer.
+- Do it by settling to a CRITERION rather than lengthening the clock. A fixed
+  settle is a guess whatever number is in it, and `parapenting_pitch_axis_trace`
+  already has the loop to copy.
+- The cost is real and should be planned for: `calibration_tests` currently
+  takes minutes, and settling eight manoeuvres to criterion could take an hour.
+  That probably means the settle-to-criterion run is a separate slow target
+  rather than part of `check-build.sh`, with the fast suite gating against its
+  recorded output.
+- Do this BEFORE re-opening the drag disagreement (item 12) or the brake
+  behaviour, because both are read off this table.
 
 ## Data gaps
 

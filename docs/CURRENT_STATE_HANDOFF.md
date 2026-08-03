@@ -235,21 +235,31 @@ line ends at 98% chord, so there is one length, not two. Counted once, the
 0.62 m divides as 0.120 slack / 0.298 fabric / 0.202 rotation, and full brake
 rotates the canopy 5.0° where it used to rotate it 12.4°.
 
-**The bigger finding is that none of these numbers were settled.** Hands-up in
-still air, sixty seconds, no input, the wing still swings **0.60°** of
-incidence; under 25% brake, **2.26°**. That is a limit cycle, not a decaying
-phugoid — and it is larger than the incidence differences that were being read
-off these runs and called a sign error. It is not the aerodynamic interval
-(120 Hz moves it to 0.528°) and not the section's stall hysteresis (the wing
-flies at 4.7° against a 12° stall). It is the pendulum's tracking lag: cycle
-amplitude falls monotonically with `swingDampingRatio` — 2.68° at 0.25, 0.60 at
-0.35, 0.04 at 0.90.
+**The bigger finding is that none of these numbers were settled, and the wing
+has a second pitch mode nobody had flown long enough to see.** Incidence spread
+over a ten-second window, still air, no input, hands-up: **1.010°** at 30 s,
+0.597 at 60, 0.361 at 120, 0.074 at 240, 0.004 at 480, **0.000 at 960**. Under
+25% brake the same run is 3.426° falling to 0.022°.
 
-So `swingDampingRatio` is suppressing a limit cycle rather than damping
-friction, and 0.35 is where the cycle stops growing fast enough to depart. See
-`PHYSICS_TODO` item 11, rewritten, and `parapenting_pitch_axis_trace`. Four
-gates were loosened to bound the brake behaviour rather than fit it; they are
-tabulated with their strict thresholds under item 11.
+It settles — it takes eight to sixteen minutes. Measured off 35 peaks of a
+1200 s run, the mode is **period 16.3 s, damping ratio ≈0.030**, with incidence
+and airspeed in antiphase: it is the phugoid, and classical theory for this
+wing gives 4.80 s and 0.062. The period is **3.4× longer than theory**, which
+is the most specific lead this problem has ever had.
+
+What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
+pendulum mode — the wing swinging against the pilot after a brake pulse — which
+is a different and healthy mode. Settled properly: hands-up **4.925°**, 25%
+brake **5.724°**, so **brake raises incidence, which is the correct sign.**
+
+Every settle this project has used — 20, 40, 60 seconds — was far too short,
+and two conclusions were drawn from those runs and later retracted: that brake
+had the wrong sign, and that the wing had a limit cycle. Both are corrected
+under `PHYSICS_TODO` item 11 with the evidence; the general lesson is
+`PHYSICS_LEARNINGS` §33. Use `parapenting_pitch_axis_trace`, which settles to a
+criterion rather than a clock. Four gates were loosened to bound the brake
+behaviour rather than fit it; they are tabulated with their strict thresholds
+under item 11.
 
 **The largest disagreement is now drag** (`PHYSICS_TODO` item 12): glide
 **11.33 against 9.5** and sink **0.97 against 1.14**. It is one error — trim

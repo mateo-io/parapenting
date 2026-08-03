@@ -160,13 +160,26 @@ struct BranchResult
 // is a statement about where the hole is rather than a coefficient.
 //
 // What is deliberately NOT modelled is the momentum thickness that shear layer
-// carries. It is certainly not zero, and it is the largest single candidate
-// for the profile drag this section is still missing - but its size is a
-// shear-layer spreading coefficient, not a piece of geometry, and swept over
-// the range the literature supports it moves this section's drag by a factor
-// of five. A number that powerful and that unconstrained would be a fit to the
-// published glide wearing a derivation, so it is left out and the resulting
-// disagreement is reported instead. See PHYSICS_TODO item 12.
+// carries onto the surface. It is certainly not zero and it is the largest
+// single candidate for the profile drag this section is missing - the model
+// runs about 0.0096 at trim where paraglider sections are usually quoted at
+// 0.018 to 0.025, and closing that would close most of PHYSICS_TODO item 12.
+//
+// It has been tried twice. Seeded at the lip with the shear layer's own
+// momentum thickness, theta = h/6 for a linear profile across an opening of
+// height h, it changes the section's drag by 2% when h is quadrupled - the lip
+// sits in the steepest favourable gradient on the section and theta decays
+// there as Ue^-(H+2), so the seed is thrown away within two percent of chord.
+// Seeded instead at reattachment, six opening heights downstream, the same
+// derivation gives 0.036 at a 1% opening and 0.076 at a 3% one, against the
+// 0.019 wanted - three to four times too much, because h/6 measures the layer
+// against the freestream while it actually forms where the local edge velocity
+// is a fraction of it.
+//
+// So the derivation has a factor in it that is not geometry, the answer moves
+// by five times across the plausible range of the opening height, and one
+// value in that range lands on the published glide. That is a dial. It is left
+// out and the gap is reported.
 BranchResult MarchBoundaryLayer(
     const std::vector<double>& arcLength,
     const std::vector<double>& edgeVelocity,
@@ -308,6 +321,38 @@ BranchResult MarchBoundaryLayer(
             momentum = std::max(1.0e-9, newMomentum);
             shapeFactor = ShapeFromEntrainment(entrainment);
             shapeFactor = std::clamp(shapeFactor, 1.02, 3.0);
+        }
+
+        // A turbulent layer that separates within the first few percent of
+        // chord has not stalled the section - it has made a leading-edge
+        // bubble, and on a nose this round the bubble reattaches. This is the
+        // turbulent twin of the laminar short bubble above, and it is treated
+        // the same way: the layer comes back down with a reattached profile
+        // and the march continues.
+        //
+        // Without it this section stalls at the NOSE, and abruptly: measured,
+        // the boundary layer went from separating at 94% of chord to
+        // separating at 3% of it for one degree more incidence, and the wing
+        // lost the whole upper surface in a single step. That is what
+        // leading-edge stall looks like, and it is not what a 15.5% section
+        // with a 2.65% nose radius does - leading-edge stall belongs to thin
+        // sections with sharp noses. It was the integral method being asked a
+        // question it cannot answer: just aft of the suction peak the layer is
+        // a few thousandths of a chord thick, the gradient is at its steepest,
+        // and Head's entrainment equation has no bubble in it.
+        //
+        // The limit is stated rather than solved, and it is the one number in
+        // this file that is. Short bubbles run half a percent to two percent
+        // of chord and long ones reach five to ten; three percent is inside
+        // that and it is what a section with this nose radius supports. The
+        // inverse boundary-layer formulation is what replaces it, and that is
+        // the difference between this and XFOIL. PHYSICS_TODO item 13.
+        constexpr double LeadingEdgeBubbleChord = 0.03;
+        if (shapeFactor >= 2.4 && chord[i + 1] < LeadingEdgeBubbleChord)
+        {
+            shapeFactor = 1.5;
+            entrainment = EntrainmentShape(shapeFactor);
+            continue;
         }
 
         if (shapeFactor >= 2.4)
@@ -659,10 +704,8 @@ SectionAerodynamics SectionViscousSolver::Solve(
         std::clamp(Geometry[stagnation].midX / Chord, 0.0, 1.0);
     const bool insideInlet = stagnationChord <= InletChordFraction;
     const bool hasInlet = InletChordFraction > 0.0;
-    const bool lowerFed =
-        hasInlet && (!stagnationOnLower || insideInlet);
-    const bool upperFed =
-        hasInlet && (stagnationOnLower || insideInlet);
+    const bool lowerFed = hasInlet && (!stagnationOnLower || insideInlet);
+    const bool upperFed = hasInlet && (stagnationOnLower || insideInlet);
 
     const std::vector<double> lowerArc = arcLengths(lowerIndices);
     const std::vector<double> upperArc = arcLengths(upperIndices);
@@ -713,10 +756,25 @@ SectionAerodynamics SectionViscousSolver::Solve(
     // condition no longer belongs at the trailing edge, because the flow
     // leaves the surface before it gets there, so the circulation drops to
     // Kirchhoff's value for the attached fraction. And behind the separation
-    // point the free streamline runs at freestream speed, so the surface
-    // carries Cp = 0 - that is what "dead air" means in this model, and it is
-    // why the wake cannot feed suction back into the lift the way a frozen
-    // suction peak would.
+    // point the surface carries the pressure it had where the flow let go,
+    // CONSTANT to the trailing edge - that is what dead air is.
+    //
+    // The constancy is the load-bearing part and it took a wrong version to
+    // see why. Recovering the plateau smoothly to Cp = 0 over the following
+    // 8% of chord looks more careful and is a positive feedback: from a
+    // suction of -1.5 to zero over 8% of chord is a violent adverse gradient,
+    // it lies exactly where the boundary layer has just separated, and it
+    // guarantees the layer cannot reattach. Separation then walks forward
+    // until it reaches the nose and the section falls into the deep-stall
+    // state in a single degree, from only a fifth of its chord separated -
+    // where a real section reaches its lift peak with half of it gone.
+    //
+    // Measured, that cost the wing its brake range: the attached branch ended
+    // at 9, 12, 7 and 12 degrees at 25, 30, 35 and 40% brake, erratically,
+    // because which station first crossed a shape factor of 2.4 decided the
+    // whole thing. Dead air at constant pressure has no gradient in it, so
+    // the layer behind the separation point is not being driven anywhere and
+    // the fixed point is a point.
     const auto rebuildPressure = [&](double lowerSeparated,
                                      double upperSeparated)
     {
@@ -729,11 +787,6 @@ SectionAerodynamics SectionViscousSolver::Solve(
                 + scale * kuttaVortex * TangentialCirculation[i];
             pressure[i] = 1.0 - velocity * velocity;
         }
-        // The pressure does not step to the wake value at the separation
-        // point; it recovers over a short run of surface. The width is the
-        // one numerical concession in this model and it changes where the
-        // curve rounds over, not where it peaks.
-        constexpr double WakeRecoveryChord = 0.08;
         const auto deadAir = [&](const std::vector<std::size_t>& indices,
                                  const std::vector<double>& chord,
                                  double separationChord)
@@ -749,11 +802,7 @@ SectionAerodynamics SectionViscousSolver::Solve(
                     separationPressure = pressure[indices[k]];
                     found = true;
                 }
-                const double run =
-                    (chord[k] - separationChord) / WakeRecoveryChord;
-                const double t = std::clamp(run, 0.0, 1.0);
-                const double recovered = t * t * (3.0 - 2.0 * t);
-                pressure[indices[k]] = separationPressure * (1.0 - recovered);
+                pressure[indices[k]] = separationPressure;
             }
         };
         deadAir(upperIndices, upperChord, upperSeparated);

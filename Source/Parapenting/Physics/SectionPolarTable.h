@@ -105,12 +105,16 @@ struct AnalyticPolarSpec
 struct ComputedPolarSpec
 {
     SectionProfileSpec section{};
-    // Chord times airspeed over kinematic viscosity, at trim: 1.4 m of mean
-    // chord at 11 m/s in 1.46e-5 m2/s of air. The wing runs 0.5 to 3 x 10^6
-    // across its span and its speed range, and the section polars change
-    // slowly enough across that to make one value defensible - which is why
-    // Reynolds is still not an axis.
-    double reynoldsNumber = 1.05e6;
+    // Chord times airspeed over kinematic viscosity, at trim. The mean
+    // geometric chord is the developed area over the developed span, 27.0 /
+    // 11.8 = 2.29 m, and at 10.5 m/s in 1.46e-5 m2/s of air that is 1.65e6.
+    //
+    // It read 1.05e6, from a 1.4 m chord that is nothing on this wing - the
+    // tip is 0.445 m and the root is 2.8. Worth little: swept from 0.7e6 to
+    // 2.5e6 the section's maximum lift moves from 1.58 to 1.71, which is why
+    // one value for the whole span is defensible and why Reynolds is still
+    // not an axis. Corrected because it was wrong, not because it mattered.
+    double reynoldsNumber = 1.65e6;
     // Aspect ratio the post-stall flat-plate branch is built for.
     double aspectRatioForPostStall = 5.2;
     // Angular width over which the solve hands off to the post-stall branch,

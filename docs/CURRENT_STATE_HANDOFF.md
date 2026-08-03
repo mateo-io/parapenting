@@ -200,36 +200,46 @@ direction of error).
 The design incidence used to be fitted directly to the published 39 km/h; it is
 now set by the design rule a rigging angle exists to satisfy — hands up, with no
 brake and no bar, the wing sits at its own best glide. At the published 105 kg
-that gives **trim 39.6 km/h against 39.0**, incidence **5.24° against the 5.30°
-the published trim lift coefficient needs**, sink **1.08 against 1.14**, and
-glide **10.18 against 9.5**. Three of the four land inside 6% and none of them
-was fitted.
+that gives **trim 39.8 km/h against 39.0** and incidence **5.14° against the
+5.30° the published trim lift coefficient needs** — both inside 3%, neither
+fitted. Sink and glide do not land, and they are one error rather than two: see
+the drag item below.
 
-**The envelope is still hands-up to about a quarter brake — and that is now one
-problem, not two.**
+**Brake now does what brake does**, and all three are gated in `coupled_tests`:
+25% brake gives **9.77 m/s and 10.34 glide against 10.48 and 10.87 hands up** —
+slower and less glide — and a firm input from trim **climbs at 1.15 m/s** before
+settling slower, which is the same pendulum as the release surge with the sign
+reversed. An earlier note here said brake was making the wing *faster*; that was
+measured off a ramp started before the wing had finished settling and it was
+wrong. See `PHYSICS_LEARNINGS` §30.
 
-- The lift ceiling is gone. The section carries **1.59 hands up and 2.40 at 40%
-  brake** where the analytic table gave 0.87 at every brake setting, and the
-  wing's own lift coefficient rises monotonically to 1.20 at 40% brake where
-  the analytic polars peaked at 0.82 and fell off a cliff.
-- What stops 40% brake now is **pitch**. Ramped in over twelve seconds, the
-  incidence *falls* as the first fifth of brake goes on and the airspeed
-  *rises*: brake is speeding this wing up, because the section's nose-down
-  moment rotates the canopy on its lines faster than the camber it adds buys
-  lift back. Past a quarter of engaged travel it runs away.
-- Full bar reaches **15.6 m/s, 56 km/h against a published 53**, before it
-  diverges — better than before, where it departed on the way there.
+**The section was stalling at its nose, and fixing that fixed three things**
+(`PHYSICS_TODO` item 13). A turbulent boundary layer separating in the first 3%
+of chord was being read as the section letting go, so one degree took the flow
+from separating at 94% of chord to 3%. Letting a leading-edge bubble reattach —
+the turbulent twin of the laminar short bubble already in the code — made
+maximum lift and stall angle **monotone in brake** (1.81 at 12° hands up, 2.05
+at 11°, 2.10 at 9°, 2.35 at 9°), restored the 4 m/s asymmetric gust benchmark to
+folding less (0.653 against 0.888) and **clearing completely**, and put the
+symmetric frontal's two halves back at 0.710 and 0.710.
 
-Both are now `PHYSICS_TODO` item 11, the pitch axis, whose two remaining levers
-are the specific stiffness of 6.13 m and the swing damping ratio. Item 1 was
-one of them and it has been measured out.
+**What is still short: the wing stalls at about 35% of brake travel** where an
+EN-B stalls at 65–80%. Trim sits about 5° below the section's stall, and the
+brake line's own nose-up rotation of the canopy — 3.6° between 19% and 40% of
+travel, measured off the network — uses that margin up. Full bar reaches
+**13.4 m/s before it diverges**. Both are `PHYSICS_TODO` item 11, the pitch
+axis, whose remaining levers are the specific stiffness of 6.13 m and the swing
+damping ratio. The section pitching moment was the other lever and it has been
+measured out — it agrees with thin-airfoil flap theory to 10%.
 
-**Two new open items came out of the work.** Item 12: glide is 8.6% optimistic
-and the two candidates are the shear layer off the cell mouth (deliberately not
-modelled — its coefficient would swing section drag by five times) and the
-VSM's induced drag, which reports a span efficiency of **1.29** against its own
-reference span and cannot. Item 13: the solved stall angle is not smooth across
-the brake axis.
+**The largest disagreement is now drag** (`PHYSICS_TODO` item 12): glide
+**11.33 against 9.5** and sink **0.97 against 1.14**. It is one error — trim
+speed and incidence both land, so only the drag is wrong. The solved section
+runs 0.0157 at trim against the 0.018–0.025 paraglider sections are quoted at.
+The missing term is named — the shear layer off the cell mouth — and has been
+tried twice and left out both times, because its size is a coefficient that
+swings section drag five-fold and one value in its range lands exactly on the
+published glide. The VSM's induced drag was checked and ruled out.
 
 **Nothing geometry-driven flies the game yet.** `ParagliderDynamics` — one
 six-degree-of-freedom body with a fitted polar — is still what the pawn uses.

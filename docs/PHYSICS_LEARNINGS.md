@@ -727,6 +727,52 @@ The general form: when a large input produces a small effect, find out whether
 the model is telling you it does not matter, or whether you put it somewhere the
 model can discard it.
 
+## 30. Measure a steady state from a steady state
+
+Brake was reported as making this wing accelerate over the first fifth of its
+travel - a striking result, written up as a pitch-axis defect, and wrong. The
+measurement ramped the brake in starting twenty seconds after the wing was
+initialised, and the wing was still settling: hands up and untouched, over the
+same two seconds, its incidence moved 0.4 degrees and its airspeed 0.2 m/s in
+exactly the pattern that was attributed to the brake.
+
+Settled properly - forty seconds hands up, an eight-second ramp, forty seconds
+held, at each brake setting separately - brake slows the wing monotonically and
+costs glide, which is what brake does.
+
+The phugoid on this aircraft has a four-second period and a damping ratio near
+0.09, so it takes the better part of a minute to disappear. Any steady-state
+number read inside that window is a phase of the oscillation wearing a label.
+The three gates that now exist for this - brake slows the wing, brake costs
+glide, a firm input climbs - each fly their own settle rather than sharing one.
+
+## 31. A model that stalls in the wrong place stalls everything downstream
+
+The section was stalling at its nose. A turbulent boundary layer separating in
+the first 3% of chord was being read as the section letting go, so one degree
+of incidence took the flow from separating at 94% of chord to separating at 3%,
+and the whole upper surface went at once.
+
+The visible symptom was a stall angle that jumped around across the brake axis
+- 10, 11, 7, 12, 3, 13 degrees - which looked like solver jitter and was
+recorded as a minor limitation. It was not minor. Three unrelated-looking
+failures were the same thing:
+
+- the wing stalled at 35% of brake travel;
+- a 4 m/s asymmetric gust folded the wing and then would not clear, because a
+  wing that loses incidence anywhere loses its whole upper surface and cannot
+  rebuild the speed to re-pressurise;
+- a symmetric frontal stopped being symmetric, because the two halves fell off
+  the cliff on different steps.
+
+One fix - let a leading-edge bubble reattach, which is the turbulent twin of
+the laminar short bubble the code already had - closed all three, and made
+maximum lift and stall angle monotone in brake at the same time.
+
+The lesson is about triage rather than aerodynamics: a numerical oddity in a
+quantity everything else reads is not a small bug in that quantity. It is a
+large bug everywhere, wearing the disguise of several small ones.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -747,12 +793,16 @@ model can discard it.
 | line stiffness per newton | 6.13 m | 3306/6317/11512/15393 at ½/1/2/4 g |
 | pitch hinge arm | 6.62 m | the canopy pivots below itself, not about itself |
 | line roll stiffness at 1 g | 8204 N·m/rad | replaced a `W L sin` term |
-| trim speed, 105 kg | 11.01 m/s | 39.6 km/h against a published 39.0 |
-| trim incidence | 5.24 deg | against the 5.30 the published CL needs |
+| trim speed, 105 kg | 11.06 m/s | 39.8 km/h against a published 39.0 |
+| trim incidence | 5.14 deg | against the 5.30 the published CL needs |
+| glide at trim | 11.33 | against a published 9.5 - the drag deficit |
+| brake rotation on the lines | 3.6 deg | between 19% and 40% of travel |
 | camber couple at trim | 327 N·m | scales with q; drives the pitch loop gain |
 | pitch loop gain at trim | 0.32 | passes 1 at CL 0.35; full bar is CL 0.31 |
 | section CLmax, analytic | 0.866 at every brake | a stated stall margin cannot move |
-| section CLmax, computed | 1.59 hands up, 2.40 at 40% brake | it moves because the flap is real |
+| section CLmax, computed | 1.81 hands up, 2.48 at 40% brake | it moves because the flap is real |
+| leading-edge bubble limit | 3% of chord | a turbulent separation forward of this reattaches |
+| section Cd at trim | 0.0157 | published paraglider sections: 0.018-0.025 |
 | section Cm per rad of brake | -0.61 | theory -0.55; the analytic table had -0.34 |
 | usable envelope | hands-up to 25% brake | now BOTH ends are the pitch axis |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |

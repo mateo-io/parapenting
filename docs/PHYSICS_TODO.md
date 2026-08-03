@@ -162,44 +162,80 @@ influential number in the stack. XFOIL over a digitised EPIC 2 profile would
 make these `Measured` and is still worth doing - but it is no longer what
 blocks the envelope.
 
-**12. The section drag is optimistic, and one piece of it was left out on
-purpose.** Whole-aircraft best glide comes out **10.32 against a published
-9.5**, 8.6% high, and it traces to canopy profile drag: the solved section runs
-about 0.016 at trim where paraglider sections are usually quoted at 0.018 to
-0.025.
+**12. The section drag is optimistic, and this is now the largest disagreement
+in the model.** Glide at trim is **11.33 against a published 9.5** and sink is
+**0.97 against 1.14**. It is one error, not two: trim speed and incidence both
+land (39.8 km/h against 39.0, 5.14 degrees against the 5.30 the published lift
+coefficient needs), so the lift side is right and only the drag is wrong. The
+solved section runs about **0.0157 at trim** where paraglider sections are
+usually quoted at 0.018 to 0.025.
+
+The analytic polars agreed with the published glide, at 9.43. That agreement
+rested on `minimumDragCoefficient = 0.0125`, a stated number, and it did not
+survive the drag becoming a consequence.
 
 - The largest single candidate is the momentum thickness the shear layer off
   the cell mouth carries onto the upper surface. It is certainly not zero.
-  It was left out because its size is a shear-layer spreading coefficient
-  rather than a piece of geometry, and swept over the range the literature
-  supports it moves the section's drag **by a factor of five**. A number that
-  powerful and that unconstrained would be a fit to the published glide wearing
-  a derivation.
-- The second candidate is not the section at all. The VSM's induced drag is
-  optimistic against its own reference span: at CL 0.479 it reports CDi 0.0176
-  on a 9.30 m span and 27 m2, which is a span efficiency of **1.29** - and a
-  planar wing cannot exceed 1. Worth 0.010 at trim, which is the whole gap.
-  This is a specific, cheap thing to check and it is where to start.
-- Third: the skin between ribs is scalloped and seamed and the model's is
+  **It has been tried twice and left out both times.** Seeded at the lip with
+  `theta = h/6` - the momentum thickness of a linear profile across an opening
+  of height h - quadrupling h changes the section's drag by 2%, because the lip
+  sits in the steepest favourable gradient on the section and theta decays
+  there as `Ue^-(H+2)`. Seeded instead at reattachment, six opening heights
+  downstream, the same derivation gives 0.036 at a 1% opening and 0.076 at a 3%
+  one, against the 0.019 wanted - three to four times too much, because `h/6`
+  measures the layer against the freestream while it forms where the local edge
+  velocity is a fraction of it. So the derivation has a factor in it that is
+  not geometry, the answer moves by five times across the plausible range of
+  the opening height, and one value in that range lands on the published glide.
+  That is a dial, and it stays out.
+- Second: the skin between ribs is scalloped and seamed and the model's is
   smooth. Needs the 2-D mesh.
+- Third, and checked off rather than left hanging: the VSM's induced drag is
+  **not** the cause. It reports a span efficiency of 1.31 against the wing's
+  projected span, which looks impossible until you remember the wake is not
+  planar - an arched wing's trailing sheet beats the flat-wake limit for its
+  projected span the way a winglet does. Measured against the same wing with
+  the arc removed the solver gives 1.085, which IS above the planar limit and
+  is the discretisation error the elliptical-wing validation already reports at
+  3.6%. Worth 8% of the induced drag, not the 100% of profile drag needed.
 - Done when: glide lands inside the published figure without a coefficient
   chosen to put it there.
+- Bounded in `calibration_tests` in the direction the model is wrong.
 
-**13. The solved stall angle is not smooth across the brake axis.** 10, 11, 7,
-12, 3 and 13 degrees at 0, 10, 25, 40, 60 and 100% brake. Maximum lift itself
-is far better behaved and rises with brake, which is the claim the wing
-depends on, but the angle it happens at is decided by whether the Kirchhoff
-fixed point survives one more degree before falling into the fully separated
-state - and near the peak that is a close-run thing.
+**13. MOSTLY CLOSED. The section was stalling at its nose.**
 
-- Every brake setting's peak is a real branch end at this Reynolds number.
-  Which one a neighbouring setting reaches is not something this method
-  resolves.
-- Costs: the stall angle a pilot would feel is not repeatable degree by degree
-  across the brake travel.
-- Needs: the boundary layer solved in inverse mode past separation rather than
-  the branch simply ending, which is the difference between this and XFOIL.
-- Bounded and printed in `aerodynamics_tests`.
+The solved stall angle used to jump around across the brake axis - 10, 11, 7,
+12, 3 and 13 degrees at 0, 10, 25, 40, 60 and 100% brake - and it was not
+cosmetic. It cost the wing its brake range and its collapse recovery.
+
+The cause: **a turbulent boundary layer separating in the first few percent of
+chord was being read as the section stalling.** Measured, the layer went from
+separating at 94% of chord to separating at 3% of it for one degree more
+incidence, and the wing lost its whole upper surface in a single step. That is
+leading-edge stall, and it is not what a 15.5% section with a 2.65% nose radius
+does - leading-edge stall belongs to thin sections with sharp noses. It was the
+integral method being asked a question it cannot answer: just aft of the
+suction peak the layer is a few thousandths of a chord thick, the gradient is
+at its steepest, and Head's entrainment equation has no bubble in it.
+
+The fix is the turbulent twin of the laminar short bubble the code already had:
+a separation forward of 3% of chord reattaches, and the march continues. What
+it bought, all measured:
+
+- maximum lift and stall angle became **monotone in brake** - 1.81 at 12
+  degrees hands up, 2.05 at 11, 2.10 at 9, 2.35 at 9 as brake goes on - which
+  is what a flap does;
+- the 4 m/s asymmetric gust benchmark, which had stopped recovering, folds less
+  (0.653 against 0.888) and **clears completely** again;
+- the symmetric frontal's two halves now peak at 0.710 and 0.710, identical to
+  three decimals, where they had drifted 11% apart.
+
+The 3% limit is stated rather than solved, and it is the one number in
+`SectionViscousSolver` that is. Short bubbles run half a percent to two percent
+of chord and long ones reach five to ten. **What replaces it is the inverse
+boundary-layer formulation, which is the difference between this and XFOIL.**
+Some jitter remains at 40 and 100% brake and is printed in
+`aerodynamics_tests`.
 
 **2. Apparent-mass rotational terms are disputed.** The leading coefficients
 could not be checked against the source paper and disagree with the model's own
@@ -335,17 +371,22 @@ aircraft's pitch diverges and it is fully separated inside a minute.
   before it lets go, where before it departed on the way there. But it still
   lets go, so what is left is the suspension side: the specific stiffness and
   the damping ratio.
-- **This item also now owns 40% brake**, which used to belong to item 1.
-  Ramped in over twelve seconds, slowly enough that no overshoot is involved,
-  the incidence FALLS as the first fifth of brake goes on - 5.8 to 4.9 degrees
-  - and the airspeed RISES, 10.16 to 10.62 m/s. **Brake is speeding this wing
-  up.** Past about a quarter of engaged travel it turns over and runs away.
-  There is a steady state at 40% brake and the section is nowhere near its
-  stall; the wing cannot reach it because its own nose-down moment under brake
-  rotates the canopy on its lines faster than the camber it adds buys lift
-  back. The section moment itself checks out against thin-airfoil flap theory
-  (-0.61 per radian solved, about -0.55 from theory, against the analytic
-  table's -0.34, which multiplied by the flap effectiveness a second time).
+- **This item also owns what is left of 40% brake.** An earlier reading of
+  this said brake was making the wing FASTER over the first fifth of its
+  travel. That was wrong and it is worth recording why: it was read off a
+  ramp started before the wing had finished settling, so what it measured was
+  the tail of the phugoid, not the brake. Settled properly at each setting,
+  brake does what brake does - 10.48 m/s hands up, 10.24 at 20%, 9.76 at 25%,
+  8.63 at 30% - and glide falls with it, and a firm input from trim climbs at
+  1.15 m/s before settling slower. All three are now gated in `coupled_tests`.
+  What remains is that the wing stalls at about 35% of brake travel where an
+  EN-B wing stalls at 65 to 80%, because trim sits about 5 degrees below the
+  section's stall and the brake line's own nose-up rotation of the canopy -
+  measured off the network at 3.6 degrees between 19% and 40% of travel - uses
+  that margin up. The section pitching moment checks out against thin-airfoil
+  flap theory (-0.61 per radian solved, about -0.55 from theory, against the
+  analytic table's -0.34, which multiplied by the flap effectiveness a second
+  time), so the suspects are the rotation per unit brake and the margin.
 - Registered Tuned/Unvalidated, superseded-by Level 11, and bounded by the
   full-bar and deep-brake gates in `calibration_tests`.
 

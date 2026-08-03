@@ -53,9 +53,10 @@ struct SectionProfileSpec
     // Where the mouth sits is not published for this wing. Openings on wings
     // of this class sit just below the leading edge, at the stagnation point
     // at trim - which is where the pressure solver independently measures it,
-    // 9.7 degrees below the chord line. Only the position appears here: the
-    // opening's height would set how much momentum the shear layer carries,
-    // and that is the piece deliberately left out (SectionViscousSolver.cpp).
+    // 9.7 degrees below the chord line. Only the POSITION appears here: the
+    // opening's height would set how much momentum the shear layer off its lip
+    // carries, and that is the piece deliberately left out - see
+    // SectionViscousSolver.cpp and PHYSICS_TODO item 12.
     double inletChordFraction = 0.015;
     // Panels around the contour. Even, so the leading edge lands on a node.
     std::size_t panelCount = 200;

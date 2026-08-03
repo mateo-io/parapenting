@@ -145,66 +145,99 @@ damping fixes a gain above one. Half bar departs too, more slowly.
 The two candidates are the analytic section pitching moment (item 1) and the
 specific stiffness of 6.13 m. Both are single measurable numbers.
 
-### 3. The polar's lift ceiling — CLOSED, and what took its place
+### 3. The lift ceiling — CLOSED, and what took its place
 
-This section used to read: swept on the VSM the analytic section polars give
-the wing a maximum lift coefficient of **0.866 at 11°**, where this wing's own
-profile carries 1.32, so 40% brake takes the wing past its own stall and there
-is no steady state to return to. The usable envelope is hands-up to 25% brake.
+This section used to read: the analytic section polars give the wing a maximum
+lift coefficient of **0.866 at 11°**, where this wing's own profile carries
+1.32, so 40% brake takes the wing past its own stall and there is no steady
+state to return to.
 
-**That reason is gone.** The polars are now solved on the section's own
-coordinates — `SectionProfile` for the contour, `SectionViscousSolver` for
-panels plus an integral boundary layer plus a Kirchhoff dead-air region. The
-ceiling closed with them:
+**That reason is gone.** The polars are solved on the section's own coordinates
+now — panels for the potential flow, an integral boundary layer over them, and
+a Kirchhoff dead-air region aft of separation iterated to a fixed point.
 
 | | analytic | computed |
 |---|---|---|
-| section CLmax, hands up | 0.87 | 1.59 |
-| section CLmax, 40% brake | 0.87 | 2.40 |
-| wing CL at 40% brake, 14° | 0.55, past a cliff | 1.20, still rising |
+| section CLmax, hands up | 0.87 | 1.81 at 12° |
+| section CLmax, 25% brake | 0.87 | 2.05 at 11° |
+| section CLmax, 40% brake | 0.87 | 2.10 at 9° |
 | section Cm | −0.110, constant | −0.093 to −0.102 across the range |
 
 A stated stall margin above a moving zero-lift angle means maximum lift that
-cannot change with brake. A real deflected trailing edge raises it. That is the
-whole difference, and it is why an ordinary EN-B input used to walk the wing
-off the top of a curve that never rose.
+cannot change with brake. A real deflected trailing edge raises it and lowers
+the angle it happens at, and both now do.
 
-**40% brake still departs, and the reason is now measured.** Ramped in over
-twelve seconds — slowly enough that no overshoot is involved — the incidence
-*falls* as the first fifth of brake goes on, from 5.8° to 4.9°, and the
-airspeed *rises*, from 10.16 to 10.62 m/s. Brake is speeding this wing up. Past
-about a quarter of engaged travel it turns over and runs away.
+### 3b. The section was stalling at its nose
 
-Brake making a wing faster is a pitch-axis result, not a polar one: the
-section's nose-down moment under brake rotates the canopy on its lines faster
-than the added camber buys lift back. The moment itself checks out — thin-airfoil
-flap theory gives a 22% flap about −0.55 per radian and the solved section gives
-−0.61, where the analytic table had −0.34 because it multiplied the moment by
-the flap effectiveness a second time.
+Getting there took a second fix, and it was worth more than it looked. The
+solved stall angle jumped around across the brake axis — 10, 11, 7, 12, 3, 13
+degrees — which read as solver jitter. It was not. **A turbulent boundary layer
+separating in the first 3% of chord was being read as the section stalling**:
+one degree of incidence took the flow from separating at 94% of chord to 3%,
+and the whole upper surface went at once. That is leading-edge stall, and a
+15.5% section with a 2.65% nose radius does not do it.
 
-**So both envelope limits are now item 11**, the pitch axis, whose two levers
-were the section moment and the specific stiffness of 6.13 m. The first has
-been measured and is not the answer. Full bar is better for it — the wing
-reaches 15.6 m/s, **56 km/h against a published 53**, before it lets go — but it
-still lets go.
+Letting a leading-edge bubble reattach — the turbulent twin of the laminar
+short bubble already in the code — fixed three things that had looked
+unrelated:
 
-### 3b. Where the model now stands against the published wing
+- maximum lift and stall angle became monotone in brake;
+- the 4 m/s asymmetric gust benchmark, which had stopped recovering, folds less
+  (0.653 against 0.888) and clears completely;
+- the symmetric frontal's halves peak at 0.710 and 0.710, from 11% apart.
+
+### 3c. Brake does what brake does
+
+Settled properly at each setting — forty seconds hands up, an eight-second
+ramp, forty seconds held — brake slows the wing and costs glide, and a firm
+input from trim trades the speed for height first:
+
+| | hands up | 25% brake |
+|---|---|---|
+| airspeed | 10.48 m/s | 9.77 |
+| glide | 10.87 | 10.34 |
+
+and a firm input climbs at **1.15 m/s** before settling slower — the same
+pendulum as the release surge with the sign of the wing's acceleration
+reversed. All three are gated in `coupled_tests`.
+
+An earlier version of this report said brake was making the wing *faster* over
+the first fifth of its travel, and attributed it to the section's pitching
+moment. That was measured off a ramp started before the wing had finished
+settling: the phugoid here has a four-second period and a damping ratio near
+0.09, so what was measured was the tail of the oscillation. See
+`PHYSICS_LEARNINGS` §30.
+
+### 3d. What is still short
+
+**The wing stalls at about 35% of brake travel**, where an EN-B stalls at 65 to
+80%. Trim sits about 5° below the section's stall, and the brake line's own
+nose-up rotation of the canopy — 3.6° between 19% and 40% of travel, measured
+off the suspension network — uses that margin up. Full bar reaches 13.4 m/s
+before it diverges. Both are item 11, the pitch axis. Its two levers were the
+section pitching moment and the specific stiffness of 6.13 m; the first has been
+measured and agrees with thin-airfoil flap theory to 10%, so what is left is the
+suspension side.
+
+### 3e. Where the model stands against the published wing
 
 At the published 105 kg all-up, with the design incidence set by a design rule
-(hands up, the wing sits at its own best glide) rather than fitted to any of
+— hands up, the wing sits at its own best glide — rather than fitted to any of
 these numbers:
 
 | | published | model | |
 |---|---|---|---|
-| trim | 39.0 km/h | 39.6 | +1.5% |
-| trim incidence | 5.30° (from published CL 0.580) | 5.24° | −1% |
-| sink at trim | 1.14 m/s | 1.08 | −5% |
-| best glide | 9.5 | 10.18 | +7% |
+| trim | 39.0 km/h | 39.8 | +2% |
+| trim incidence | 5.30° (from published CL 0.580) | 5.14° | −3% |
+| sink at trim | 1.14 m/s | 0.97 | −15% |
+| best glide | 9.5 | 11.33 | +19% |
 
-Glide is the one that misses, and it is canopy profile drag: `PHYSICS_TODO`
-item 12, whose two candidates are the shear layer off the cell mouth
-(deliberately not modelled) and the VSM's induced drag, which reports a span
-efficiency of 1.29 against its own reference span and cannot.
+The lift side lands and the drag side does not, and it is one error rather than
+two. The solved section runs 0.0157 of profile drag at trim where paraglider
+sections are quoted at 0.018 to 0.025. The analytic polars agreed with the
+published glide at 9.43, and that agreement rested on a stated minimum section
+drag of 0.0125 — it did not survive the drag becoming a consequence. Item 12,
+bounded in `calibration_tests` in the direction the model is wrong.
 
 ### 4. Energy during pitch transients
 

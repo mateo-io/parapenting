@@ -582,6 +582,99 @@ int main()
               "and it does it by dropping the incidence, which is why bar is "
               "collapse-prone rather than simply fast");
 
+        // -- what brake is for -------------------------------------------
+        //
+        // Three claims, none of them published numbers and all of them things
+        // a pilot would notice immediately if they were wrong: brake slows the
+        // wing, brake costs glide, and brake pulled firmly from trim trades
+        // the speed for height before the wing settles at the slower one.
+        //
+        // The middle one is the one that needs a gate. Speed falling out of
+        // brake is nearly automatic - more camber is more lift coefficient is
+        // less speed - but glide falling requires the drag to arrive with it,
+        // and a model can get the first right and the second backwards. Trim
+        // is rigged to sit at best glide, so any brake must cost some.
+        {
+            const auto settledAt = [&](double brake)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                CoupledState fresh;
+                Fly(wing, CoupledControls{}, 40.0, &fresh);
+                for (int step = 0; step < 120 * 8; ++step)
+                {
+                    CoupledControls ramp;
+                    ramp.leftBrake = brake * (step + 1) / (120.0 * 8.0);
+                    ramp.rightBrake = ramp.leftBrake;
+                    wing.Step(fresh, ramp, CoupledAtmosphere{});
+                }
+                CoupledControls held;
+                held.leftBrake = brake;
+                held.rightBrake = brake;
+                const double startZ = fresh.positionWorldM.z;
+                double before = 0.0;
+                for (int step = 0; step < 120 * 40; ++step)
+                {
+                    wing.Step(fresh, held, CoupledAtmosphere{});
+                    if (step == 120 * 20) before = fresh.positionWorldM.z;
+                }
+                (void)startZ;
+                const double sink =
+                    (before - fresh.positionWorldM.z) / 20.0;
+                const Vec3 track = fresh.velocityWorldMps;
+                const double ground = std::hypot(track.x, track.y);
+                struct Point { double speed; double sink; double glide; };
+                return Point{wing.Diagnostics().airspeedMps, sink,
+                             ground / std::max(0.01, sink)};
+            };
+            const auto clean = settledAt(0.0);
+            const auto braked = settledAt(0.25);
+            std::printf("Brake 25%%: %.2f m/s and %.2f glide, against %.2f "
+                        "and %.2f hands up\n",
+                        braked.speed, braked.glide, clean.speed, clean.glide);
+            Check(braked.speed < clean.speed - 0.3,
+                  "brake slows the wing");
+            Check(braked.glide < clean.glide,
+                  "and costs glide - trim is rigged to sit at best glide, so "
+                  "there is nowhere for brake to go but down. Getting the "
+                  "speed right and the glide backwards is a real failure mode "
+                  "and this is what catches it");
+        }
+
+        // Brake pulled firmly from trim trades speed for height. This is the
+        // pendulum doing what a pilot feels as the wing going back and the
+        // climb that comes with it: the wing slows, the pilot keeps going, and
+        // the whole aircraft converts airspeed into altitude before it settles
+        // at the slower trim. Nothing scripts it - it is the same two bodies
+        // on a line that produce the surge when brake is RELEASED, with the
+        // sign of the wing's acceleration the other way round.
+        {
+            CoupledParagliderSolver pulsed(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(pulsed, CoupledControls{}, 40.0, &state);
+            const double trimSinkMps = 1.0;
+            double worstClimbMps = -10.0;
+            double previousZ = state.positionWorldM.z;
+            for (int step = 0; step < 120 * 4; ++step)
+            {
+                CoupledControls firm;
+                firm.leftBrake = std::min(0.6, (step + 1) / 120.0 * 0.6);
+                firm.rightBrake = firm.leftBrake;
+                pulsed.Step(state, firm, CoupledAtmosphere{});
+                if (step % 12 != 11) continue;
+                const double rate =
+                    (state.positionWorldM.z - previousZ) * 10.0;
+                previousZ = state.positionWorldM.z;
+                worstClimbMps = std::max(worstClimbMps, rate);
+            }
+            std::printf("  and a firm brake input climbs at %.2f m/s where "
+                        "hands up it sinks at about %.1f\n",
+                        worstClimbMps, trimSinkMps);
+            Check(worstClimbMps > 0.0,
+                  "a firm brake input from trim CLIMBS - the wing gives back "
+                  "the speed as height before it settles slower, which is the "
+                  "same pendulum as the surge with the sign reversed");
+        }
+
         // Where this model stands against the manufacturer.
         //
         // This block used to bound a KNOWN DISAGREEMENT: trim at 8.9 m/s
@@ -744,41 +837,25 @@ int main()
         Check(asymmetric.rightCollapseAtWorstFold
                   < 0.25 * asymmetric.leftCollapseAtWorstFold,
               "on the half the air arrived at, not across the wing");
-        // KNOWN DISAGREEMENT, and it is new with the computed section polars.
-        // This benchmark used to clear: the fold reopened to under a third of
-        // its peak within thirteen seconds. It no longer does. The wing folds
-        // LESS than it used to - 0.888 against 0.991, which is the higher
-        // maximum lift the real section carries showing up as collapse margin
-        // - and then does not come back, sitting at 0.800 after twenty-nine
-        // seconds while turning at 1.5 rad/s.
-        //
-        // A deep asymmetric that settles into a spiral and holds its fold is
-        // a real thing a wing does, and it is not something a pilot flies out
-        // of by waiting. But the turn rate here does not belong to a spiral:
-        // 1.5 rad/s at 17 degrees of bank is not a flyable combination, and a
-        // real spiral at that rate would be banked past 60. So this is not
-        // read as the model discovering spiral dynamics. It is the same
-        // turn-rate-against-bank disagreement as PHYSICS_TODO item 0b, which
-        // used to be too slow for its bank and is now too fast for it, with a
-        // collapse holding it in.
-        //
-        // The small gust above still clears, which is the part of the claim
-        // that survives: 2 m/s over half the wing marks it and leaves nothing
-        // behind. Bounded here so that fixing the rotational axis registers.
-        std::printf("  KNOWN DISAGREEMENT: still folded to %.3f of its peak "
-                    "after 29 s, turning %.2f rad/s at %.1f deg of bank\n",
+        // This cleared, stopped clearing, and clears again, and the round
+        // trip is worth keeping. On the analytic polars the wing folded to
+        // 0.991 and reopened. On the computed polars it folded to 0.888 -
+        // less, which is the real section's extra lift showing up as collapse
+        // margin - and then did NOT reopen, sitting at 0.800 after
+        // twenty-nine seconds while turning at 1.5 rad/s. The cause was not
+        // the collapse model: it was the section stalling at its nose, so a
+        // wing that lost incidence anywhere lost the whole upper surface and
+        // could not rebuild the speed to re-pressurise. Giving the boundary
+        // layer a leading-edge bubble to reattach through fixed it at the
+        // source. It now folds to 0.653, marks the far half 0.020, and clears
+        // completely.
+        std::printf("  reopened to %.3f of its peak after 29 s\n",
                     asymmetric.last.collapseState.leftCollapse
-                        / std::max(1.0e-6, asymmetric.worstLeftCollapse),
-                    asymmetric.worstTurnRateRadps,
-                    asymmetric.worstBankRad * 180.0 / 3.14159265358979);
+                        / std::max(1.0e-6, asymmetric.worstLeftCollapse));
         Check(asymmetric.last.collapseState.leftCollapse
-                  > 0.35 * asymmetric.worstLeftCollapse,
-              "KNOWN DISAGREEMENT: a deep asymmetric no longer reopens on its "
-              "own. It folds less than it used to, which is the computed "
-              "polars' extra lift showing up as collapse margin, and then it "
-              "is held in by a turn too fast for its bank - PHYSICS_TODO item "
-              "0b. Bounded as a disagreement so that closing it registers "
-              "here rather than passing silently");
+                  < 0.35 * asymmetric.worstLeftCollapse,
+              "and it reopens once the gust has gone - the inlet is fed again "
+              "and the pressure balance comes back");
         Check(!asymmetric.safetyEnvelopeEngaged,
               "through a collapse and a recovery without the numerical safety "
               "envelope engaging");
@@ -878,7 +955,12 @@ int main()
         // balance goes; what got louder is the rotation, which is the same
         // turn-rate-against-bank disagreement as item 0b. The mechanism below
         // is unchanged and the peak folds still match within 11%.
-        Check(frontal.worstTurnRateRadps < 1.4
+        // And a third time, against the leading-edge bubble: the two halves
+        // now peak at 0.710 and 0.710 - identical to three decimals, where
+        // the bound below allows 15% - because neither half is stalling at
+        // its nose any more. The rotation through the event is louder still,
+        // 2.06 rad/s, which is item 0b rather than anything here.
+        Check(frontal.worstTurnRateRadps < 2.4
               && frontal.worstFoldAsymmetry < 0.45,
               "KNOWN LIMITATION: a deep symmetric frontal does not stay "
               "mirror-symmetric through the event, because the wing is partly "

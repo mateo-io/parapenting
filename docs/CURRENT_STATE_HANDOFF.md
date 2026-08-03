@@ -277,6 +277,17 @@ in doubt and was deliberately left alone. The fix for all of it is the same
 build: linearise the coupled solver about trim and take the eigenvalues.
 `PHYSICS_LEARNINGS` §36.
 
+**That build now exists and works: `parapenting_pitch_eigenmodes`.** Perturb the
+settled aircraft state by state, difference against an unperturbed run, take the
+eigenvalues of the transition matrix — every longitudinal mode at once, no
+excitation, no window, no filter. It reproduces the slow mode's independently
+measured 16.39 s and 0.031, which is the check it was built to pass, and it
+gives the fast mode that five time-domain instruments could not:
+**1.86 s at ζ ≈ 0.09**, agreeing with the control-run trace and disagreeing with
+the gated `calibration_tests` value of 2.91 s / 0.28. Re-deriving that gate is
+the next change and deliberately has not been made here.
+`PHYSICS_LEARNINGS` §37.
+
 What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
 pendulum mode — the wing swinging against the pilot after a brake pulse — which
 is a different and healthy mode. Settled properly: hands-up **4.925°**, 25%

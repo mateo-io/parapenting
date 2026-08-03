@@ -1041,6 +1041,58 @@ out-thought. **Linearise about trim and take the eigenvalues**: every mode at
 once, no excitation, no window, no filter, no superposition. Four instruments
 were built to avoid a harder one that would have answered the question outright.
 
+## 37. Ask the solver for its modes instead of watching for them
+
+Four instruments failed to measure the fast pitch mode from a time trace (§36).
+The fifth did not look at a time trace at all: perturb the settled aircraft one
+state at a time, run each perturbation a fixed short time, difference against an
+unperturbed run, and take the eigenvalues of the resulting transition matrix.
+
+It worked on the first properly-signed attempt, and it reproduced the slow
+mode's 16.39 s and 0.031 — measured off 27 peaks of a 1200 s run by entirely
+different means — while also giving the fast mode, **1.86 s at ζ ≈ 0.09**, which
+five time-domain attempts could not.
+
+**Why it works where windowing cannot.** The two modes are an order of magnitude
+apart and share one signal; the fast one is dead before the slow one has moved.
+No window separates them, because there is no time at which only one is present
+and large. The eigenvalues do not need one: every mode comes out of the same
+matrix regardless of how big or long-lived it happens to be. Four instruments
+were built to avoid a harder one that answered the question outright — and the
+harder one was about 200 lines.
+
+**The bug is the lesson.** The first version put a positive rotation about world
++Y into the attitude perturbation, while the readback took pitch from the
+forward axis's rise — and a +Y rotation *lowers* that. Two of six states went in
+inverted. The matrix came back with −0.96 and −0.99 on those diagonals, which is
+an eigenvalue at μ ≈ −1, which reports a period of exactly 2T. So every mode
+printed at exactly twice the sampling interval, and there is a real phenomenon
+called aliasing that produces exactly that signature. **I wrote three paragraphs
+of correct aliasing theory around a sign error.** A convention disagreeing with
+itself does not look like a bug; it looks like physics, and it will happily
+supply a mechanism for its own symptom.
+
+The guard costs four lines and is now permanent: apply each perturbation, read
+it straight back before stepping anything, and require +1 on its own state.
+Anything else prints "every number below is void". Any code that perturbs a
+state and reads a different function of that state wants this check.
+
+**Printing the matrix is what found it.** The eigenvalues were plausible and
+wrong; the matrix was obviously wrong at a glance, because over a tenth of a
+second it should be near the identity and two diagonals were negative. When a
+derived quantity is suspicious, print the thing it was derived from — the same
+lesson as §36's "look at the signal", one level up.
+
+**A check that varies two things at once is not a check.** The linearity test
+originally halved the perturbation *and* changed the transition time, so nothing
+could be concluded from it either way. It now halves the step at the same T as
+the reference rows — and once fixed it earned its place immediately, by
+separating the numbers that are converged from the one that is not: the fast
+mode is identical to three digits under a halved step (ζ 0.0920 against 0.0922)
+and both periods hold, while the slow mode's damping moves 19%. Without that
+check all six numbers would have been reported with equal confidence, and one of
+them does not deserve it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1083,5 +1135,7 @@ were built to avoid a harder one that would have answered the question outright.
 | phugoid drag exponent, D ~ V^d | 0.313 | classical 2; this is the low damping |
 | incidence against speed, slow mode | -1.69 deg/(m/s) | the pendulum holds lift, not incidence |
 | lift swing over the slow mode | 0.97% of weight | what is left to restore with |
+| fast pitch mode, by eigenvalue | 1.86 s, zeta 0.09 | NOT the gated 2.91 s / 0.28 - §37 |
+| slow mode, by eigenvalue | 16.40 s, zeta 0.033 | against 16.39 / 0.031 off a trace |
 | mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |

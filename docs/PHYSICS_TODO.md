@@ -507,14 +507,63 @@ stands in for, and it is checkable against a real wing in a way "the period is
   so it is reading a mode that has largely ended. That number is gated in
   `calibration_tests` and is now in doubt. It was not changed, because doubt is
   not a measurement — but nothing should lean on it until this is settled.
-- **Next, and this is a build rather than a run:** linearise the coupled solver
-  about trim numerically and take the eigenvalues. Perturb each state, difference
-  the derivatives, assemble the Jacobian, solve. That gives every mode's period
-  and damping at once with no excitation, no window, no filter and no
-  superposition assumption — and it would independently check the phugoid's
-  16.4 s and 0.031 as a side effect. Every time-trace method tried here has run
-  aground on the same rock: two modes an order of magnitude apart in period,
-  sharing one signal, with the fast one gone before the slow one has moved.
+- **BUILT, and it works: `parapenting_pitch_eigenmodes`.** Perturb the settled
+  aircraft one state at a time, run each perturbation a fixed short time,
+  difference against an unperturbed run — that is the state transition matrix,
+  and its eigenvalues are every longitudinal mode at once. No excitation to
+  design, no window, no filter, no superposition assumption. Six states: surge,
+  heave, pitch attitude, pitch rate, link swing, link rate. Settle is paid once
+  and the settled solver copied for all seven runs, which is what makes it
+  affordable.
+
+| transition time T | slow mode | fast mode |
+|---|---|---|
+| 0.10 s | 17.06 s, ζ 0.067 | 1.87 s, ζ 0.103 |
+| 0.25 s | 16.60 s, ζ 0.054 | 1.86 s, ζ 0.092 |
+| 0.50 s | 16.48 s, ζ 0.044 | 1.86 s, ζ 0.086 |
+| 2.00 s | **16.40 s, ζ 0.033** | aliased to 4.00 s |
+| *trace, independent* | *16.39 s, ζ 0.031* | — |
+
+- **It passes its own check.** The slow mode converges onto the 16.39 s and
+  0.031 measured off 27 peaks of a 1200 s run by completely different means.
+  The convergence direction is right too: a slow mode's eigenvalue sits nearer
+  1 the shorter T is, so short T resolves its damping worst. The two modes want
+  different sampling intervals, which is why the band is reported rather than a
+  favourite.
+- **THE FAST MODE IS 1.86 s WITH ζ ≈ 0.09, NOT 2.91 s WITH ζ 0.28.** Stable
+  across every T that does not alias it, and it agrees with the control-run
+  trace measurement of the previous strand (≈1.85 s by hand off the dump). Two
+  independent instruments, one in the time domain and one not, against the
+  `calibration_tests` figure — which is identified on a window starting 2 s
+  after release, by which time this mode has largely ended. **That gate should
+  now be re-derived rather than trusted.** It has still not been edited: the
+  right fix is to point `CalibrationManeuver` at a window that starts at the
+  release, and that is a change to gated behaviour, so it wants its own commit.
+- **The linearity check says which numbers to trust.** Halving every
+  perturbation at matching T:
+
+| | full step | half step | verdict |
+|---|---|---|---|
+| fast mode, T=0.25 | 1.86 s, ζ 0.0920 | 1.86 s, ζ 0.0922 | unmoved — solid |
+| slow period, T=2 | 16.39 s | 16.40 s | unmoved — solid |
+| slow damping, T=0.25 | ζ 0.0540 | ζ 0.0437 | **moves 19%** |
+| slow damping, T=2 | ζ 0.0362 | ζ 0.0334 | moves 8% |
+
+  So the fast mode and both periods are converged; **the slow mode's damping is
+  not** — it moves with T *and* with step size, and is the one number here still
+  to be pinned. It does bracket the trace's 0.031 from above throughout.
+- **Aliasing, kept on the record because it cost a run to recognise.** Modes
+  faster than 2T fold to exactly 2T: the 4.00 s row at T=2 is the fast mode
+  aliased, not a mode. An early version reported 4.00 s at T=2 and 12.00 s at
+  T=6 — two suspiciously round numbers, each exactly twice its own sampling
+  interval.
+- Spurious heavily-damped rows (26.96 s at ζ 0.77, half-life 2.5 s) appear only
+  at T=2 and not below; treat anything with ζ > 0.5 from this tool as
+  discretisation until it survives a change of T.
+- **Next:** with a working modal instrument, sweep `swingDampingRatio` through
+  the departure boundary and watch the fast mode's eigenvalue cross into the
+  right half plane. That is the measurement `--fast-mode` failed to make, and it
+  needs no excitation, so the reason it failed does not apply.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

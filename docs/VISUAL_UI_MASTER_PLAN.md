@@ -337,6 +337,13 @@ appearance has regressed.
 
 ## Level 1 — Light reaches the world
 
+**Implementation status (2026-08-03): in progress.** The first shippable
+vertical slice is checked in: the lit vertex-colour material, diagnostic
+material, surface master, calibrated swatch instances, fixed-exposure decision,
+reproducible generation scripts and explicit cook path. The capture comparison,
+automated error-material assertion and remaining shared material functions are
+still open; do not treat the exit gate as passed yet.
+
 **Outcome:** the sun, the sky and the diurnal cycle that already exist in the
 simulation become visible on the two objects that fill the screen.
 
@@ -346,7 +353,7 @@ until it lands.
 
 ### Bite-sized work
 
-- [ ] **Author `/Game/Materials/M_VertexLit` to the recipe in
+- [x] **Author `/Game/Materials/M_VertexLit` to the recipe in
   `ParapentingMaterials.h`**: Default Lit, two-sided, vertex colour to base
   colour, roughness 0.92, metallic 0. Give it an explicit cook path (rule 16) and
   confirm `bVertexColourMaterialIsLit` is true in a packaged build.
@@ -355,19 +362,24 @@ until it lands.
   colour changes at once; the before/after pair is the evidence that the new
   palette is better, not just different.
 - [ ] Add a deliberate magenta error material, and make its appearance a test
-  failure rather than a thing people learn to ignore.
+  failure rather than a thing people learn to ignore. `M_VisualError` now
+  exists; the automated appearance assertion remains.
 - [ ] Build shared material functions for macro variation, triplanar rock,
   distance blend, detail normals, wetness, snow, wind and debug overrides.
+  `M_SurfaceMaster` establishes the parameter contract and implements the first
+  wetness/roughness path; the other functions remain.
 - [ ] Establish a physically coherent exposure, white balance, sun/sky/fog and
   tone-mapping baseline for morning, midday and evening. Note that
   `r.DefaultFeature.AutoExposure` and `Bloom` are **off project-wide**; decide
   deliberately whether to turn exposure on with a bounded compensation range or
   keep it off and author fixed exposure per weather preset. Either is
-  defensible; drifting between them is not.
-- [ ] Create a small calibrated PBR swatch library: grass, soil, limestone,
+  defensible; drifting between them is not. The fixed-exposure policy is now
+  recorded in `docs/VISUAL_QA.md`; morning/midday/evening calibration awaits
+  the repeatable capture harness.
+- [x] Create a small calibrated PBR swatch library: grass, soil, limestone,
   snow, water, ripstop nylon, webbing, metal and skin/clothing.
 - [ ] Add shader complexity and texture-density debug modes to the QA flow.
-- [ ] Eliminate startup shader/material warnings in a packaged build — the
+- [x] Eliminate startup shader/material warnings in a packaged build — the
   `M_VertexLit` fallback warning in `ParapentingMaterials.h` is the first one to
   go, and it should go by the asset existing.
 

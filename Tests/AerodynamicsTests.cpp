@@ -14,6 +14,8 @@
 // have is any claim about the EPIC 2, because the polars are analytic.
 #include "CanopyGeometry.h"
 #include "SectionPolarTable.h"
+#include "SectionProfile.h"
+#include "SectionViscousSolver.h"
 #include "ApparentMassTensor.h"
 #include "VortexStepMethodSolver.h"
 
@@ -153,6 +155,162 @@ int main()
         Check(polar.Sample(0.05, 1.0).momentCoefficient
                   < polar.Sample(0.05, 0.0).momentCoefficient,
               "and pitches the section nose-down");
+    }
+
+    // -- the computed section polars, against sections with published data -
+    {
+        // The panel-plus-boundary-layer solve is only worth what it can
+        // reproduce on a section somebody has measured. NACA 2412 is the
+        // check: it is thin enough that thin-airfoil theory nearly works, so
+        // agreement on the linear part proves little - but its zero-lift
+        // angle, its quarter-chord moment, its minimum drag and its maximum
+        // lift are all published, and nothing in this solver was built while
+        // looking at them.
+        SectionProfileSpec naca2412;
+        naca2412.maxThicknessFraction = 0.12;
+        naca2412.maxThicknessPosition = 0.30;
+        naca2412.maxCamberFraction = 0.02;
+        naca2412.maxCamberPosition = 0.40;
+        // A wind-tunnel model has no cell opening in its nose.
+        naca2412.inletChordFraction = 0.0;
+        const SectionViscousSolver tunnel(
+            BuildSectionProfile(naca2412, 0.0), 3.0e6);
+        Check(tunnel.Valid(), "the panel system factorises");
+
+        double zeroLiftDeg = 0.0;
+        double slopePerDeg = 0.0;
+        {
+            const double low = tunnel.Solve(-2.0 / 57.29577951308232)
+                .liftCoefficient;
+            const double high = tunnel.Solve(2.0 / 57.29577951308232)
+                .liftCoefficient;
+            slopePerDeg = (high - low) / 4.0;
+            zeroLiftDeg = -(0.5 * (low + high)) / slopePerDeg;
+        }
+        const SectionAerodynamics atZero = tunnel.Solve(0.0);
+        double maximumLift = 0.0;
+        double maximumLiftDeg = 0.0;
+        {
+            double lower = 1.0;
+            double upper = 1.0;
+            for (int degrees = 0; degrees <= 20; ++degrees)
+            {
+                const SectionAerodynamics flow = tunnel.Solve(
+                    degrees / 57.29577951308232, lower, upper);
+                lower = flow.lowerAttachedFraction;
+                upper = flow.upperAttachedFraction;
+                // The branch ends where the solve falls into the fully
+                // separated state; the peak is the largest lift before that.
+                if (flow.separatedChordFraction > 0.6) break;
+                if (flow.liftCoefficient < maximumLift) continue;
+                maximumLift = flow.liftCoefficient;
+                maximumLiftDeg = degrees;
+            }
+        }
+        std::printf("NACA 2412 solved: zero lift %+.2f deg (published -2.1), "
+                    "slope %.4f /deg (0.11), Cm %+.3f (-0.05)\n",
+                    zeroLiftDeg, slopePerDeg, atZero.momentCoefficient);
+        std::printf("  Cd at zero incidence %.4f (0.006), CLmax %.2f at "
+                    "%.0f deg (1.6-1.7 at 16)\n",
+                    atZero.dragCoefficient, maximumLift, maximumLiftDeg);
+        CheckWithin(zeroLiftDeg, -2.1, 5.0,
+                    "NACA 2412's zero-lift angle, from its own coordinates");
+        CheckWithin(slopePerDeg, 0.11, 12.0,
+                    "and its lift-curve slope");
+        CheckWithin(atZero.momentCoefficient, -0.05, 15.0,
+                    "and its quarter-chord pitching moment - which the "
+                    "analytic table could only produce by stating it");
+        CheckWithin(atZero.dragCoefficient, 0.006, 12.0,
+                    "and its minimum profile drag, out of Thwaites, Michel, "
+                    "Head and Squire-Young rather than out of a constant");
+        // 1.96 measured against a published 1.6-1.7, at 16 degrees against a
+        // published 16. The angle lands and the value is 18% high, and the
+        // direction of that error is the method's: with no inverse-mode
+        // boundary layer the branch runs until it ends rather than being
+        // solved through the separation, so the last degree before the end
+        // carries more lift than it should. It is bounded here rather than
+        // corrected, because correcting it would mean a coefficient chosen to
+        // land on a published number.
+        Check(maximumLift > 1.4 && maximumLift < 2.1,
+              "and a maximum lift coefficient near the published range, high "
+              "by about a fifth - the one number thin-airfoil theory cannot "
+              "produce at all, because it has no nose radius to run out of");
+        Check(maximumLiftDeg > 11.0 && maximumLiftDeg < 19.0,
+              "at an incidence in the published range");
+
+        // The wing's own section, and the thing this was all for.
+        const SectionPolarTable& computed = SectionPolarTable::Default();
+        Check(computed.Provenance() == PolarProvenance::Computed,
+              "the wing flies on polars solved from its own section");
+        std::printf("EPIC 2 section: CLmax %.2f hands up, %.2f at 25%% brake, "
+                    "%.2f at 40%%, %.2f at full\n",
+                    computed.MaximumLiftCoefficient(0.0),
+                    computed.MaximumLiftCoefficient(0.25),
+                    computed.MaximumLiftCoefficient(0.40),
+                    computed.MaximumLiftCoefficient(1.0));
+        Check(computed.MaximumLiftCoefficient(0.40)
+                  > computed.MaximumLiftCoefficient(0.0) + 0.3,
+              "BRAKE RAISES MAXIMUM LIFT. This is the whole point: the "
+              "analytic table's maximum lift was the slope times a stated "
+              "stall margin, so it could not change with brake at all, and "
+              "40% brake walked the wing off the top of a curve that never "
+              "rose");
+        // KNOWN LIMITATION, and it is worth printing rather than asserting
+        // around. The incidence at which the solved lift peaks is not smooth
+        // across the brake axis: 10, 11, 7, 12, 3 and 13 degrees at 0, 10,
+        // 25, 40, 60 and 100% brake. Maximum lift itself is far better
+        // behaved and rises with brake, which is the claim the wing depends
+        // on - but the angle it happens at is decided by whether the
+        // Kirchhoff fixed point survives one more degree before falling into
+        // the fully separated state, and near the peak that is a close-run
+        // thing. Every brake setting's peak is a real branch end at this
+        // Reynolds number; which one a neighbouring setting reaches is not
+        // something this method resolves.
+        //
+        // What it costs: the stall angle a pilot would feel is not
+        // repeatable degree by degree across brake travel. What would fix it
+        // is the boundary layer solved in inverse mode past separation rather
+        // than the branch simply ending, which is the difference between this
+        // and XFOIL. PHYSICS_TODO item 12.
+        std::printf("  KNOWN LIMITATION: stall angle %.0f deg hands up, "
+                    "%.0f at 25%%, %.0f at 40%%, %.0f at full - not smooth "
+                    "across the brake axis\n",
+                    computed.StallAngleRad(0.0) * 180.0 / Pi,
+                    computed.StallAngleRad(0.25) * 180.0 / Pi,
+                    computed.StallAngleRad(0.40) * 180.0 / Pi,
+                    computed.StallAngleRad(1.0) * 180.0 / Pi);
+        Check(computed.ZeroLiftAngleRad(0.0) < 0.0
+                  && computed.ZeroLiftAngleRad(0.0) > -0.12,
+              "the wing's own section lifts at zero incidence, by about the "
+              "amount its camber says");
+
+        // The moment is no longer a constant, which is what gives the wing an
+        // aerodynamic centre that moves and the pitch loop something to work
+        // with.
+        const double momentLow = computed.Sample(0.0, 0.0).momentCoefficient;
+        const double momentHigh =
+            computed.Sample(computed.StallAngleRad(0.0), 0.0)
+                .momentCoefficient;
+        std::printf("  section Cm %.3f at zero incidence, %.3f at the stall\n",
+                    momentLow, momentHigh);
+        Check(std::fabs(momentHigh - momentLow) > 0.005,
+              "the section's pitching moment varies with incidence - it was a "
+              "constant, so the section had no aerodynamic-centre movement "
+              "and the pitch loop gain had nothing in it");
+
+        // Brake's own pitching moment, against thin-airfoil flap theory. The
+        // analytic table had this at roughly half, because it multiplied the
+        // moment by the flap effectiveness a second time - the effectiveness
+        // belongs to the LIFT increment, not to the moment.
+        const double momentPerRadian =
+            (computed.Sample(0.0, 1.0).momentCoefficient - momentLow)
+                / computed.ComputedSpec().section.fullBrakeDeflectionRad;
+        std::printf("  brake pitching moment %.2f per radian of deflection "
+                    "(thin-airfoil flap theory: about -0.55)\n",
+                    momentPerRadian);
+        Check(momentPerRadian < -0.4 && momentPerRadian > -0.8,
+              "brake's pitching moment matches thin-airfoil flap theory for a "
+              "22% flap");
     }
 
     // -- Biot-Savart and the influence matrix -----------------------------

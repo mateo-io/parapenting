@@ -235,25 +235,26 @@ Vec3 CanopyGeometry::SurfacePointM(
     const RibStation station = StationAt(spanFraction);
     const double chord = std::clamp(chordFraction, 0.0, 1.0);
 
-    // Section thickness, as a fraction of chord. A single-skin approximation
-    // of the profile until Level 1's airfoil digitisation lands; the shape
-    // matters here only so upper and lower surfaces are distinguishable.
-    constexpr double MaxThicknessFraction = 0.155;
-    constexpr double MaxThicknessChordPosition = 0.28;
-    const double t = chord < MaxThicknessChordPosition
-        ? chord / MaxThicknessChordPosition
-        : (1.0 - chord) / (1.0 - MaxThicknessChordPosition);
-    const double thickness = MaxThicknessFraction * station.chordM
-        * std::sqrt(std::max(0.0, t)) * (upper ? 1.0 : -0.35);
+    // The rib profile, from the same generator the section polars are solved
+    // on. It used to be a square-root bump with the lower surface at 35% of
+    // the upper - enough to tell the two surfaces apart for drawing, and
+    // nothing more. That left the wing with two different sections: this one,
+    // which set the cell volume and everything the membrane solves, and the
+    // thickness-and-camber pair the polars were generated from, which had a
+    // different camber and no nose radius at all. They are now one shape, so
+    // a change to the profile moves the aerodynamics and the enclosed volume
+    // together, which is what "geometry driven" has to mean.
+    const SectionPoint point =
+        SectionSurfacePoint(SpecValue.section, 0.0, chord, upper);
 
     // Quarter-chord sits at the rib position; +X is forward, so the leading
-    // edge is ahead of it.
-    const double xFromQuarterChord = (0.25 - chord) * station.chordM;
+    // edge is ahead of it. The profile's x runs aft from the leading edge.
+    const double xFromQuarterChord = (0.25 - point.x) * station.chordM;
 
     return {
         station.positionM.x + xFromQuarterChord,
         station.positionM.y,
-        station.positionM.z + thickness};
+        station.positionM.z + point.z * station.chordM};
 }
 
 double CanopyGeometry::CellSpacingM() const

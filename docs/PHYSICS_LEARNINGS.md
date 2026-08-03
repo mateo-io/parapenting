@@ -619,6 +619,114 @@ go, in the world — and it costs about twenty lines to ask.
 
 ---
 
+## 25. A constant in a struct cannot be a consequence of anything
+
+The section polars had `stallMarginRad = 0.244` — where the section stalls,
+measured from its own zero-lift angle. Brake moved the zero-lift angle, and the
+stall margin above it was a constant, so **maximum lift came out identical at
+every brake setting**. Not approximately identical: exactly, by construction.
+
+A real deflected trailing edge raises maximum lift. That is most of what a flap
+is for. The model could not express it, and the consequence reached the pilot:
+40% brake — an ordinary EN-B input — walked the wing off the top of a curve
+that never rose, and the whole flight envelope was hands-up to a quarter brake.
+
+Nobody had to be wrong about flaps for this to happen. The number was fine as a
+number; 14 degrees is what a thick cambered section does. What it could not be
+was a *consequence*, and stall onset is a consequence — of the nose radius, of
+the pressure gradient, of where the boundary layer runs out. Thin-airfoil theory
+has no nose, so there was nowhere for the consequence to come from and the
+constant filled the hole.
+
+The test for this: **can this quantity change when the wing changes?** If the
+answer is no and the real one would, the model has a hole with a plausible
+number in it, and the number is hiding the hole rather than filling it.
+
+## 26. A parameter fitted to one model's error moves when the error does
+
+The design incidence — where the risers are cut, which sets where the wing hangs
+— was identified by fitting the coupled solver's hands-up trim to the published
+39 km/h. It was the one number in the model fitted to a published measurement,
+it was documented as such, and it worked: trim landed at 39.1 km/h and three
+numbers it had not been fitted to landed with it.
+
+Replacing the section polars broke it. At the same 4.4 degrees the wing trimmed
+at 11.96 m/s where it needs about 10.3 — a 16% error, from a parameter that had
+been within half a percent. The fit had absorbed some of the analytic polars'
+error, and when the error left, the absorbed part stayed.
+
+What replaced it is a **design rule** rather than a fit: risers are cut so that
+hands up, with no brake and no bar, the wing sits at its own best glide. That is
+what the rigging angle exists to do. It is identified against the wing's own
+aerodynamics, so it moves with the model instead of against it — and the four
+published numbers still land, none of them fitted: trim +1.5%, incidence −1%,
+sink −5%, glide +7%.
+
+A fitted parameter is a loan against a model you are still changing.
+
+## 27. The coefficient you cannot derive is the one to leave out
+
+The section's profile drag is optimistic, and the largest known cause is the
+momentum thickness the shear layer off the cell mouth carries onto the upper
+surface. It is certainly not zero. Adding it would have taken whole-aircraft
+glide from 10.32 to very near the published 9.5.
+
+It was left out, because its size is a shear-layer spreading coefficient rather
+than a piece of geometry — and swept over the range the literature supports, it
+moves the section's drag **by a factor of five**. Any value in that range can be
+justified in a sentence, and one of them lands on the published glide. Choosing
+that one and writing the derivation above it would have produced a model that
+agreed with the brochure and knew nothing.
+
+What went in instead was the part that *is* geometry: there is a hole in the
+nose, so the surface the flow reaches by crossing it has no laminar run. That is
+worth about half the section's profile drag, it has no free coefficient, and the
+8.6% of glide it does not explain is written down as item 12 with its two
+candidates named.
+
+The rule: a coefficient with a wide plausible range and a strong effect is not a
+model, it is a dial. Leave it out and report the gap.
+
+## 28. Two ways to be wrong can cancel, and replacing one exposes the other
+
+The analytic table's brake pitching moment was `-0.60 * tau * delta`, where tau
+is the thin-airfoil flap effectiveness. The effectiveness belongs to the *lift*
+increment; applying it to the moment as well halved it. Thin-airfoil flap theory
+gives about −0.55 per radian for this 22% flap, the solved section gives −0.61,
+and the analytic table had −0.34.
+
+So the section's brake moment was 45% too small — and the wing's *response* to a
+brake moment is too strong, which is item 11. The two had been cancelling. Fixing
+the section made brake worse: over the first fifth of the travel this wing now
+accelerates, because the nose-down rotation outruns the camber.
+
+That is not a regression to undo. It is the second error becoming visible, which
+is §21 again in a different axis. The measurement that matters is the one that
+says *which* half was wrong: the section moment now agrees with theory, so the
+suspension side owns the rest.
+
+## 29. Seed a boundary layer where the flow can keep it
+
+The cell opening was first modelled by starting the upper surface's boundary
+layer at the lip with the momentum thickness of the shear layer across the
+opening, `theta = h/6`. Quadrupling the opening height changed the section's
+drag by 2%.
+
+An input that large cannot be that cheap, and the reason was where it was being
+put. The lip sits in the steepest favourable gradient on the section — the flow
+accelerates by a factor of three round the nose — and in a favourable gradient
+`theta` decays as `Ue^-(H+2)`. The seed was being thrown away within two percent
+of chord.
+
+Physically the shear layer does not reattach at the lip; it reattaches
+downstream, past the suction peak, in the decelerating region. Seeding it there
+made the same input change the drag by a factor of five instead — which is what
+led to leaving the coefficient out entirely (§27).
+
+The general form: when a large input produces a small effect, find out whether
+the model is telling you it does not matter, or whether you put it somewhere the
+model can discard it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -639,12 +747,14 @@ go, in the world — and it costs about twenty lines to ask.
 | line stiffness per newton | 6.13 m | 3306/6317/11512/15393 at ½/1/2/4 g |
 | pitch hinge arm | 6.62 m | the canopy pivots below itself, not about itself |
 | line roll stiffness at 1 g | 8204 N·m/rad | replaced a `W L sin` term |
-| trim speed, 105 kg | 10.95 m/s | 39.4 km/h against a published 39.0 |
-| trim incidence | 5.02 deg | against the 5.30 the published CL needs |
+| trim speed, 105 kg | 11.01 m/s | 39.6 km/h against a published 39.0 |
+| trim incidence | 5.24 deg | against the 5.30 the published CL needs |
 | camber couple at trim | 327 N·m | scales with q; drives the pitch loop gain |
 | pitch loop gain at trim | 0.32 | passes 1 at CL 0.35; full bar is CL 0.31 |
-| polar's max lift coefficient | 0.866 at 11 deg | wing's profile carries 1.32 |
-| usable envelope | hands-up to 25% brake | set by the two numbers above |
+| section CLmax, analytic | 0.866 at every brake | a stated stall margin cannot move |
+| section CLmax, computed | 1.59 hands up, 2.40 at 40% brake | it moves because the flap is real |
+| section Cm per rad of brake | -0.61 | theory -0.55; the analytic table had -0.34 |
+| usable envelope | hands-up to 25% brake | now BOTH ends are the pitch axis |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |
 | canopy lead at trim | 0.77 m | and 1.85 m at the top of a surge |
 | brake slack take-up | 19% of handle travel | below it the trailing edge does not move |

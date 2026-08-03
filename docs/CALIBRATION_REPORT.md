@@ -145,20 +145,66 @@ damping fixes a gain above one. Half bar departs too, more slowly.
 The two candidates are the analytic section pitching moment (item 1) and the
 specific stiffness of 6.13 m. Both are single measurable numbers.
 
-### 3. The polar's lift ceiling, and the envelope it costs
+### 3. The polar's lift ceiling — CLOSED, and what took its place
 
-Swept on the VSM the analytic section polars give the wing a maximum lift
-coefficient of **0.866 at 11° of incidence**, where this wing's own profile
-carries **1.32**. Trim sits at 5.0°, so there is barely six degrees of brake
-before the wing is past its own stall — and past it the separated branch has no
-steady state to return to (limitation 6), so a transient overshoot is permanent.
+This section used to read: swept on the VSM the analytic section polars give
+the wing a maximum lift coefficient of **0.866 at 11°**, where this wing's own
+profile carries 1.32, so 40% brake takes the wing past its own stall and there
+is no steady state to return to. The usable envelope is hands-up to 25% brake.
 
-40% of brake travel is an ordinary EN-B input and this model cannot hold it.
+**That reason is gone.** The polars are now solved on the section's own
+coordinates — `SectionProfile` for the contour, `SectionViscousSolver` for
+panels plus an integral boundary layer plus a Kirchhoff dead-air region. The
+ceiling closed with them:
 
-**The usable envelope is therefore hands-up to about 25% brake.** That is
-narrow, it is measured, and it is the single most valuable thing real section
-data would buy. This is item 1 — analytic thin-airfoil polars, blocked on XFOIL
-— arriving where a pilot would feel it.
+| | analytic | computed |
+|---|---|---|
+| section CLmax, hands up | 0.87 | 1.59 |
+| section CLmax, 40% brake | 0.87 | 2.40 |
+| wing CL at 40% brake, 14° | 0.55, past a cliff | 1.20, still rising |
+| section Cm | −0.110, constant | −0.093 to −0.102 across the range |
+
+A stated stall margin above a moving zero-lift angle means maximum lift that
+cannot change with brake. A real deflected trailing edge raises it. That is the
+whole difference, and it is why an ordinary EN-B input used to walk the wing
+off the top of a curve that never rose.
+
+**40% brake still departs, and the reason is now measured.** Ramped in over
+twelve seconds — slowly enough that no overshoot is involved — the incidence
+*falls* as the first fifth of brake goes on, from 5.8° to 4.9°, and the
+airspeed *rises*, from 10.16 to 10.62 m/s. Brake is speeding this wing up. Past
+about a quarter of engaged travel it turns over and runs away.
+
+Brake making a wing faster is a pitch-axis result, not a polar one: the
+section's nose-down moment under brake rotates the canopy on its lines faster
+than the added camber buys lift back. The moment itself checks out — thin-airfoil
+flap theory gives a 22% flap about −0.55 per radian and the solved section gives
+−0.61, where the analytic table had −0.34 because it multiplied the moment by
+the flap effectiveness a second time.
+
+**So both envelope limits are now item 11**, the pitch axis, whose two levers
+were the section moment and the specific stiffness of 6.13 m. The first has
+been measured and is not the answer. Full bar is better for it — the wing
+reaches 15.6 m/s, **56 km/h against a published 53**, before it lets go — but it
+still lets go.
+
+### 3b. Where the model now stands against the published wing
+
+At the published 105 kg all-up, with the design incidence set by a design rule
+(hands up, the wing sits at its own best glide) rather than fitted to any of
+these numbers:
+
+| | published | model | |
+|---|---|---|---|
+| trim | 39.0 km/h | 39.6 | +1.5% |
+| trim incidence | 5.30° (from published CL 0.580) | 5.24° | −1% |
+| sink at trim | 1.14 m/s | 1.08 | −5% |
+| best glide | 9.5 | 10.18 | +7% |
+
+Glide is the one that misses, and it is canopy profile drag: `PHYSICS_TODO`
+item 12, whose two candidates are the shear layer off the cell mouth
+(deliberately not modelled) and the VSM's induced drag, which reports a span
+efficiency of 1.29 against its own reference span and cannot.
 
 ### 4. Energy during pitch transients
 

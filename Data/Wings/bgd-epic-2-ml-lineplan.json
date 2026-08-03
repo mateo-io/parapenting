@@ -16,9 +16,9 @@
   "assumed": {
     "_comment": "Not published. Each carries the reason it exists and what would replace it. Rest lengths are not listed here: they are measured from the Level 1 geometry at the design pose, so the wing hangs where its own shape puts it.",
     "designIncidenceRad": {
-      "value": 0.0768,
-      "why": "Root chord incidence in the harness frame at the unloaded design pose, 4.4 deg nose-up. Sets where the rest lengths are cut, so it fixes hands-up trim incidence.",
-      "identified": "Fitted to the published 39 km/h hands-up trim at the published 105 kg all-up weight, which is the identification this entry always named as its replacement. Residual: trim 39.1 km/h against 39.0, and the three numbers it was NOT fitted to come out at sink 1.13 m/s against a published 1.14, glide 9.6 against 9.5, and incidence 5.18 deg against the 5.30 the published trim CL of 0.580 requires. Was 0.0873 (5 deg), a round guess, worth 2.4 km/h. Still replaceable by the manufacturer's rigging angle, which would make this Measured rather than Identified."
+      "value": 0.0829,
+      "why": "Root chord incidence in the harness frame at the unloaded design pose, 4.75 deg nose-up. Sets where the rest lengths are cut, so it fixes hands-up trim incidence.",
+      "identified": "Identified against the wing's OWN aerodynamics, not against a published number: risers are cut so that hands-up, with no brake and no bar, the wing sits at its own best glide. Swept on the coupled solver over the computed section polars, whole-aircraft glide peaks at 4.75 deg; the peak is flat, so this is pinned to about a quarter of a degree. Residuals, none of them fitted: glide 10.32 against a published 9.5, trim 10.78 m/s against the 10.27 the published 39 km/h implies at 94.3 kg, sink 1.04 against 1.08, incidence 4.66 deg against the 5.30 the published trim CL of 0.580 needs. Was 0.0768 (4.4 deg), fitted directly to the published trim speed against the ANALYTIC polars - and that fit did not survive them: on the computed polars it trims the wing at 11.96 m/s. Still replaceable by the manufacturer's rigging angle, which would make this Measured."
     },
     "cascadeSplitFraction": {
       "value": 0.62,

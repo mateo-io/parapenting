@@ -394,6 +394,17 @@ private:
     };
     std::vector<BrakeSwingSample> BrakeSwingCurve;
     double BrakeSwingOffsetRad(double travel) const;
+    // The section the ribs are cut to, and the mean chord at the span
+    // stations the brake fan actually lands on - both taken off the geometry
+    // at construction. Together they say how much line the trailing edge
+    // bends with, which is line the canopy does not rotate with.
+    SectionProfileSpec BrakeSection{};
+    double BrakeStationChordM = 0.0;
+    // Handle travel to trailing-edge deflection, with the sewn-in slack
+    // removed. The aerodynamics and the line network must be driven by the
+    // same one of these or brake is counted twice.
+    double EngagedBrake(double handTravel) const;
+    double BrakeFlapTakeUpM(double handTravel) const;
     void SolveTrimLoadDistribution();
     void MeasureLineStiffness();
 

@@ -41,6 +41,20 @@ struct SuspensionSolveInput
     double accelerator = 0.0;
     double leftBrake = 0.0;
     double rightBrake = 0.0;
+    // How much of that brake pull the trailing edge itself absorbs by bending,
+    // metres, per side. A brake line ends at the trailing edge at 98% chord,
+    // so the pull has two things to do and only one length to do them with:
+    // bend the fabric aft of the brake attachment, and rotate the canopy on
+    // its lines. This network models the canopy as rigid, so with this at zero
+    // the whole pull becomes rotation and the section's camber change is a
+    // second, free copy of the same input.
+    //
+    // Zero is the right default HERE: standalone, this solver is a statement
+    // about a cable network and a rigid body, and the take-up is a property of
+    // the section the caller has and it does not. The coupled solver supplies
+    // it from the section geometry.
+    double leftBrakeFlapTakeUpM = 0.0;
+    double rightBrakeFlapTakeUpM = 0.0;
     // -1 fully left, +1 fully right. Moves the carabiner pair; it commands no
     // moment of its own.
     double weightShift = 0.0;

@@ -773,6 +773,38 @@ The lesson is about triage rather than aerodynamics: a numerical oddity in a
 quantity everything else reads is not a small bug in that quantity. It is a
 large bug everywhere, wearing the disguise of several small ones.
 
+## 32. One control input, one length: check the budget
+
+A brake line ends at 98% of chord. Pulling it does two things — it bends the
+fabric aft of the brake attachment, and it rotates the whole canopy on its
+suspension — and both were modelled, in different files, each helping itself to
+the full 0.62 m of handle travel. The line network shortened the brake run by
+all of it and rotated a rigid canopy; the section polars spent all of it again
+bending the trailing edge into camber. Nobody had written down that these are
+the same length.
+
+The budget is the check, and it is arithmetic rather than aerodynamics. Add up
+what each consumer takes and compare it to what the input supplies:
+
+| | metres |
+|---|---|
+| handle travel | 0.620 |
+| sewn-in slack | 0.120 |
+| trailing-edge bend at full brake | 0.298 |
+| left to rotate the canopy | 0.202 |
+
+Full brake had been rotating the canopy 12.4° on a budget that allows 5.0°.
+
+Two things generalise. First, a shared conserved quantity — a length, a mass
+flow, an energy — is worth a budget table wherever two subsystems read the same
+input, because neither subsystem is wrong on its own and no unit test of either
+will catch it. Second, and this is §21 and §28 for the third time: fixing it
+made the flying *worse*. Brake now slows the wing while lowering its incidence,
+which is the wrong sign. The double count had been silently compensating a
+suspension pitch response that is too weak, and the compensation was what made
+the model look calibrated. The measurement worth having is the one that says
+which half was propping up the other.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

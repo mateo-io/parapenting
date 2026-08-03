@@ -53,14 +53,18 @@ This number was 31.9 km/h for most of the project's life. What closed it was
 
 | manoeuvre | speed | sink | glide | incidence | settled |
 |---|---|---|---|---|---|
-| hands-up trim | 10.95 m/s | 1.15 | 9.43 | 5.0° | yes |
-| accelerator step (full bar) | 7.81 | 7.81 | 0.00 | 88.4° | **departed** |
-| brake step 25% | 8.82 | 0.78 | 11.32 | 9.7° | still oscillating |
-| deep brake step 40% | 7.80 | 7.80 | 0.02 | 94.9° | **departed** |
-| brake pulse and release | 9.79 | 1.27 | 7.66 | 7.4° | still oscillating |
-| weight shift step | 10.97 | 1.16 | 9.39 | 5.0° | yes |
-| coordinated turn 35% | 8.96 | 0.93 | 9.59 | 8.9° | still oscillating |
-| stall approach | 7.74 | 7.73 | 0.05 | 102.0° | separated, as intended |
+| hands-up trim | 11.06 m/s | 0.97 | 11.33 | 5.1° | yes |
+| accelerator step (full bar) | 7.83 | 7.83 | 0.01 | 85.8° | **departed** |
+| brake step 25% | 10.92 | 0.94 | 11.63 | 4.4° | still oscillating |
+| deep brake step 40% | 7.81 | 7.81 | 0.01 | 91.2° | **departed** |
+| brake pulse and release | 11.56 | 1.36 | 8.45 | 4.3° | still oscillating |
+| weight shift step | 11.09 | 0.98 | 11.32 | 5.1° | yes |
+| coordinated turn 35% | 10.78 | 1.08 | 9.91 | 4.2° | still oscillating |
+| stall approach | 7.80 | 7.80 | 0.02 | 94.6° | separated, as intended |
+
+The brake rows read weaker than they did before the brake double count was
+removed — 25% is worth 0.14 m/s here where it was worth 2.1 — and the incidence
+column runs the wrong way under brake. Both are §3d and item 11.
 
 ## Pitch, against a closed form
 
@@ -210,14 +214,36 @@ settling: the phugoid here has a four-second period and a damping ratio near
 
 ### 3d. What is still short
 
-**The wing stalls at about 35% of brake travel**, where an EN-B stalls at 65 to
-80%. Trim sits about 5° below the section's stall, and the brake line's own
-nose-up rotation of the canopy — 3.6° between 19% and 40% of travel, measured
-off the suspension network — uses that margin up. Full bar reaches 13.4 m/s
-before it diverges. Both are item 11, the pitch axis. Its two levers were the
-section pitching moment and the specific stiffness of 6.13 m; the first has been
-measured and agrees with thin-airfoil flap theory to 10%, so what is left is the
-suspension side.
+**Brake reaches the wing with the wrong sign, and the wing departs at 40% of
+travel** where an EN-B stalls at 65 to 80%. Full bar reaches 13.4 m/s before it
+diverges. Both are item 11, the pitch axis.
+
+The reading of this changed, and the change is worth more than the numbers. It
+used to be that brake rotated the canopy 3.6° between 19% and 40% of travel and
+ate a 5° stall margin. That rotation was **twice what the brake line has length
+for**, because the pull was counted twice: the line network shortened the brake
+run by the whole 0.62 m of handle travel and rotated a rigid canopy with it,
+while the section polars spent the same travel again bending the trailing edge
+into camber. A brake line ends at 98% chord, so the fabric it bends and the
+canopy it rotates are pulled through one length, not two.
+
+Counted once — the take-up measured off the geometry, 2.315 m of mean chord at
+the four span stations the brake fan lands on — the 0.62 m divides as **0.120 m
+of sewn-in slack, 0.298 m of fabric, 0.202 m of rotation**, and full brake
+rotates the canopy 5.0° where it used to rotate it 12.4°.
+
+What that exposed is that the double count had been propping up a suspension
+that cannot otherwise produce the right sign. Brake now slows the wing while
+*lowering* its incidence — 4.4° at 25% against 5.14° at trim — and 40% departs
+nose-down through the same low-CL loop-gain path as full bar, rather than
+stalling. Both section-side levers are now measured: the pitching moment agrees
+with thin-airfoil flap theory to 10%, and the take-up comes off the geometry. So
+item 11 is down to **one** unmeasured number, the specific stiffness of 6.13 m.
+
+Bounded, not fitted. `calibration_tests` gates the direction and caps the
+incidence drop at 1.7°; `coupled_tests` gates the direction and the glide and
+loosens only the magnitude. Both carry the strict thresholds in comments so
+restoring them is a revert rather than a rediscovery.
 
 ### 3e. Where the model stands against the published wing
 

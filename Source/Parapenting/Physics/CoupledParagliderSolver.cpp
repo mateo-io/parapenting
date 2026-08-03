@@ -55,6 +55,25 @@ CoupledParagliderSolver::CoupledParagliderSolver(
     for (const VsmSection& section : Aerodynamics.Sections())
         SectionLineGapM.push_back(LineFoldGapM(Lines, section.spanFraction));
 
+    // The chord the brake bends, measured where the brake fan lands rather
+    // than averaged over a span it does not reach. On this wing the fan takes
+    // the trailing edge between 22% and 86% of the half span, where the chord
+    // is well above the tip's 0.445 m, so a mean-chord shortcut understates
+    // it. The drop the section reports is a fraction of the WHOLE chord, so
+    // this is the whole chord and not the part aft of the attachment.
+    BrakeSection = geometry.Spec().section;
+    double brakeChordSum = 0.0;
+    int brakeChordCount = 0;
+    for (const SuspensionNode& node : Lines.nodes)
+    {
+        if (node.kind != SuspensionNodeKind::CanopyAttachment) continue;
+        if (node.row != LineRow::Brake) continue;
+        brakeChordSum += geometry.StationAt(node.spanFraction).chordM;
+        ++brakeChordCount;
+    }
+    BrakeStationChordM = brakeChordCount > 0
+        ? brakeChordSum / static_cast<double>(brakeChordCount) : 0.0;
+
     CanopyMassKg = 5.1;
     SystemMassKg = PayloadMass.TotalKg() + CanopyMassKg;
     ReferenceAreaM2 = Aerodynamics.ReferenceAreaM2();
@@ -307,6 +326,8 @@ void CoupledParagliderSolver::MeasureLineStiffness()
         braked.aeroForceN = Vec3{0.0, 0.0, weightN};
         braked.leftBrake = travel;
         braked.rightBrake = travel;
+        braked.leftBrakeFlapTakeUpM = BrakeFlapTakeUpM(travel);
+        braked.rightBrakeFlapTakeUpM = braked.leftBrakeFlapTakeUpM;
         const SuspensionSolution pulled =
             SolveSuspension(Lines, braked, settings);
         // Exactly zero inside the slack, not merely small. The network is flat
@@ -320,6 +341,34 @@ void CoupledParagliderSolver::MeasureLineStiffness()
             travel <= slackFraction
                 ? 0.0 : -pulled.canopyPitchRad - TrimSwingRad});
     }
+}
+
+double CoupledParagliderSolver::EngagedBrake(double handTravel) const
+{
+    // What the hands do to the trailing edge, which is not what the hands do.
+    // There is slack sewn into the brake line at hands-up - 120 mm of a 620 mm
+    // travel on this wing - and a slack line transmits nothing (guiding rule
+    // 3). The line network has always known this, because the slack is in its
+    // rest lengths; the aerodynamics did not, and took the handle position as
+    // a camber change directly, so the first fifth of the travel deflected a
+    // trailing edge that no line was pulling on.
+    const double travelM = Lines.plan.brakeTravelM;
+    const double slackM = Lines.plan.brakeSlackM;
+    return std::clamp(
+        (std::clamp(handTravel, 0.0, 1.0) * travelM - slackM)
+            / std::max(1.0e-6, travelM - slackM),
+        0.0, 1.0);
+}
+
+double CoupledParagliderSolver::BrakeFlapTakeUpM(double handTravel) const
+{
+    // The deflection the section is being flown at, turned back into the
+    // length of brake line it cost. This is the half of the pull the canopy
+    // does NOT rotate with, and leaving it out was worth about a factor of two
+    // in brake authority: the fabric bent for free and the lines rotated the
+    // whole canopy as if it had not.
+    return BrakeStationChordM * SectionBrakeTrailingEdgeDrop(
+        BrakeSection, EngagedBrake(handTravel));
 }
 
 double CoupledParagliderSolver::BrakeSwingOffsetRad(double travel) const
@@ -381,23 +430,11 @@ void CoupledParagliderSolver::Step(
     CoupledDiagnostics diagnostics;
 
     // What the hands do to the trailing edge, which is not what the hands do.
-    // There is slack sewn into the brake line at hands-up - 120 mm of a 620 mm
-    // travel on this wing - and a slack line transmits nothing (guiding rule
-    // 3). The line network has always known this, because the slack is in its
-    // rest lengths; the aerodynamics did not, and took the handle position as
-    // a camber change directly, so the first fifth of the travel deflected a
-    // trailing edge that no line was pulling on.
-    const auto engagedBrake = [this](double handTravel)
-    {
-        const double travelM = Lines.plan.brakeTravelM;
-        const double slackM = Lines.plan.brakeSlackM;
-        return std::clamp(
-            (std::clamp(handTravel, 0.0, 1.0) * travelM - slackM)
-                / std::max(1.0e-6, travelM - slackM),
-            0.0, 1.0);
-    };
-    const double leftBrakeAtWing = engagedBrake(controls.leftBrake);
-    const double rightBrakeAtWing = engagedBrake(controls.rightBrake);
+    // See EngagedBrake: the sewn-in slack comes off first, and the SAME
+    // engaged fraction drives the section's camber and the line the fabric
+    // bends with, so brake reaches the wing once.
+    const double leftBrakeAtWing = EngagedBrake(controls.leftBrake);
+    const double rightBrakeAtWing = EngagedBrake(controls.rightBrake);
 
     // A simulation that starts mid-flight starts with an inflated canopy.
     // Leaving the cells packed while the wing is already doing 10 m/s made
@@ -809,6 +846,9 @@ structureSolve:
         suspension.accelerator = controls.accelerator;
         suspension.leftBrake = controls.leftBrake;
         suspension.rightBrake = controls.rightBrake;
+        suspension.leftBrakeFlapTakeUpM = BrakeFlapTakeUpM(controls.leftBrake);
+        suspension.rightBrakeFlapTakeUpM =
+            BrakeFlapTakeUpM(controls.rightBrake);
         suspension.weightShift = controls.weightShift;
         suspension.spanwiseLoadAsymmetry = diagnostics.collapseLoadAsymmetry;
 

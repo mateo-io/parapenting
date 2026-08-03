@@ -106,4 +106,17 @@ SectionPoint SectionSurfacePoint(
 // surface: ordinate at a chord fraction, including the brake bend.
 double SectionCamberOrdinate(
     const SectionProfileSpec& spec, double brake, double chordFraction);
+
+// How far the brake bend drops the trailing edge, as a chord fraction, at a
+// given brake setting. Same quantity `BuildSectionProfile` reports on the
+// contour it panels, without panelling one.
+//
+// The suspension network needs it. A brake line ends at the trailing edge, so
+// the fabric it bends and the canopy it rotates are pulled through the SAME
+// length of line, and the deflection this returns is the share of that length
+// the fabric takes. Without it the network spends the whole handle travel
+// rotating a rigid canopy while the section spends it again on camber, and
+// brake arrives at the wing about twice as strong as it is.
+double SectionBrakeTrailingEdgeDrop(
+    const SectionProfileSpec& spec, double brake);
 }

@@ -133,9 +133,17 @@ SuspensionSolution SolveSuspension(
         {
             const double side =
                 graph.nodes[static_cast<std::size_t>(cable.nodeA)].side;
+            const bool left = side < 0.0;
             const double brake = std::clamp(
-                side < 0.0 ? input.leftBrake : input.rightBrake, 0.0, 1.0);
-            rest -= brake * plan.brakeTravelM;
+                left ? input.leftBrake : input.rightBrake, 0.0, 1.0);
+            // The handle pulls `brake * brakeTravelM` of line. What the fabric
+            // bends with is not available to rotate the canopy, so only the
+            // remainder shortens this run. Floored at zero: a take-up larger
+            // than the pull would mean the fabric alone swallowed more line
+            // than the hand moved, which is a bad section spec, not slack.
+            rest -= std::max(0.0, brake * plan.brakeTravelM
+                - (left ? input.leftBrakeFlapTakeUpM
+                        : input.rightBrakeFlapTakeUpM));
         }
         restLength[c] = std::max(0.05, rest);
     }

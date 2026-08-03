@@ -129,6 +129,12 @@ double SectionCamberOrdinate(
     return line.z + SampleBend(bend, chordFraction);
 }
 
+double SectionBrakeTrailingEdgeDrop(
+    const SectionProfileSpec& spec, double brake)
+{
+    return -SampleBend(BrakeBendTable(spec, brake), 1.0);
+}
+
 namespace
 {
 // Surface point at a chord station: the half-thickness laid off normal to the

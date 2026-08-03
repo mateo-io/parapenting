@@ -223,14 +223,27 @@ at 11°, 2.10 at 9°, 2.35 at 9°), restored the 4 m/s asymmetric gust benchmark
 folding less (0.653 against 0.888) and **clearing completely**, and put the
 symmetric frontal's two halves back at 0.710 and 0.710.
 
-**What is still short: the wing stalls at about 35% of brake travel** where an
-EN-B stalls at 65–80%. Trim sits about 5° below the section's stall, and the
-brake line's own nose-up rotation of the canopy — 3.6° between 19% and 40% of
-travel, measured off the network — uses that margin up. Full bar reaches
+**What is still short: brake reaches the wing with the wrong sign, and the wing
+departs at 40% of travel** where an EN-B stalls at 65–80%. Full bar reaches
 **13.4 m/s before it diverges**. Both are `PHYSICS_TODO` item 11, the pitch
-axis, whose remaining levers are the specific stiffness of 6.13 m and the swing
-damping ratio. The section pitching moment was the other lever and it has been
-measured out — it agrees with thin-airfoil flap theory to 10%.
+axis.
+
+The brake pull used to be **counted twice** — the line network shortened the
+brake run by the whole 0.62 m of handle travel and rotated a rigid canopy with
+it, while the section polars spent that same travel again as camber. A brake
+line ends at 98% chord, so there is one length, not two. Counted once, the
+0.62 m divides as 0.120 slack / 0.298 fabric / 0.202 rotation, and full brake
+rotates the canopy 5.0° where it used to rotate it 12.4°.
+
+Removing it made the flying worse, and that is the useful part: the double
+count had been propping up a suspension that cannot otherwise produce the
+right sign. Brake now slows the wing while *lowering* incidence (4.4° at 25%
+against 5.14° at trim), and 40% departs nose-down on the low-CL loop gain
+rather than stalling. Both section-side levers are now measured — the pitching
+moment agrees with thin-airfoil flap theory to 10%, the take-up comes off the
+geometry — so item 11 is down to **one** unmeasured number, the specific
+stiffness of 6.13 m. Four gates were loosened to bound this rather than fit it;
+they are tabulated with their strict thresholds under item 11.
 
 **The largest disagreement is now drag** (`PHYSICS_TODO` item 12): glide
 **11.33 against 9.5** and sink **0.97 against 1.14**. It is one error — trim
@@ -247,7 +260,8 @@ Retiring it is Level 10, and it should not start until the envelope above is
 wider, because Level 10's exit gate is "no legacy direct-control force remains
 active" and swapping in a model that cannot hold 40% brake would be a
 regression a pilot would feel immediately. That is unchanged — but the thing to
-fix before Level 10 is now the pitch axis rather than the section data.
+fix before the geometry-driven stack can REPLACE the legacy one is now the
+pitch axis, item 11, and nothing else in the aerodynamics.
 
 ## Work in progress at interruption
 

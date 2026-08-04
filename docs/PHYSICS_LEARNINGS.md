@@ -1426,6 +1426,65 @@ For what comes next: the place a stabilising mechanism must enter drifts about
 rather than a fixed target — worth knowing before something is built to hit it,
 and not worth more than that.
 
+## 44. One per cent of one entry is worth the whole coefficient step
+
+Reading the solver's link update sharpened the design question. All of
+`swingDampingRatio` enters at exactly one place —
+
+```
+linkRate = (linkRate + linkAngularAccel * dt) / (1 + 2 ζ ω dt)
+```
+
+— a single scalar gain on the whole increment. So it attenuates
+`linkAngularAccel` too, and that term carries the *wing's* acceleration. **The
+coefficient is simultaneously a damper on the link and a gain on the
+wing-to-link coupling, and moving it cannot separate them.** That is why §42's
+split found the movement spread across the link's own block *and* wing→link
+rather than confined to the damper.
+
+Separating them needs a perturbation the coefficient cannot make, and the matrix
+allows what the solver does not: `∂σ/∂Φ_ij = Re(conj(w_i)v_j/μ)/T`, every entry
+at once. Reported per unit *relative* change (§43's lesson, applied this time),
+and finite-difference checked — 2% changes predicted against the eigenvalues of
+the changed matrix agree to about 1%.
+
+**The result is a comparison, not a number.** A 1% change to `d(swing)/d(swing)`
+moves σ by **+0.0133**. Moving the tuned coefficient the whole way from 0.35 to
+0.30 — the step that carries this wing from settling to not settling — moves it
+**+0.0129**. One per cent of one matrix entry is worth the entire coefficient
+step, and the top three entries are within a quarter of each other.
+
+So the phugoid's stability sits on a knife edge with respect to the link's rows.
+That is consistent with everything above rather than new: cond = 0.10 said the
+mode is non-normal, and a non-normal mode is exactly one whose eigenvalue moves
+far for a small change in the right place. §42 explained *why* a link
+coefficient can move a speed mode; this says *how hard*.
+
+**What it suggests about the item, as a hypothesis and not a conclusion.** Item
+11 has been framed as finding a missing stabilising mechanism that would let the
+ratio fall to the ~0.06 pilot and line drag imply. This says the boundary's
+*location* is not a robust property — a 1% error anywhere in the link's rows
+moves it by the whole 0.35→0.30 step. A number that fragile is more a property
+of how the link is written than of a paraglider, so **"find the missing
+mechanism" may be the wrong frame; a formulation whose stability is less
+sensitive would be the real requirement.** Stated as a hypothesis, because §40
+is what happens when a quantity that moved the right way once gets promoted to a
+mechanism.
+
+**One connection worth a measurement rather than an assertion.** The top entries
+are in the swing *angle* row, and two of the three — `d(swing)/d(attitude)` and
+`d(swing)/d(heave)` — are the link taking its lean from the wing's attitude and
+vertical motion. That is the apparent-gravity tracking §34 and §35 measured as
+dα/dV = −1.69°/(m/s), now appearing as the thing stability is most sensitive to
+rather than as a trim slope. Same physics from two sides; not shown here to be
+the same quantity.
+
+**The caveat that limits all of it:** these are single-entry changes with the
+other thirty-five held fixed. A real modification would move several entries
+coherently and they could cancel. The map says where the mode is sensitive, not
+what any physical change would do — checking a candidate means differencing its
+matrix, which is what §42's split already does.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1491,3 +1550,5 @@ and not worth more than that.
 | the same, ratio 0.90 to 0.25 | 0.89 falling to 0.76 | it listens LESS as it destabilises - §43 |
 | phugoid mode conditioning, \|w^H v\| | 0.10 | non-normal: looks unlike what it listens to |
 | share of d(sigma) entering rows 4-5 | 99% | near-tautological; the coefficient lives there |
+| d(sigma) per 1% on d(swing)/d(swing) | +0.0133 /s | the whole 0.35->0.30 step is +0.0129 - §44 |
+| top three sensitivities, link rows | 1.33, 1.31, 1.26 | all in the swing ANGLE row - §44 |

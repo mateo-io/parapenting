@@ -1551,6 +1551,204 @@ Receptivity MeasureReceptivity(const double phi[N][N], double transitionTimeS,
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// Where would a stabilising mechanism have to enter, and how much would it buy?
+//
+// Item 11's remaining goal is a swing damping ratio derived from pilot and line
+// drag - about 0.06 - instead of one chosen to keep the aircraft flying. Every
+// level so far has narrowed WHY 0.35 is needed. This asks the design question
+// directly: which entries of the link's rows is the phugoid's stability
+// actually sensitive to, and what would changing them be worth.
+//
+// Reading the solver's link update makes the question sharper than it looks.
+// The whole of `swingDampingRatio` enters at exactly one place -
+//
+//     linkRate = (linkRate + linkAngularAccel * dt) / (1 + 2 zeta omega dt)
+//
+// - a single scalar gain on the whole increment. Which means it attenuates
+// `linkAngularAccel` too, and that term carries the WING's acceleration. So the
+// coefficient is not only a damper on the link: it is simultaneously a gain on
+// the wing-to-link coupling, and those cannot be separated by moving the
+// coefficient. That is why section 42's split found the movement spread across
+// the link's own block AND wing->link rather than confined to the damper.
+//
+// Separating them needs a perturbation the coefficient cannot make, and the
+// matrix allows it where the solver does not: change one entry of Phi and ask
+// what sigma does. `dsigma/dPhi_ij = Re(conj(w_i) v_j / mu) / T` gives it in
+// closed form for every entry at once.
+//
+// TWO HONESTY CONSTRAINTS, both of them lessons already paid for here.
+//
+//   * SCALING (section 43). Entries of Phi have mixed units, so a map of raw
+//     sensitivities compares metres per second with radians. It is reported per
+//     unit RELATIVE change - sensitivity times s_i/s_j - which is dimensionless
+//     and is what "a 1% change to this entry" means. The scales are the same
+//     ones section 43 used and are stated there.
+//   * A SENSITIVITY IS NOT A MECHANISM (sections 40 and 41). A large entry says
+//     the mode would respond if that entry changed; it does NOT say any
+//     physical device can change that entry, still less that one exists. The
+//     map is a requirement to check candidates against, not a design.
+//
+// THE CHECK: take the largest entries, apply a finite change to Phi, and
+// compare the predicted move in sigma against the eigenvalues of the changed
+// matrix. Same self-check as section 42's split, and it is what separates a
+// derivative that means something from one that is merely computed.
+void DesignCheck(const CoupledParagliderSolver& solver,
+                 const CoupledState& settled, double transitionTimeS,
+                 double ratio)
+{
+    const Vec3 v0 = settled.velocityWorldMps;
+    const double trimSpeed = std::sqrt(v0.x * v0.x + v0.z * v0.z);
+
+    CoupledParagliderSolver variant = solver;
+    variant.SetSwingDampingRatio(ratio);
+    const Spectrum spectrum = Analyse(variant, settled, transitionTimeS, 1.0,
+                                      false);
+
+    const std::vector<std::complex<double>> discrete =
+        Roots(CharacteristicPolynomial(spectrum.phi));
+    std::complex<double> mu(0.0, 0.0);
+    double period = 0.0, growth = 0.0;
+    bool found = false;
+    for (const std::complex<double>& candidate : discrete)
+    {
+        if (std::abs(candidate) < 1.0e-12) continue;
+        const std::complex<double> lambda =
+            std::log(candidate) / transitionTimeS;
+        if (lambda.imag() <= 1.0e-6) continue;
+        const double p = 2.0 * Pi / lambda.imag();
+        if (p < 10.0 || p > 40.0) continue;
+        mu = candidate; period = p; growth = lambda.real(); found = true;
+        break;
+    }
+    if (!found) { std::printf("DESIGN: no 16 s mode at ratio %.2f\n", ratio);
+                  return; }
+
+    const std::vector<std::complex<double>> v = Eigenvector(spectrum.phi, mu);
+    std::vector<std::complex<double>> w = LeftEigenvector(spectrum.phi, mu);
+    std::complex<double> scale(0.0, 0.0);
+    for (int i = 0; i < N; ++i) scale += std::conj(w[i]) * v[i];
+    if (std::abs(scale) < 1.0e-12) { std::printf("DESIGN: ill conditioned\n");
+                                     return; }
+    for (int i = 0; i < N; ++i) w[i] /= std::conj(scale);
+
+    const double omega = 2.0 * Pi / period;
+    const double s[N] = {trimSpeed, trimSpeed, 1.0, omega, 1.0, omega};
+    static const char* names[N] =
+        {"surge", "heave", "attitude", "pitchrate", "swing", "swingrate"};
+
+    std::printf("DESIGN: what the phugoid's stability is sensitive to, in the "
+                "link's rows.\n\n");
+    std::printf("Ratio %.2f, sigma %+.4f /s, period %.2f s. The whole of "
+                "`swingDampingRatio`\nenters as ONE scalar gain on the link's "
+                "rate increment, which also attenuates\nthe wing's "
+                "acceleration feeding the link - so the coefficient cannot "
+                "separate\nthe damper from the coupling gain. Changing single "
+                "entries of the matrix\ncan.\n\n", ratio, growth, period);
+    std::printf("Per unit RELATIVE change (section 43's scaling; a sensitivity "
+                "is not a\nmechanism - see the note in the source).\n\n");
+    std::printf("%22s %16s\n", "entry", "dsigma per unit");
+    struct Entry { int i, j; double sensitivity; };
+    std::vector<Entry> entries;
+    for (int i = 4; i < N; ++i)
+    {
+        for (int j = 0; j < N; ++j)
+        {
+            const std::complex<double> term = std::conj(w[i]) * v[j] / mu;
+            const double raw = term.real() / transitionTimeS;
+            entries.push_back({i, j, raw * s[i] / s[j]});
+        }
+    }
+    std::sort(entries.begin(), entries.end(),
+              [](const Entry& a, const Entry& b)
+              { return std::fabs(a.sensitivity) > std::fabs(b.sensitivity); });
+    for (const Entry& e : entries)
+    {
+        char label[48];
+        std::snprintf(label, sizeof label, "d(%s)/d(%s)", names[e.i],
+                      names[e.j]);
+        std::printf("%22s %+16.5f\n", label, e.sensitivity);
+    }
+
+    std::printf("\n  THE CHECK: a finite change to the top entries, predicted "
+                "against measured.\n\n");
+    std::printf("%22s %12s %13s %13s\n", "entry", "change", "predicted",
+                "measured");
+    for (std::size_t k = 0; k < entries.size() && k < 3; ++k)
+    {
+        const Entry& e = entries[k];
+        const double relative = 0.02;
+        const double absolute = relative * s[e.i] / s[e.j];
+        double changed[N][N];
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j) changed[i][j] = spectrum.phi[i][j];
+        changed[e.i][e.j] += absolute;
+
+        double measured = 0.0;
+        bool ok = false;
+        for (const std::complex<double>& candidate :
+             Roots(CharacteristicPolynomial(changed)))
+        {
+            if (std::abs(candidate) < 1.0e-12) continue;
+            const std::complex<double> lambda =
+                std::log(candidate) / transitionTimeS;
+            if (lambda.imag() <= 1.0e-6) continue;
+            const double p = 2.0 * Pi / lambda.imag();
+            if (p < 10.0 || p > 40.0) continue;
+            measured = lambda.real() - growth; ok = true; break;
+        }
+        char label[48];
+        std::snprintf(label, sizeof label, "d(%s)/d(%s)", names[e.i],
+                      names[e.j]);
+        if (!ok) { std::printf("%22s %11.1f%%  mode left the band\n", label,
+                               relative * 100.0); continue; }
+        std::printf("%22s %11.1f%% %+13.5f %+13.5f\n", label,
+                    relative * 100.0, e.sensitivity * relative, measured);
+    }
+
+    std::printf(
+        "\n  THE NUMBER THAT MATTERS IS THE COMPARISON. A 1%% change to "
+        "d(swing)/d(swing)\n  moves sigma by +0.0133. Moving the tuned "
+        "coefficient the whole way from 0.35\n  to 0.30 - the step that "
+        "carries this wing from settling to not settling -\n  moves it "
+        "+0.0129. ONE PER CENT OF ONE MATRIX ENTRY IS WORTH THE ENTIRE\n  "
+        "COEFFICIENT STEP, and the top three entries are all within a quarter "
+        "of each\n  other.\n\n"
+        "  So the phugoid's stability sits on a knife edge with respect to the "
+        "link's\n  rows. That is consistent with everything above rather than "
+        "new: cond = 0.10\n  said the mode is non-normal, and a non-normal "
+        "mode is precisely one whose\n  eigenvalue moves far for a small "
+        "change in the right place.\n\n"
+        "  WHAT IT SUGGESTS ABOUT THE ITEM, AS A HYPOTHESIS AND NOT A "
+        "CONCLUSION. Item 11\n  has been framed as finding a missing "
+        "stabilising mechanism that would let the\n  ratio come down to the "
+        "~0.06 pilot and line drag imply. This says the "
+        "boundary's\n  LOCATION is not a robust property: a 1%% error anywhere "
+        "in the link's rows\n  moves it by the whole 0.35-to-0.30 step. A "
+        "number that fragile is more a\n  property of how the link is written "
+        "than of a paraglider, and 'find the\n  missing mechanism' may "
+        "therefore be the wrong frame - a formulation whose\n  stability is "
+        "less sensitive would be the real requirement. Stated as the\n  "
+        "hypothesis it is, because section 40 is what happens when a quantity "
+        "that\n  moved the right way once gets promoted to a mechanism.\n\n"
+        "  ONE CONNECTION WORTH NOTING. The top entries are in the swing "
+        "ANGLE row, and\n  two of the three - d(swing)/d(attitude) and "
+        "d(swing)/d(heave) - are the link\n  taking its lean from the wing's "
+        "attitude and its vertical motion. That is the\n  apparent-gravity "
+        "tracking sections 34 and 35 measured as dalpha/dV =\n  -1.69 "
+        "deg/(m/s), now appearing as the thing the stability is most "
+        "sensitive\n  to rather than as a trim slope. The two are not shown "
+        "here to be the same\n  quantity; they are the same physics seen from "
+        "two sides, and that is worth a\n  measurement rather than an "
+        "assertion.\n\n"
+        "  THE CAVEAT THAT LIMITS ALL OF IT: these are single-entry changes "
+        "with the\n  other thirty-five held fixed. A real change to the model "
+        "would move several\n  entries coherently and they could cancel - the "
+        "map says where the mode is\n  sensitive, not what any physical "
+        "modification would do. Checking a candidate\n  means differencing its "
+        "matrix, which is what section 42's split already does.\n\n");
+}
+
 void ReceptivityCheck(const CoupledParagliderSolver& solver,
                       const CoupledState& settled, double transitionTimeS)
 {
@@ -2120,6 +2318,9 @@ int main(int argc, char** argv)
         ShapeCheck(solver, settled, 0.10);
         SplitCheck(solver, settled, 0.25);
         ReceptivityCheck(solver, settled, 0.25);
+        // At 0.30: the last ratio that still has a stable trim, which is where
+        // a stabilising mechanism would have to do its work.
+        DesignCheck(solver, settled, 0.25, 0.30);
     }
     (void)transition;
     return 0;

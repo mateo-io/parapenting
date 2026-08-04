@@ -673,12 +673,33 @@ stands in for, and it is checkable against a real wing in a way "the period is
   split stands, but the trend in σ is not a trend in coupling strength — that
   has the wrong sign. What changes is the link's own dynamics, transmitted
   through a weakening channel.
-- **Next:** the remaining unexamined thing is *which physical term* inside the
-  link's 2×2 does it — the block is the world-referenced damping and the
-  restoring term against apparent gravity, and they can be perturbed
-  independently. That is a direct test rather than another decomposition, and it
-  bears on whether ~0.06 is reachable at all. Note the target drifts ~15% across
-  the interval, so it is a requirement with drift in it, not a fixed point.
+- **The two terms cannot be separated by the coefficient, and the solver shows
+  why.** All of `swingDampingRatio` enters as one scalar gain on the link's rate
+  increment — `linkRate = (linkRate + linkAngularAccel*dt)/(1 + 2ζω dt)` — so it
+  attenuates the wing's acceleration feeding the link at the same time. It is a
+  damper *and* a coupling gain, which is why §42's split was spread across two
+  blocks.
+- **So the design question was asked of the matrix instead** (`--shape`,
+  `DesignCheck`): `∂σ/∂Φ_ij` per unit relative change, finite-difference checked
+  to ~1% on 2% perturbations.
+- **A 1% change to `d(swing)/d(swing)` moves σ by +0.0133. The entire 0.35 → 0.30
+  coefficient step moves it +0.0129.** One per cent of one entry is worth the
+  whole step, and the top three entries are within a quarter of each other — all
+  of them in the swing *angle* row.
+- **Hypothesis this raises, and it may reframe the item:** the boundary's
+  location is not robust. A 1% error anywhere in the link's rows moves it by the
+  whole step, so 0.35 is arguably more a property of how the link is written than
+  of a paraglider — and "find the missing stabilising mechanism" may be the wrong
+  frame, with "a formulation whose stability is less sensitive" the real
+  requirement. Not a conclusion; §40 is what happens when that step is skipped.
+  `PHYSICS_LEARNINGS` §44.
+- **Next:** test that hypothesis where it can fail — take the alternative the
+  solver's own comment says was tried and rejected (damping the link against the
+  CANOPY rather than the world, which "left the envelope inside twenty seconds")
+  and difference its matrix against this one. If the canopy-referenced form is
+  *less* sensitive on these entries while being unstable for a different reason,
+  the two failures are separable and the frame above is worth adopting. If it is
+  equally sensitive, it is not.
 - **Open, recorded before it is explained:** as the ratio falls the link
   articulates *less* against the wing (0.383 → 0.266), not more. Less link
   damping does not mean a freer-swinging link inside this mode.

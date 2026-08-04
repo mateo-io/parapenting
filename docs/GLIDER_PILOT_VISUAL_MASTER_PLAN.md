@@ -135,6 +135,10 @@ riser changes length; a brake handle never moves before its hand.
 
 ### Stage 2 — production pilot and harness
 
+Asset sourcing, licensing, acceptance criteria and the Mannequin blockout path
+that unblocks this stage before the asset exists are in
+[PILOT_CHARACTER_ASSET_GUIDE.md](PILOT_CHARACTER_ASSET_GUIDE.md).
+
 - Replace primitives with a licensed, retargetable skeletal pilot at plausible
   seated scale, including helmet, clothing, footwear and hands.
 - Build a harness mesh with seat, back protection, shoulder straps, leg straps,
@@ -294,6 +298,12 @@ asset depends on:
 After that foundation is stable, Stage 2 and Stage 3 can be produced in
 parallel as character/harness art and control-hardware art, then integrated
 against the same rig contract.
+
+Stage 2's licensed character is a procurement decision, not a code dependency.
+Do not let it block the stage: build the harness mesh, IK rig, retargeter and
+pose-family state machine against the UE5 Mannequin, and swap the pilot in as a
+data change once it is approved. See
+[PILOT_CHARACTER_ASSET_GUIDE.md](PILOT_CHARACTER_ASSET_GUIDE.md).
 
 ## Definition of done
 

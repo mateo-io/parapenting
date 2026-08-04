@@ -78,6 +78,9 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
         0.0,
         roll * RadToDeg
     };
+    pose.pelvisCm = {1.0, shift * 5.0, -13.0};
+    pose.chestCm = {-9.0 - surge * 9.0, shift * 3.0, 17.0};
+    pose.headCm = {-12.0 - surge * 5.0, shift * 2.0, 53.0};
     pose.leftShoulderCm = {-10.0, -19.0, 36.0};
     pose.rightShoulderCm = {-10.0, 19.0, 36.0};
     pose.leftHandCm = {
@@ -100,6 +103,34 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
     pose.rightElbowCm = SolveElbow(pose.rightShoulderCm, pose.rightHandCm,
         {9.0 + rightForce * 5.0, 8.0, 5.0}, PilotUpperArmLengthCm,
         PilotForearmLengthCm);
+    // The seated leg is one fixed two-segment chain hung off the hip. Surge
+    // rotates that chain about the hip and weight shift translates it
+    // laterally, both of which are rigid.
+    //
+    // Offsetting each joint by its own coefficient instead, as this did first,
+    // made thigh and shin length functions of surge and weight shift, and the
+    // differing lateral coefficients made the left and right legs different
+    // lengths under shift. On the primitive blockout that was a scaled
+    // cylinder; on a skinned mesh it is a stretching limb.
+    const double legSwing = -0.18 * surge;
+    const double legCos = std::cos(legSwing);
+    const double legSin = std::sin(legSwing);
+    const double hipX = 1.0;
+    const double hipZ = -13.0;
+    const double lateral = shift * 3.0;
+    const auto legJoint = [&](double side, double dx, double dy, double dz)
+    {
+        return Vec3{
+            hipX + dx * legCos - dz * legSin,
+            side * dy + lateral,
+            hipZ + dx * legSin + dz * legCos};
+    };
+    pose.leftHipCm = legJoint(-1.0, 0.0, 14.0, 0.0);
+    pose.rightHipCm = legJoint(1.0, 0.0, 14.0, 0.0);
+    pose.leftKneeCm = legJoint(-1.0, 30.0, 17.0, -18.0);
+    pose.rightKneeCm = legJoint(1.0, 30.0, 17.0, -18.0);
+    pose.leftAnkleCm = legJoint(-1.0, 59.0, 18.0, -34.0);
+    pose.rightAnkleCm = legJoint(1.0, 59.0, 18.0, -34.0);
     return pose;
 }
 }

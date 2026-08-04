@@ -183,6 +183,27 @@ int main()
             - PilotUpperArmLengthCm) < 1e-8);
         assert(std::abs(length(full.leftElbowCm, full.leftHandCm)
             - PilotForearmLengthCm) < 1e-8);
+
+        // The leg chain has to hold its lengths across weight shift and surge
+        // for the same reason the arm chain does: it is skinned now, so a
+        // varying segment reads as a stretching limb rather than a moved one.
+        for (const auto& legPose : {neutral, active, full})
+        {
+            const double leftThigh =
+                length(legPose.leftHipCm, legPose.leftKneeCm);
+            const double rightThigh =
+                length(legPose.rightHipCm, legPose.rightKneeCm);
+            const double leftShin =
+                length(legPose.leftKneeCm, legPose.leftAnkleCm);
+            const double rightShin =
+                length(legPose.rightKneeCm, legPose.rightAnkleCm);
+            assert(std::abs(leftThigh - rightThigh) < 1e-8);
+            assert(std::abs(leftShin - rightShin) < 1e-8);
+            assert(std::abs(leftThigh
+                - length(neutral.leftHipCm, neutral.leftKneeCm)) < 1e-8);
+            assert(std::abs(leftShin
+                - length(neutral.leftKneeCm, neutral.leftAnkleCm)) < 1e-8);
+        }
     }
     {
         const auto previous = BuildGliderRigSnapshot({1.0, 0.0, 0.0, 0.0,

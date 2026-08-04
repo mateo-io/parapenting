@@ -18,12 +18,21 @@ PilotPose Lerp(const PilotPose& a, const PilotPose& b, double t)
     PilotPose out;
     out.rigOffsetCm = Lerp(a.rigOffsetCm, b.rigOffsetCm, t);
     out.rigRotationDegrees = Lerp(a.rigRotationDegrees, b.rigRotationDegrees, t);
+    out.pelvisCm = Lerp(a.pelvisCm, b.pelvisCm, t);
+    out.chestCm = Lerp(a.chestCm, b.chestCm, t);
+    out.headCm = Lerp(a.headCm, b.headCm, t);
     out.leftShoulderCm = Lerp(a.leftShoulderCm, b.leftShoulderCm, t);
     out.rightShoulderCm = Lerp(a.rightShoulderCm, b.rightShoulderCm, t);
     out.leftElbowCm = Lerp(a.leftElbowCm, b.leftElbowCm, t);
     out.rightElbowCm = Lerp(a.rightElbowCm, b.rightElbowCm, t);
     out.leftHandCm = Lerp(a.leftHandCm, b.leftHandCm, t);
     out.rightHandCm = Lerp(a.rightHandCm, b.rightHandCm, t);
+    out.leftHipCm = Lerp(a.leftHipCm, b.leftHipCm, t);
+    out.rightHipCm = Lerp(a.rightHipCm, b.rightHipCm, t);
+    out.leftKneeCm = Lerp(a.leftKneeCm, b.leftKneeCm, t);
+    out.rightKneeCm = Lerp(a.rightKneeCm, b.rightKneeCm, t);
+    out.leftAnkleCm = Lerp(a.leftAnkleCm, b.leftAnkleCm, t);
+    out.rightAnkleCm = Lerp(a.rightAnkleCm, b.rightAnkleCm, t);
     return out;
 }
 

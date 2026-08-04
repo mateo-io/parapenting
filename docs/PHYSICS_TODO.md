@@ -562,13 +562,18 @@ stands in for, and it is checkable against a real wing in a way "the period is
   discretisation until it survives a change of T.
 - **The sweep ran, and the prediction in this bullet was wrong.** `--sweep` takes
   the spectrum through the boundary. The fast mode's eigenvalue **does not cross
-  into the right half plane** — it moves −0.368 to −0.304 /s from ratio 0.90 to
-  0.10 and its period does not move at all, so the pendulum is not what pins the
-  ratio at 0.35. What crosses, between **0.28 and 0.25**, is the **16 s
-  phugoid**, arriving by its damping while its frequency stays real. Three
-  independent runs agree: T = 0.25, T = 0.10, and again about each ratio's own
-  from-scratch trim (which also shows 0.15 departing during the settle at α
-  20.5°, so no trim exists there to linearise about).
+  into the right half plane** — it moves −0.357 to −0.291 /s from ratio 0.90 to
+  0.10 and its period does not move at all (1.86 s throughout), so the pendulum
+  is not what pins the ratio at 0.35. What crosses, between **0.28 and 0.25**, is
+  the **16 s phugoid**, arriving by its damping while its frequency stays real —
+  its period tracks 23.9 → 14.0 s. Same interval at T = 0.25 and T = 0.10.
+- **A second criterion brackets the same interval, sharing no arithmetic with an
+  eigenvalue:** settle each ratio from scratch and ask whether a trim exists at
+  all. 0.30 settles, stable by a hair (−0.008/s); **0.25 departs during its own
+  settle**, at 348 s and α 20.2°. That also disposes of the sweep's stated caveat
+  — that it linearises about 0.35's trim rather than each ratio's — and the drift
+  column at full settle (1.8 × 10⁻⁵ rad/s, 100× smaller than on a short settle)
+  confirms the point is a trim.
 - **This contradicts §35's acquittal of the phugoid, and §35's arithmetic was
   fine.** It predicted the lift exponent `n` crossing zero — a claim about the
   mode's *frequency*, `ω = g√n/V`. n holds at 0.14–0.19, which rules out the
@@ -580,7 +585,7 @@ stands in for, and it is checkable against a real wing in a way "the period is
   is solid and monotone across three runs; the 0.28–0.25 interval is not, and
   should not be quoted tighter.
 - **Next:** confirm the crossing in the time domain, which the sweep's own flown
-  column failed to do — it fitted at 2 ratios of 12, at R² 0.26–0.43, because it
+  column failed to do — it fitted at 2 ratios of 12, at R² 0.24–0.42, because it
   watches the *link* over 40 s and the crossing mode is a 16 s oscillation
   growing at 0.008/s. It needs the phugoid's own observable over several hundred
   seconds. Undersampling a mode into invisibility, third instrument running.

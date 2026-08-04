@@ -21,8 +21,10 @@
 #include "Components/InputComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/PoseableMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
+#include "Engine/SkeletalMesh.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -54,6 +56,19 @@ AParagliderPawn::AParagliderPawn()
         TEXT("/Engine/BasicShapes/Cube.Cube"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderFinder(
         TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    // SKM_Manny ships with the Third Person feature pack, which copies it into
+    // project content; it is not engine content, so the /Engine path never
+    // resolves. This project has no Content/Characters yet, so both finders
+    // are expected to miss until the pack is added - see
+    // docs/PILOT_CHARACTER_ASSET_GUIDE.md. A miss is non-fatal: the primitive
+    // blockout stays visible, which is why the failure needs to be loud.
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> MannequinFinder(
+        TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"));
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> MannequinFallback(
+        TEXT("/Game/Characters/Mannequin_UE4/Meshes/SK_Mannequin"
+            ".SK_Mannequin"));
+    USkeletalMesh* const PilotMesh = MannequinFinder.Object
+        ? MannequinFinder.Object : MannequinFallback.Object;
     CanopyVisual = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("CanopyVisual"));
     CanopyVisual->SetupAttachment(Root);
     CanopyVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -74,6 +89,15 @@ AParagliderPawn::AParagliderPawn()
     PilotRig = CreateDefaultSubobject<USceneComponent>(TEXT("PilotRig"));
     PilotRig->SetupAttachment(Root);
 
+    PilotCharacter = CreateDefaultSubobject<UPoseableMeshComponent>(
+        TEXT("PilotCharacter"));
+    PilotCharacter->SetupAttachment(PilotRig);
+    PilotCharacter->SetSkeletalMesh(PilotMesh);
+    PilotCharacter->SetRelativeLocation(FVector::ZeroVector);
+    PilotCharacter->SetRelativeScale3D(FVector(0.88f));
+    PilotCharacter->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    PilotCharacter->SetCastShadow(true);
+
     const auto ConfigurePart = [this](
         UStaticMeshComponent* Part, UStaticMesh* Mesh)
     {
@@ -90,6 +114,11 @@ AParagliderPawn::AParagliderPawn()
     HarnessVisual =
         CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HarnessVisual"));
     ConfigurePart(HarnessVisual, CubeFinder.Object);
+    HarnessMesh = CreateDefaultSubobject<UProceduralMeshComponent>(
+        TEXT("HarnessMesh"));
+    HarnessMesh->SetupAttachment(PilotRig);
+    HarnessMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    HarnessMesh->SetCastShadow(true);
     LeftUpperArm =
         CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LeftUpperArm"));
     ConfigurePart(LeftUpperArm, CylinderFinder.Object);
@@ -136,6 +165,7 @@ AParagliderPawn::AParagliderPawn()
     GhostPilotVisual->SetVisibility(false);
 
     BuildCanopyMesh();
+    BuildHarnessMesh();
 
     Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
     Camera->SetupAttachment(Root);
@@ -186,6 +216,26 @@ void AParagliderPawn::BeginPlay()
         TintPart(Limb, FLinearColor(0.035f, 0.045f, 0.065f));
     TintPart(LeftBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
     TintPart(RightBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
+    if (PilotCharacter && PilotCharacter->GetSkeletalMeshAsset())
+    {
+        // The poseable mannequin replaces only the body blockout. Hardware is
+        // deliberately retained for Stage 3, where it becomes real controls.
+        for (UStaticMeshComponent* Part : {
+            PilotTorso.Get(), PilotHead.Get(), HarnessVisual.Get(),
+            LeftUpperArm.Get(), RightUpperArm.Get(),
+            LeftForearm.Get(), RightForearm.Get(), LeftThigh.Get(),
+            RightThigh.Get(), LeftShin.Get(), RightShin.Get()})
+            Part->SetVisibility(false);
+    }
+    else
+    {
+        // Silent fallback to primitives would read as "Stage 2 did nothing".
+        UE_LOG(LogTemp, Warning,
+            TEXT("Pilot skeletal mesh missing; falling back to the primitive "
+                 "blockout. Add the Third Person feature pack or a licensed "
+                 "pilot under Content/Characters/Pilot - see "
+                 "docs/PILOT_CHARACTER_ASSET_GUIDE.md"));
+    }
 }
 
 void AParagliderPawn::ResetFlight()
@@ -789,7 +839,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         GhostPilotVisual->SetWorldTransform(Ghost);
         GhostPilotVisual->AddWorldOffset(FVector(0.0, 0.0, 40.0));
     }
-    UpdatePilotVisual();
+    UpdatePilotVisual(DeltaSeconds);
 
     const auto& Accessibility =
         Parapenting::Physics::GetAccessibilityProfile(AccessibilityProfile);
@@ -1426,10 +1476,76 @@ void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
             ? &CurrentRigSnapshot : nullptr);
 }
 
-void AParagliderPawn::UpdatePilotVisual()
+void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)
 {
     const auto& T = RenderRigSnapshot.telemetry;
-    const auto& Pose = RenderRigSnapshot.pilot;
+    auto Pose = RenderRigSnapshot.pilot;
+    const double SymmetricBrake = 0.5 * (RenderRigSnapshot.brakeTravel[0]
+        + RenderRigSnapshot.brakeTravel[1]);
+    // Hysteresis: a single 0.68 threshold made the family flip every frame
+    // while the pilot held brake near it.
+    const bool bFlaring = ActivePilotPoseFamily == PilotPoseFamily::Flare
+        ? SymmetricBrake > 0.55 : SymmetricBrake > 0.68;
+    const PilotPoseFamily TargetFamily = bLanded
+        ? (RolloutState.phase == Parapenting::Physics::LandingRolloutPhase::Fallen
+            ? PilotPoseFamily::Fallen : PilotPoseFamily::LandingRun)
+        : (bGroundLaunching ? PilotPoseFamily::LaunchRun
+        : (bFlaring ? PilotPoseFamily::Flare : PilotPoseFamily::Seated));
+    ActivePilotPoseFamily = TargetFamily;
+    // Per-family weights rather than one blend that restarts on every change.
+    // A single restarting blend snapped the pose back to its base on entry,
+    // and around the flare threshold the family flipped every frame, so the
+    // blend never finished and the pilot juddered.
+    const bool bRunning = TargetFamily == PilotPoseFamily::LaunchRun
+        || TargetFamily == PilotPoseFamily::LandingRun;
+    PilotRunPoseBlend = FMath::FInterpTo(
+        PilotRunPoseBlend, bRunning ? 1.0f : 0.0f, DeltaSeconds, 5.0f);
+    PilotFlarePoseBlend = FMath::FInterpTo(
+        PilotFlarePoseBlend,
+        TargetFamily == PilotPoseFamily::Flare ? 1.0f : 0.0f,
+        DeltaSeconds, 5.0f);
+    if (PilotRunPoseBlend > KINDA_SMALL_NUMBER)
+    {
+        const double Stride = FMath::Sin(
+            RenderRigSnapshot.simulationTimeSeconds * 6.0);
+        // The stride rotates the thigh about the hip and the shin about the
+        // knee, so every segment keeps its seated length at every blend value.
+        // Driving knee and ankle height directly, as this did first, stretched
+        // the thigh from 33 cm to 64 cm and the shin from 33 cm to 100 cm
+        // across one stride - the exact limb-length failure Stage 1 forbids.
+        // Blending the angle rather than the position is what keeps the
+        // invariant true during the transition as well as at the ends.
+        const auto SwingInPlane = [](const Parapenting::Physics::Vec3& Pivot,
+            const Parapenting::Physics::Vec3& End, double AngleRad)
+        {
+            const double dx = End.x - Pivot.x;
+            const double dz = End.z - Pivot.z;
+            const double c = FMath::Cos(AngleRad);
+            const double s = FMath::Sin(AngleRad);
+            return Parapenting::Physics::Vec3{
+                Pivot.x + dx * c - dz * s, End.y,
+                Pivot.z + dx * s + dz * c};
+        };
+        const auto SwingLeg = [&](const Parapenting::Physics::Vec3& Hip,
+            Parapenting::Physics::Vec3& Knee,
+            Parapenting::Physics::Vec3& Ankle, double Phase)
+        {
+            const double Thigh = PilotRunPoseBlend * 0.55 * Phase;
+            const double Shin = PilotRunPoseBlend * 0.40 * (1.0 - Phase);
+            Knee = SwingInPlane(Hip, Knee, Thigh);
+            Ankle = SwingInPlane(Hip, Ankle, Thigh);
+            Ankle = SwingInPlane(Knee, Ankle, Shin);
+        };
+        SwingLeg(Pose.leftHipCm, Pose.leftKneeCm, Pose.leftAnkleCm, Stride);
+        SwingLeg(Pose.rightHipCm, Pose.rightKneeCm, Pose.rightAnkleCm, -Stride);
+    }
+    if (PilotFlarePoseBlend > KINDA_SMALL_NUMBER)
+    {
+        Pose.chestCm.x = FMath::Lerp(Pose.chestCm.x, -18.0,
+            static_cast<double>(PilotFlarePoseBlend));
+        Pose.headCm.x = FMath::Lerp(Pose.headCm.x, -22.0,
+            static_cast<double>(PilotFlarePoseBlend));
+    }
     // Cached for the suspension draw, which hangs the risers off this same
     // body rather than off an independently reconstructed anchor.
     LastPilotPose = Pose;
@@ -1454,6 +1570,7 @@ void AParagliderPawn::UpdatePilotVisual()
             ? static_cast<float>(RolloutOutput.pilotFallRollDegrees)
             : (bGroundLaunching || bLanded
                 ? 0.0 : Pose.rigRotationDegrees.z)));
+    UpdatePilotSkeleton(Pose);
 
     HarnessVisual->SetRelativeLocation(FVector(-2.0f, 0.0f, -17.0f));
     HarnessVisual->SetRelativeScale3D(FVector(0.52f, 0.48f, 0.30f));
@@ -1512,6 +1629,92 @@ void AParagliderPawn::UpdatePilotVisual()
     PosePilotSegment(RightThigh, RightHip, RightKnee, 0.095f);
     PosePilotSegment(LeftShin, LeftKnee, LeftBoot, 0.085f);
     PosePilotSegment(RightShin, RightKnee, RightBoot, 0.085f);
+}
+
+void AParagliderPawn::UpdatePilotSkeleton(
+    const Parapenting::Physics::PilotPose& Pose)
+{
+    if (!PilotCharacter || !PilotCharacter->GetSkeletalMeshAsset()) return;
+    const auto SetBone = [this](const TCHAR* Bone,
+        const Parapenting::Physics::Vec3& Target)
+    {
+        PilotCharacter->SetBoneLocationByName(FName(Bone),
+            FVector(Target.x, Target.y, Target.z), EBoneSpaces::ComponentSpace);
+    };
+    // These are component-space joint targets from the fixed-step rig
+    // snapshot. The eventual IK Rig/Retargeter consumes the same set; keeping
+    // names at this boundary is what makes the asset swap a data change.
+    //
+    // Blockout limitation: this drives translation only, so the skin follows
+    // the joints but limbs do not twist about their own axis and the mesh will
+    // shear at the shoulder and wrist. Bone rotation belongs to the IK Rig
+    // that replaces this function, not to the poseable blockout.
+    SetBone(TEXT("pelvis"), Pose.pelvisCm);
+    SetBone(TEXT("spine_01"), {
+        Pose.chestCm.x * 0.45 + Pose.pelvisCm.x * 0.55,
+        Pose.chestCm.y * 0.45 + Pose.pelvisCm.y * 0.55,
+        Pose.chestCm.z * 0.45 + Pose.pelvisCm.z * 0.55});
+    SetBone(TEXT("spine_03"), Pose.chestCm);
+    SetBone(TEXT("head"), Pose.headCm);
+    // A bone sits at its own joint origin; the segment it draws is the gap to
+    // its child. Mapping upperarm to the elbow and lowerarm to the hand, as
+    // this did first, shifted the whole chain one link outboard and left
+    // lowerarm and hand coincident - a zero-length forearm on a skinned mesh.
+    SetBone(TEXT("clavicle_l"), {Pose.chestCm.x,
+        0.35 * Pose.leftShoulderCm.y, Pose.leftShoulderCm.z});
+    SetBone(TEXT("clavicle_r"), {Pose.chestCm.x,
+        0.35 * Pose.rightShoulderCm.y, Pose.rightShoulderCm.z});
+    SetBone(TEXT("upperarm_l"), Pose.leftShoulderCm);
+    SetBone(TEXT("upperarm_r"), Pose.rightShoulderCm);
+    SetBone(TEXT("lowerarm_l"), Pose.leftElbowCm);
+    SetBone(TEXT("lowerarm_r"), Pose.rightElbowCm);
+    SetBone(TEXT("hand_l"), Pose.leftHandCm);
+    SetBone(TEXT("hand_r"), Pose.rightHandCm);
+    SetBone(TEXT("thigh_l"), Pose.leftHipCm);
+    SetBone(TEXT("thigh_r"), Pose.rightHipCm);
+    SetBone(TEXT("calf_l"), Pose.leftKneeCm);
+    SetBone(TEXT("calf_r"), Pose.rightKneeCm);
+    SetBone(TEXT("foot_l"), Pose.leftAnkleCm);
+    SetBone(TEXT("foot_r"), Pose.rightAnkleCm);
+    PilotCharacter->RefreshBoneTransforms();
+}
+
+void AParagliderPawn::BuildHarnessMesh()
+{
+    if (!HarnessMesh) return;
+    TArray<FVector> Vertices;
+    TArray<int32> Triangles;
+    TArray<FVector> Normals;
+    TArray<FVector2D> UVs;
+    TArray<FColor> Colours;
+    TArray<FProcMeshTangent> Tangents;
+    const auto AddBox = [&Vertices, &Triangles, &Normals, &UVs, &Colours](
+        const FVector& Centre, const FVector& Extent, const FColor& Colour)
+    {
+        const int32 Base = Vertices.Num();
+        for (int32 X : {-1, 1}) for (int32 Y : {-1, 1}) for (int32 Z : {-1, 1})
+        {
+            Vertices.Add(Centre + FVector(X * Extent.X, Y * Extent.Y, Z * Extent.Z));
+            Normals.Add(FVector::UpVector);
+            UVs.Add(FVector2D::ZeroVector);
+            Colours.Add(Colour);
+        }
+        constexpr int32 Faces[] = {
+            0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3,
+            0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5,
+            0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6};
+        for (int32 Index : Faces) Triangles.Add(Base + Index);
+    };
+    // Seat, back protector, and reserve volume are intentionally bespoke
+    // project geometry at the measured carabiner and shoulder anchor scale.
+    AddBox(FVector(4.0f, 0.0f, -19.0f), FVector(29.0f, 20.0f, 5.0f),
+        FColor(18, 25, 38));
+    AddBox(FVector(-8.0f, 0.0f, 4.0f), FVector(8.0f, 18.0f, 29.0f),
+        FColor(20, 30, 46));
+    AddBox(FVector(16.0f, 0.0f, -7.0f), FVector(15.0f, 19.0f, 13.0f),
+        FColor(28, 38, 56));
+    HarnessMesh->CreateMeshSection(0, Vertices, Triangles, Normals, UVs,
+        Colours, Tangents, false);
 }
 
 void AParagliderPawn::BeginSuspensionMesh()

@@ -21,12 +21,21 @@ struct PilotPose
 {
     Vec3 rigOffsetCm{};
     Vec3 rigRotationDegrees{};
+    Vec3 pelvisCm{};
+    Vec3 chestCm{};
+    Vec3 headCm{};
     Vec3 leftShoulderCm{};
     Vec3 rightShoulderCm{};
     Vec3 leftElbowCm{};
     Vec3 rightElbowCm{};
     Vec3 leftHandCm{};
     Vec3 rightHandCm{};
+    Vec3 leftHipCm{};
+    Vec3 rightHipCm{};
+    Vec3 leftKneeCm{};
+    Vec3 rightKneeCm{};
+    Vec3 leftAnkleCm{};
+    Vec3 rightAnkleCm{};
 };
 
 constexpr double PilotUpperArmLengthCm = 39.0;

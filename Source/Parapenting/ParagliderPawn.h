@@ -34,6 +34,7 @@
 class UCameraComponent;
 class UProceduralMeshComponent;
 class UParaglidingAudioComponent;
+class UPoseableMeshComponent;
 class USceneComponent;
 class UStaticMeshComponent;
 
@@ -273,7 +274,9 @@ private:
     bool IsKeyDown(const FKey& Key) const;
     void BuildCanopyMesh();
     void UpdateCanopyMesh();
-    void UpdatePilotVisual();
+    void UpdatePilotVisual(float DeltaSeconds);
+    void UpdatePilotSkeleton(const Parapenting::Physics::PilotPose& Pose);
+    void BuildHarnessMesh();
     void CaptureGliderRigSnapshot(double SimulationTimeSeconds);
     void BeginSuspensionMesh();
     void AddSuspensionSegment(
@@ -330,6 +333,11 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UStaticMeshComponent> PilotVisual;
 
+    // UE5 Mannequin blockout. A licensed character swaps in through the same
+    // Mannequin-compatible skeleton/retargeter without changing rig code.
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UPoseableMeshComponent> PilotCharacter;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> PilotRig;
 
@@ -341,6 +349,9 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UStaticMeshComponent> HarnessVisual;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UProceduralMeshComponent> HarnessMesh;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UStaticMeshComponent> LeftUpperArm;
@@ -456,6 +467,19 @@ private:
     TArray<FVector2D> SuspensionUVs;
     TArray<FColor> SuspensionColors;
     bool bSuspensionMeshInitialized = false;
+    enum class PilotPoseFamily : uint8
+    {
+        Seated,
+        LaunchRun,
+        LandingRun,
+        Flare,
+        Fallen,
+    };
+    PilotPoseFamily ActivePilotPoseFamily = PilotPoseFamily::Seated;
+    // One weight per additive family. A single shared blend restarted on every
+    // family change, which popped the pose back to its base.
+    float PilotRunPoseBlend = 0.0f;
+    float PilotFlarePoseBlend = 0.0f;
     // The pose the pilot was last drawn in. Cached so the suspension draw can
     // hang the risers off the same body the arms and torso were built from,
     // rather than recomputing an anchor that then disagrees with it.

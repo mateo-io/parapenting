@@ -1102,15 +1102,25 @@ at twelve ratios from 0.90 to 0.10.
 **The prediction, written in the file before the run, failed.** It was that the
 *fast* mode goes unstable — the ratio is a link damping, the departure is fast,
 `--departure` had identified the growing mode in the pendulum band. The fast
-mode does not cross. Its real part moves from −0.368 to −0.304 across a ninefold
-change in the coefficient, its period does not move at all, and it is still
-firmly damped at 0.10 where the aircraft certainly leaves.
+mode does not cross. Its real part moves from −0.357 to −0.291 across a ninefold
+change in the coefficient, its period does not move at all — 1.86 s at every
+ratio — and it is still firmly damped at 0.10 where the aircraft certainly
+leaves.
 
 Something does cross, between **0.28 and 0.25**, and it is the **16 s phugoid**
-arriving by its damping. Its period tracks 16.3 → 13.8 s as the ratio falls and
-its real part goes through zero right at the documented boundary — from three
-runs that did not know about each other: two transition times, and again about
-each ratio's own from-scratch trim.
+arriving by its damping. Its period tracks 23.9 → 14.0 s as the ratio falls and
+its real part goes through zero right at the documented boundary, at both
+transition times.
+
+**A second instrument brackets the same interval sharing no arithmetic with an
+eigenvalue.** Settling each ratio from scratch asks only whether a trim
+*exists*: at 0.30 the wing settles and its spectrum is stable by a hair
+(−0.008/s), at 0.25 it departs during its own settle at 348 s and 20° incidence,
+so there is nothing there to linearise about. Two criteria, one interval. It
+also retires the sweep's stated caveat — that everything is linearised about
+0.35's trim rather than each ratio's own — as far as that can be retired, and
+the drift column at full settle (1.8 × 10⁻⁵ rad/s, a hundredfold smaller than on
+a short settle) says the point really is a trim.
 
 **§35 acquitted the phugoid, and this is how a careful test still concluded too
 much.** §35 predicted the lift exponent `n` would cross zero, measured it
@@ -1133,8 +1143,8 @@ say which half of a result is load-bearing is what the check bought.
 
 **The corroboration failed and it is reported as failed.** The sweep flies each
 ratio and fits the growth of a control-subtracted trace, so the spectrum would
-have a trajectory behind it. It fitted at two ratios out of twelve, at R² 0.26
-and 0.43, and disagreed with the eigenvalue eightfold. The diagnosis is the
+have a trajectory behind it. It fitted at two ratios out of twelve, at R² 0.24
+and 0.42, and disagreed with the eigenvalue eightfold. The diagnosis is the
 instrument: it watches the *link* over 40 s, and the mode that crosses is a 16 s
 oscillation growing at 0.008/s on a signal the fast mode has already left.
 Undersampling a mode into invisibility, for the third time in this item, on the
@@ -1193,6 +1203,7 @@ reconciled.
 | slow mode, by eigenvalue | 16.40 s, zeta 0.033 | against 16.39 / 0.031 off a trace |
 | mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
-| fast mode's real part, ratio 0.90 to 0.10 | -0.368 to -0.304 /s | it never crosses; not the departure - §38 |
+| fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | between ratio 0.28 and 0.25 - §38 |
-| phugoid period, ratio 0.90 to 0.10 | 23.4 s to 13.8 s | the frequency never goes imaginary |
+| phugoid period, ratio 0.90 to 0.10 | 23.9 s to 14.0 s | the frequency never goes imaginary |
+| lowest ratio with a trim at all | 0.30 | 0.25 departs at 348 s of its own settle |

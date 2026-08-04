@@ -641,9 +641,30 @@ stands in for, and it is checkable against a real wing in a way "the period is
   cycle is amplitude × sin(phase); link/speed rises 0.319 → 0.510 (60%) over the
   same sweep. So a **gain** version of the coupling survives — but it was not
   predicted in advance and is not claimed, which is the §40 trap.
-- **Next:** the **energy integral** — the work the link term does on the phugoid
-  over a cycle, evaluated on the eigenvector. A number whose *sign* is the
-  answer, computable from what is already built, and it can fail cleanly.
+- **The energy integral ran, in a form with no model of energy in it** (`--shape`,
+  `SplitCheck`): the left eigenvector maps a *measured* change in the matrix to
+  the change it makes in the growth rate, entry by entry and additively, and the
+  four block shares must add up to the measured Δσ. They do, to 7%, degrading to
+  14% on a double-width step — first-order behaviour.
+- **The answer is the adjoint: 0.985 of the 16 s mode's left eigenvector sits on
+  the link's two rows.** The mode *looks* like a speed oscillation
+  (articulation 0.29 vs the pendulum's 1.07) and *listens* almost entirely
+  through the link. Conditioning |w^H v| = 0.10 — it is non-normal, and that gap
+  is the mechanism.
+- **So a coefficient living only in the link's equations can take the phugoid's
+  damping through zero**, and §34's two-state theory cannot see it because it has
+  no link row for the mode to listen through — not because its aerodynamics are
+  wrong. `PHYSICS_LEARNINGS` §42.
+- That 99% of the movement enters rows 4–5 is *near-tautological* and is labelled
+  as such: `swingDampingRatio` appears only in the link's update.
+- **Next:** the receptivity is now the target, not the coefficient. Two things
+  follow and both are cheap: (a) does the adjoint's link share move with the
+  ratio, or is it fixed at 0.985 — if fixed, the ratio changes only the gain and
+  the stabilising mechanism must change the *receptivity*; (b) the same
+  decomposition on the aerodynamic entries, to find which physical term the
+  phugoid listens to through those rows. A stabilising mechanism that would
+  permit ~0.06 has to enter where the mode is receptive, which is now a
+  measurable requirement rather than a guess.
 - **Open, recorded before it is explained:** as the ratio falls the link
   articulates *less* against the wing (0.383 → 0.266), not more. Less link
   damping does not mean a freer-swinging link inside this mode.

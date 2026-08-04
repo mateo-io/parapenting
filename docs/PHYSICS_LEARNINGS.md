@@ -1319,6 +1319,64 @@ does on the phugoid over a cycle, evaluated on the eigenvector, a number whose
 *less* against the wing, 0.383 → 0.266, not more. Less link damping does not
 mean a link swinging more freely inside this mode. Nothing here explains that.
 
+## 42. The mode looks like speed and listens like link
+
+§41 owed an energy integral. There is a version of that question with no model
+of energy in it at all: for a simple eigenvalue with right eigenvector v and
+left eigenvector w normalised to w^H v = 1, `∂μ/∂Φ_ij = conj(w_i) v_j`. So a
+*measured* change in the matrix — just difference Φ at two ratios — maps to the
+change it makes in the growth rate, entry by entry, additively. Split the
+entries into the wing's block, the link's block and the two coupling blocks and
+each share has a sign.
+
+**The built-in check earned its place in one run.** The four shares must add up
+to the measured change in σ. The first run produced shares around 10¹³ against a
+measured 0.013 — because the left eigenvector satisfies `Φᵀw = conj(μ)w` and I
+had passed μ, returning the *conjugate* mode's vector, nearly orthogonal to v,
+so the normalisation divided by almost nothing. Exactly §37's failure mode: a
+convention disagreeing with itself, producing confident nonsense. **A
+decomposition with no total to check against would have been read as a result.**
+Fixed, the shares reproduce the measured Δσ to 7%, degrading to 14% on the
+double-width step — first-order behaviour, which is its own validation.
+
+**What is nearly tautological, said first.** That 99% of the movement enters
+through rows 4–5 is barely a finding: `swingDampingRatio` appears in the link's
+own update equation and nowhere else, so those are the only rows whose entries
+change.
+
+**The finding is the adjoint, and it is 0.985.** Changing rows 4–5 moves the
+*phugoid's* eigenvalue only if the phugoid's left eigenvector has weight there.
+That is not automatic, it is measurable, and it is essentially all of it: 98.5%
+of the 16 s mode's adjoint sits on the link's two rows.
+
+**So the mode looks like a speed oscillation and listens almost entirely through
+the link.** Its right eigenvector is speed-dominated — articulation 0.29 against
+the pendulum's 1.07, which is why every trace of it reads as a phugoid — while
+its receptivity is link. Those two being different *is* non-normality, and the
+conditioning |w^H v| = 0.10 says so directly; for a normal mode it would be near
+1.
+
+**That is the mechanism §40 and §41 were circling.** A coefficient living only in
+the link's equations can take the phugoid's damping through zero because the
+phugoid's adjoint is link. And §34's two-state theory cannot see any of it — not
+because its aerodynamics are wrong, since its period prediction is still good to
+1–4%, but because **it has no link row for the mode to listen through**. A model
+can be right about what a mode looks like and structurally unable to say what
+changes its stability. That is a sharper statement of §40's "right at a point,
+anti-correlated as a function", and it says *why*.
+
+It also fits §41 without being fitted to it: a receptivity that is fixed while a
+gain changes is exactly a constant phase with a moving amplitude, which is what
+the mode shapes showed.
+
+**Not established.** cond = 0.10 means the individual shares are amplified
+relative to a well-conditioned mode; the sum check validates the total, not each
+share's precision. So the split *within* rows 4–5 — 0.0067 from the link's own
+2×2 against 0.0052 from wing→link — is reported as roughly even rather than as a
+ratio worth quoting. And link→wing contributing 0.5% says only that the link's
+influence *on* the wing is not what changes; it does not say that influence is
+small, which is a different measurement and was not made.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1380,3 +1438,6 @@ mean a link swinging more freely inside this mode. Nothing here explains that.
 | link/attitude articulation, fast vs slow | 1.07 vs 0.29 | the fast mode IS the pendulum - §41 |
 | link-to-surge phase in the 16 s mode | -107 to -109 deg | constant across the sign change - §41 |
 | link/speed in the 16 s mode, 0.90 to 0.25 | 0.319 to 0.510 | amplitude moves where phase does not |
+| phugoid adjoint on the link's rows | 0.985 | it listens through the link - §42 |
+| phugoid mode conditioning, \|w^H v\| | 0.10 | non-normal: looks unlike what it listens to |
+| share of d(sigma) entering rows 4-5 | 99% | near-tautological; the coefficient lives there |

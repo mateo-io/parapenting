@@ -1288,6 +1288,273 @@ struct Shape
     bool valid = false;
 };
 
+// ---------------------------------------------------------------------------
+// Which entries of the matrix actually carry the destabilisation.
+//
+// Section 41 owed an energy integral: the work the link term does on the
+// phugoid over a cycle, sign as the answer. There is a version of that question
+// which is exact rather than modelled, and it needs no new concept of energy at
+// all - only the left eigenvector, which is the standard tool for exactly this
+// and which the matrix already contains.
+//
+// For a simple eigenvalue with right eigenvector v and left eigenvector w
+// normalised so that w^H v = 1,
+//
+//     d(mu) / d(Phi_ij) = conj(w_i) v_j
+//
+// so a KNOWN change in the matrix maps to a first-order change in the
+// eigenvalue, entry by entry, and the mapping is additive. The ratio changes
+// the matrix in a way that is measurable - just difference Phi at two ratios -
+// so the growth rate's movement can be split across blocks of the matrix and
+// each block's share read off with a sign:
+//
+//     delta sigma from block B = Re( sum_{ij in B} conj(w_i) v_j dPhi_ij / mu )
+//                                / T
+//
+// The four blocks are the whole question. Rows and columns 0-3 are the wing's
+// own states, 4-5 the link's:
+//
+//     wing        rows 0-3, cols 0-3    the wing on its own
+//     link->wing  rows 0-3, cols 4-5    the link driving the wing
+//     wing->link  rows 4-5, cols 0-3    the wing driving the link
+//     link        rows 4-5, cols 4-5    the link on its own
+//
+// THE CHECK IS BUILT IN AND CANNOT BE FUDGED: the four contributions must add
+// up to the actual measured change in sigma between the two ratios. If they do
+// not, the step is too large for a first-order expansion and the split means
+// nothing - so the table prints the predicted total beside the measured one,
+// and a step that fails is a step that gets reported as failed rather than
+// quietly narrowed until it agrees.
+//
+// THE PREDICTION: if section 41's surviving gain story is right, the movement
+// in sigma is carried by the blocks that involve the link - and the coupling
+// blocks specifically, not the link's own 2x2, because a change confined to
+// the link block alone would be the pendulum getting less damped rather than
+// the pendulum destabilising the phugoid. If instead the wing block carries it,
+// the ratio is changing the wing's own dynamics and every coupling story from
+// section 40 onward is wrong.
+// NOTE THE CONJUGATE, which the first version of this got wrong. The left
+// eigenvector satisfies `w^H Phi = mu w^H`; conjugate-transposing that, and
+// using that Phi is real, gives `Phi^T w = conj(mu) w`. So w is an eigenvector
+// of the TRANSPOSE for the CONJUGATE eigenvalue, and passing mu instead
+// returns the vector belonging to the conjugate mode - which is very nearly
+// orthogonal to v, so the normalisation w^H v = 1 divides by almost nothing and
+// every share comes out around 1e13.
+//
+// That is what happened, and the built-in check is the only reason it was
+// caught in one run: the four shares are supposed to add up to a measured
+// change in sigma of about 0.013, and they added up to 2.4e13. A decomposition
+// with no total to check against would have been read as a result. Same lesson
+// as section 37's inverted perturbation - a convention disagreeing with itself
+// produces confident nonsense - and the same fix, which is to have something
+// the arithmetic must reproduce.
+std::vector<std::complex<double>> LeftEigenvector(const double a[N][N],
+                                                  std::complex<double> mu)
+{
+    double transpose[N][N];
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j) transpose[i][j] = a[j][i];
+    return Eigenvector(transpose, std::conj(mu));
+}
+
+struct Split
+{
+    double wing = 0.0;
+    double linkToWing = 0.0;
+    double wingToLink = 0.0;
+    double link = 0.0;
+    double predictedTotal = 0.0;
+    double measuredTotal = 0.0;
+    // |w^H v| before normalisation, with both vectors scaled to unit largest
+    // component. This is the eigenvalue's conditioning, and it is printed
+    // because it is the number that was silently near zero when the left
+    // eigenvector was conjugated wrongly. Near 1 is a well separated mode;
+    // near 0 means the normalisation is dividing by nothing and every share
+    // below is meaningless.
+    double conditioning = 0.0;
+    // The share of the LEFT eigenvector sitting on the link's two rows.
+    //
+    // This is the part of the split that is not near-tautological. That the
+    // movement enters through rows 4-5 is barely a finding: `swingDampingRatio`
+    // appears in the link's own update equation and nowhere else, so those are
+    // the only rows whose entries change at all. What is NOT automatic is that
+    // changing them moves the PHUGOID's eigenvalue - that requires the
+    // phugoid's adjoint to have weight on the link rows, which is exactly what
+    // "the phugoid is receptive to what happens to the link" means, and it is
+    // measurable rather than assumed.
+    double adjointLinkShare = 0.0;
+    bool valid = false;
+};
+
+Split SplitGrowth(const double from[N][N], const double to[N][N],
+                  double transitionTimeS, double lowPeriodS,
+                  double highPeriodS)
+{
+    Split out;
+    const std::vector<std::complex<double>> discrete =
+        Roots(CharacteristicPolynomial(from));
+    for (const std::complex<double>& mu : discrete)
+    {
+        if (std::abs(mu) < 1.0e-12) continue;
+        const std::complex<double> lambda = std::log(mu) / transitionTimeS;
+        if (lambda.imag() <= 1.0e-6) continue;
+        const double period = 2.0 * Pi / lambda.imag();
+        if (period < lowPeriodS || period > highPeriodS) continue;
+
+        const std::vector<std::complex<double>> v = Eigenvector(from, mu);
+        std::vector<std::complex<double>> w = LeftEigenvector(from, mu);
+        std::complex<double> scale(0.0, 0.0);
+        for (int i = 0; i < N; ++i) scale += std::conj(w[i]) * v[i];
+        double linkWeight = 0.0, totalWeight = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            const double weight = std::norm(w[i]);
+            totalWeight += weight;
+            if (i >= 4) linkWeight += weight;
+        }
+        out.adjointLinkShare = totalWeight > 0.0 ? linkWeight / totalWeight
+                                                 : 0.0;
+        out.conditioning = std::abs(scale);
+        if (std::abs(scale) < 1.0e-12) return out;
+        for (int i = 0; i < N; ++i) w[i] /= std::conj(scale);
+
+        for (int i = 0; i < N; ++i)
+        {
+            for (int j = 0; j < N; ++j)
+            {
+                const double delta = to[i][j] - from[i][j];
+                const std::complex<double> term =
+                    std::conj(w[i]) * v[j] * delta / mu;
+                const double share = term.real() / transitionTimeS;
+                if (i < 4 && j < 4) out.wing += share;
+                else if (i < 4) out.linkToWing += share;
+                else if (j < 4) out.wingToLink += share;
+                else out.link += share;
+            }
+        }
+        out.predictedTotal = out.wing + out.linkToWing + out.wingToLink
+            + out.link;
+
+        // The measured movement, from the eigenvalues of the two matrices.
+        const std::vector<std::complex<double>> after =
+            Roots(CharacteristicPolynomial(to));
+        for (const std::complex<double>& nu : after)
+        {
+            if (std::abs(nu) < 1.0e-12) continue;
+            const std::complex<double> other =
+                std::log(nu) / transitionTimeS;
+            if (other.imag() <= 1.0e-6) continue;
+            const double otherPeriod = 2.0 * Pi / other.imag();
+            if (otherPeriod < lowPeriodS || otherPeriod > highPeriodS) continue;
+            out.measuredTotal = other.real() - lambda.real();
+            out.valid = true;
+            break;
+        }
+        return out;
+    }
+    return out;
+}
+
+void SplitCheck(const CoupledParagliderSolver& solver,
+                const CoupledState& settled, double transitionTimeS)
+{
+    std::printf("WHICH BLOCK CARRIES IT: the growth rate's movement, split "
+                "across the matrix.\n\n");
+    std::printf("Section 41 asked for the work the link does on the phugoid. "
+                "This is that\nquestion with no model of energy in it: the left "
+                "eigenvector turns a known\nchange in the MATRIX into the "
+                "change it makes to the growth rate, entry by\nentry and "
+                "additively. Split the entries into the wing's own block, the "
+                "link's\nown block, and the two coupling blocks, and each one's "
+                "share has a sign.\n\n");
+    std::printf("THE PREDICTION: the surviving gain story says the COUPLING "
+                "blocks carry the\nmovement. The link's own 2x2 carrying it "
+                "would be the pendulum getting less\ndamped rather than "
+                "destabilising the phugoid; the WING block carrying it would\n"
+                "mean every coupling story since section 40 is wrong.\n\n");
+    std::printf("THE CHECK, which cannot be fudged: the four shares must add "
+                "up to the actual\nmeasured change in sigma. A step too large "
+                "for first order fails here, and a\nfailed step is printed as "
+                "failed.\n\n");
+
+    std::printf("%16s %10s %11s %11s %10s %11s %11s %7s\n",
+                "step", "wing", "link->wing", "wing->link", "link",
+                "predicted", "measured", "cond");
+    std::printf("%16s %10s %11s %11s %10s %11s %11s %7s\n",
+                "", "", "", "", "", "", "", "adj");
+    const double from[] = {0.35, 0.35, 0.30};
+    const double to[] = {0.30, 0.25, 0.25};
+    for (int which = 0; which < 3; ++which)
+    {
+        CoupledParagliderSolver a = solver, b = solver;
+        a.SetSwingDampingRatio(from[which]);
+        b.SetSwingDampingRatio(to[which]);
+        const Spectrum sa = Analyse(a, settled, transitionTimeS, 1.0, false);
+        const Spectrum sb = Analyse(b, settled, transitionTimeS, 1.0, false);
+        const Split split = SplitGrowth(sa.phi, sb.phi, transitionTimeS,
+                                        10.0, 40.0);
+        char label[32];
+        std::snprintf(label, sizeof label, "%.2f -> %.2f", from[which],
+                      to[which]);
+        if (!split.valid) { std::printf("%16s  no 16 s mode\n", label);
+                            continue; }
+        std::printf("%16s %+10.5f %+11.5f %+11.5f %+10.5f %+11.5f %+11.5f "
+                    "%7.3f\n",
+                    label, split.wing, split.linkToWing, split.wingToLink,
+                    split.link, split.predictedTotal, split.measuredTotal,
+                    split.conditioning);
+        std::printf("%16s %10s %11s %11s %10s %11s %11s %7.3f\n",
+                    "", "", "", "", "", "", "", split.adjointLinkShare);
+    }
+    std::printf("\n  Positive is destabilising. `predicted` is the sum of the "
+                "four shares and\n  `measured` is the eigenvalues' own answer "
+                "for the same step; they agree only\n  while the step is small "
+                "enough for the expansion, which is why three steps\n  are "
+                "printed rather than one. `cond` is |w^H v|, the mode's "
+                "conditioning;\n  `adj` is the share of the left eigenvector "
+                "sitting on the link's two rows.\n\n");
+
+    std::printf(
+        "  WHAT IS NEARLY TAUTOLOGICAL, SAID FIRST. That 99%% of the movement "
+        "enters\n  through rows 4-5 is barely a finding: `swingDampingRatio` "
+        "appears in the\n  link's own update equation and nowhere else, so "
+        "those are the only rows whose\n  entries change. Reporting that as a "
+        "discovery would be dressing up where the\n  coefficient lives.\n\n"
+        "  THE FINDING IS THE ADJOINT, AND IT IS 0.985. Changing rows 4-5 "
+        "moves the\n  PHUGOID's eigenvalue only if the phugoid's left "
+        "eigenvector has weight there,\n  and that is not automatic - it is "
+        "measurable, and it is essentially all of it.\n  98.5%% of the 16 s "
+        "mode's adjoint sits on the link's two rows.\n\n"
+        "  So the mode LOOKS like a speed oscillation and LISTENS almost "
+        "entirely\n  through the link. Its right eigenvector is speed-"
+        "dominated - articulation\n  0.29 against the pendulum's 1.07, which "
+        "is why every trace of it reads as a\n  phugoid - while its "
+        "receptivity is link. Those two being different is\n  non-normality, "
+        "and `cond` = 0.10 says so directly: for a normal mode |w^H v|\n  "
+        "would be near 1.\n\n"
+        "  THAT IS THE MECHANISM SECTIONS 40 AND 41 WERE CIRCLING. A "
+        "coefficient living\n  only in the link's equations can take the "
+        "phugoid's damping through zero\n  because the phugoid's adjoint is "
+        "link. And section 34's two-state theory\n  cannot see any of it, not "
+        "because its aerodynamics are wrong - its period\n  prediction is "
+        "still good to 1-4%% - but because it HAS no link row for the\n  mode "
+        "to listen through. A model can be right about what a mode looks like "
+        "and\n  structurally unable to say what changes its stability.\n\n"
+        "  It also fits section 41 without being fitted to it: a receptivity "
+        "that is\n  fixed while a gain changes is exactly a constant phase "
+        "with a moving\n  amplitude, which is what the mode shapes showed.\n\n"
+        "  WHAT IS NOT ESTABLISHED. `cond` = 0.10 means this mode is "
+        "non-normal enough\n  that the individual shares are amplified "
+        "relative to a well-conditioned mode;\n  the sum check validates the "
+        "total, not each share's precision. The split\n  WITHIN rows 4-5 - "
+        "0.0067 from the link's own 2x2 against 0.0052 from\n  wing->link - is "
+        "therefore reported as roughly even rather than as a ratio\n  worth "
+        "quoting. And link->wing contributing 0.5%% says only that the link's\n"
+        "  influence ON the wing is not what CHANGES; it does not say that "
+        "influence is\n  small, which is a different measurement and is not "
+        "made here.\n\n");
+}
+
 Shape ShapeOf(const Spectrum& spectrum, const double phi[N][N],
               double transitionTimeS, double trimSpeedMps,
               double lowPeriodS, double highPeriodS)
@@ -1671,6 +1938,7 @@ int main(int argc, char** argv)
         // A phase that is a property of the aircraft does not care what the
         // sampling interval was; one that moves with T is the discretisation.
         ShapeCheck(solver, settled, 0.10);
+        SplitCheck(solver, settled, 0.25);
     }
     (void)transition;
     return 0;

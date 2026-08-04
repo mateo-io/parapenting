@@ -70,19 +70,38 @@ GliderRigSnapshot BuildGliderRigSnapshot(const GliderRigSnapshotInput& input,
     snapshot.brakeForceN = {std::max(0.0, input.leftBrakeForceN),
                             std::max(0.0, input.rightBrakeForceN)};
     snapshot.telemetry = input.telemetry;
+    const double dt = previous
+        ? snapshot.simulationTimeSeconds - previous->simulationTimeSeconds
+        : 0.0;
+    // Torso lag. A first-order filter on the fixed step, so the same replay
+    // produces the same lean at any frame rate: the render tick interpolates
+    // this, it never advances it. Without a previous snapshot there is nothing
+    // to lag behind, so the torso starts settled rather than swinging in from
+    // zero on the first frame.
+    constexpr double TorsoTimeConstantS = 0.22;
+    snapshot.torsoSurge = input.recoverySurge;
+    if (previous && dt > 0.0)
+    {
+        const double alpha = 1.0 - std::exp(-dt / TorsoTimeConstantS);
+        snapshot.torsoSurge = previous->torsoSurge
+            + alpha * (input.recoverySurge - previous->torsoSurge);
+    }
+    else if (previous)
+    {
+        // A repeated or rewound timestamp must not advance the filter.
+        snapshot.torsoSurge = previous->torsoSurge;
+    }
     snapshot.pilot = EvaluatePilotPose({input.harnessRollRad,
         input.harnessPitchRad, snapshot.weightShift, snapshot.brakeTravel[0],
         snapshot.brakeTravel[1], snapshot.brakeForceN[0],
-        snapshot.brakeForceN[1], input.incidentSeverity, input.recoverySurge});
+        snapshot.brakeForceN[1], input.incidentSeverity, input.recoverySurge,
+        snapshot.torsoSurge});
     PopulateHardwareAnchors(snapshot, input);
-    if (previous)
+    if (previous && dt > 0.0)
     {
-        const double dt = snapshot.simulationTimeSeconds
-            - previous->simulationTimeSeconds;
-        if (dt > 0.0)
-            for (int side = 0; side < 2; ++side)
-                snapshot.brakeTravelVelocityPerS[side] =
-                    (snapshot.brakeTravel[side] - previous->brakeTravel[side]) / dt;
+        for (int side = 0; side < 2; ++side)
+            snapshot.brakeTravelVelocityPerS[side] =
+                (snapshot.brakeTravel[side] - previous->brakeTravel[side]) / dt;
     }
     return snapshot;
 }
@@ -97,6 +116,7 @@ GliderRigSnapshot InterpolateGliderRigSnapshot(
         current.simulationTimeSeconds, t);
     out.pilot = Lerp(previous.pilot, current.pilot, t);
     out.weightShift = Lerp(previous.weightShift, current.weightShift, t);
+    out.torsoSurge = Lerp(previous.torsoSurge, current.torsoSurge, t);
     out.telemetry = current.telemetry;
     // Only render-consumed continuous measurements are blended. Discrete
     // solver events retain the current boundary state below, which prevents

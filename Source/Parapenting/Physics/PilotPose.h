@@ -15,6 +15,12 @@ struct PilotPoseInput
     double rightBrakeForceN = 0.0;
     double incidentSeverity = 0.0;
     double recoverySurge = 0.0;
+    // Chest and head lean, already filtered. The torso is a mass on a spine,
+    // not welded to the seat, so it lags the harness it is strapped to. The
+    // filtering happens at the fixed simulation step in BuildGliderRigSnapshot
+    // rather than here: this function stays a pure map from state to pose, and
+    // the lag stays independent of frame rate.
+    double torsoSurge = 0.0;
 };
 
 struct PilotPose

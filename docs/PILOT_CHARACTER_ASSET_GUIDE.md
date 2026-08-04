@@ -159,7 +159,14 @@ component's:
   which is what the IK Rig replacing that function provides.
 - Steps 2–3 above are still outstanding: there is no IK Rig, IK Retargeter or
   saved retargeter data asset yet, so today's swap path is "assign a
-  Mannequin-skeleton mesh", not "retarget an arbitrary character".
+  Mannequin-skeleton mesh", not "retarget an arbitrary character". Both are
+  editor data assets and cannot be authored from code, which is why they are
+  the remaining Stage 2 work rather than something already landed.
+
+Step 1 of the blockout path is complete: the harness is project-owned
+procedural geometry with seat, back protector, reserve volume, shoulder straps,
+leg straps and carabiner hang points, rebuilt whenever the harness is cycled so
+the webbing follows the active carabiner separation.
 
 ## Acceptance checklist
 

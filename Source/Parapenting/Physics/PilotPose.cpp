@@ -65,6 +65,7 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
         std::clamp(raw.rightBrakeForceN / 65.0, 0.0, 1.0);
     const double incident = std::clamp(raw.incidentSeverity, 0.0, 1.0);
     const double surge = std::clamp(raw.recoverySurge, -0.2, 0.45);
+    const double torsoSurge = std::clamp(raw.torsoSurge, -0.2, 0.45);
 
     PilotPose pose;
     pose.rigOffsetCm = {
@@ -79,8 +80,11 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
         roll * RadToDeg
     };
     pose.pelvisCm = {1.0, shift * 5.0, -13.0};
-    pose.chestCm = {-9.0 - surge * 9.0, shift * 3.0, 17.0};
-    pose.headCm = {-12.0 - surge * 5.0, shift * 2.0, 53.0};
+    // The pelvis is the payload: it goes where the harness goes. Chest and head
+    // ride the filtered value, so the torso catches up to a surge instead of
+    // snapping with it.
+    pose.chestCm = {-9.0 - torsoSurge * 9.0, shift * 3.0, 17.0};
+    pose.headCm = {-12.0 - torsoSurge * 5.0, shift * 2.0, 53.0};
     pose.leftShoulderCm = {-10.0, -19.0, 36.0};
     pose.rightShoulderCm = {-10.0, 19.0, 36.0};
     pose.leftHandCm = {

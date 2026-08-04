@@ -1734,6 +1734,32 @@ void AParagliderPawn::BuildHarnessMesh()
         FColor(20, 30, 46));
     AddBox(FVector(16.0f, 0.0f, -7.0f), FVector(15.0f, 19.0f, 13.0f),
         FColor(28, 38, 56));
+    // Webbing. Every strap ends on an anchor the load path already uses, so
+    // the harness reads as the thing carrying the pilot rather than a box they
+    // are sitting near: shoulder straps rise to the same (-9, +-12, 34) the
+    // suspension draw hangs its shoulder webbing from, the leg straps close
+    // around the seat, and the hang points bridge the shoulder line out to the
+    // carabiners at +-CarabinerHalfSeparationCm.
+    constexpr float StrapHalf = 2.4f;
+    const float HangLateralCm = static_cast<float>(
+        0.5 * Parapenting::Physics::HarnessGeometryFor(Equipment)
+            .carabinerSeparationM
+        * Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+    for (int32 Side = -1; Side <= 1; Side += 2)
+    {
+        const float Y = static_cast<float>(Side);
+        // Shoulder strap: seat back up to the shoulder anchor.
+        AddBox(FVector(-4.0f, Y * 12.0f, 18.0f),
+            FVector(4.0f, StrapHalf, 18.0f), FColor(26, 34, 50));
+        // Leg strap: around the thigh, forward of the seat pan.
+        AddBox(FVector(20.0f, Y * 16.0f, -18.0f),
+            FVector(3.5f, StrapHalf, 9.0f), FColor(26, 34, 50));
+        // Hang point: shoulder anchor out to the carabiner the risers load.
+        AddBox(FVector(-2.0f, Y * 0.5f * (12.0f + HangLateralCm), 32.0f),
+            FVector(3.0f, 0.5f * FMath::Abs(HangLateralCm - 12.0f) + StrapHalf,
+                2.6f),
+            FColor(34, 44, 62));
+    }
     HarnessMesh->CreateMeshSection(0, Vertices, Triangles, Normals, UVs,
         Colours, Tangents, false);
 }
@@ -2476,6 +2502,10 @@ void AParagliderPawn::ApplyEquipmentConfiguration()
     Dynamics.SetSuspensionLengthM(
         Parapenting::Physics::SuspensionPendulumLengthM(LineGraph));
     SolveSuspensionGraph();
+    // The hang points are built from this harness's carabiner separation, so
+    // cycling the harness has to rebuild them rather than leave the webbing
+    // pointing at where the old carabiners were.
+    BuildHarnessMesh();
 }
 
 void AParagliderPawn::CycleWingSize()

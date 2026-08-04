@@ -17,6 +17,10 @@ struct GliderRigSnapshot
     double simulationTimeSeconds = 0.0;
     PilotPose pilot{};
     double weightShift = 0.0;
+    // Filtered torso lean. Published so the lag is part of the immutable
+    // snapshot rather than render-side state that a pause or a frame-rate
+    // change could desynchronise.
+    double torsoSurge = 0.0;
     std::array<double, 2> brakeTravel{};
     std::array<double, 2> brakeForceN{};
     std::array<double, 2> brakeTravelVelocityPerS{};

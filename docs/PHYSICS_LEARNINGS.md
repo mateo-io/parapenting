@@ -1524,6 +1524,51 @@ part that was actually learned.
 The caveat from §44 is unchanged and limits this too: single-entry changes with
 the other thirty-five fixed, and a sensitivity is not a mechanism.
 
+## 46. An entry of Φ is not a coefficient of A, and the column said so first
+
+§45 made `d(surge)/d(surge)` the best-measured lever on this mode, and the
+obvious next question — written into the TODO by me — was whether it *is* §34's
+drag exponent seen from the matrix side. In steady glide `D = W/(L/D)`, so
+`D ~ V^d` gives `A₀₀ = −d·g/(V·(L/D))` ≈ −0.028 /s, and `A₀₀ = (Φ₀₀−1)/T` for
+small T. Clean, closed-form, falsifiable.
+
+**It did not resolve, and the failure is in the column rather than the
+conclusion.** `(Φ₀₀−1)/T` is not a constant: −0.082 at T = 0.10, −0.152 at 0.30,
+−0.19 at 0.50. A factor of two over the usable range, because `Φ = exp(AT)`
+carries `A²T/2` and on a matrix this coupled that term is not small. **There is
+no single A₀₀ to read off.**
+
+A first draft of this check read the widest T, called it A₀₀, and would have
+reported a factor of seven against the drag prediction — with a tidy story
+attached about constrained versus unconstrained derivatives. The pre-written
+verdict said "steady across T"; the table said otherwise on the first run. The
+prose was wrong and the instrument was wrong, and the only reason that surfaced
+is that the check printed every T instead of the one it wanted.
+
+**Extrapolated properly: −0.052 /s against −0.028.** Same order, factor 1.84 —
+not seven, and not one. The drag exponent accounts for a bit over half the surge
+decay rather than all or none of it. That is a weaker answer than either draft
+and it is the one the data supports.
+
+**And the extrapolation is itself suspect, which is the part worth carrying.**
+The aerodynamic interval is 0.1 s — loads are held between solves — so T below
+that measures the hold rather than the wing, and T → 0 is *outside the model*
+rather than merely hard to reach. A continuous A does not cleanly exist for this
+solver at the scale the extrapolation reaches for.
+
+**What this does to everything above: nothing, and the reason matters.** Every
+other result in this file is built from *eigenvalues* of Φ, which are exact
+properties of the map over whatever T was used, and were cross-checked at
+several T throughout. Individual *entries* of Φ compared against continuous-time
+formulas are the fragile construction, and this is the only place that was
+attempted. §45's sensitivity ranking is untouched: it compares entries of one
+matrix with each other at one T, and needs no continuous limit at all.
+
+**What would settle it:** a real matrix logarithm of Φ, giving A with no small-T
+expansion, evaluated at or above the aerodynamic interval. Contained arithmetic,
+and the honest next step rather than another reading of the same contaminated
+column.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1593,3 +1638,5 @@ the other thirty-five fixed, and a sensitivity is not a mechanism.
 | top three sensitivities, link rows | 1.33, 1.31, 1.26 | all in the swing ANGLE row - §44 |
 | largest sensitivity in the whole matrix | d(surge)/d(surge), +1.63 | a WING row, worth 1.25 coefficient steps - §45 |
 | sensitivity rms, link rows vs wing rows | 0.822 vs 0.433 | link block more sensitive on average, peak is not |
+| (Phi00-1)/T, T = 0.10 to 0.50 | -0.082 to -0.19 | NOT a constant; there is no single A00 - §46 |
+| A00 extrapolated vs drag-exponent value | -0.052 vs -0.028 /s | same order, factor 1.84 - §46 |

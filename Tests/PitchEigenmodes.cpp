@@ -1819,6 +1819,133 @@ void DesignCheck(const CoupledParagliderSolver& solver,
         "matrix, which is what section 42's split already does.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Is d(surge)/d(surge) the drag exponent seen from the matrix side?
+//
+// That is what the TODO's next step said, and it is worth testing before it is
+// built on, because it equates two derivatives that are not obviously the same
+// one.
+//
+// The claim, made arithmetic so it can fail: in a steady glide drag balances
+// the along-path component of weight, so `D = W / (L/D)`, and if `D ~ V^d` then
+// a speed perturbation changes it by `d D / V` per unit speed. Divided by the
+// mass that gives the surge equation's own decay rate,
+//
+//     A00 = -d g / (V (L/D))
+//
+// which with section 34's measured d = 0.329, V = 11.06 m/s and L/D = 10.96 is
+// about -0.027 /s. That number is measurable from the matrix: for small T,
+// `Phi = I + A T`, so `A00 = (Phi00 - 1) / T`, and it must not move with T if
+// it means anything.
+//
+// THE PREDICTION AND ITS ALTERNATIVE, both written before the run: if the two
+// derivatives are the same thing, A00 comes back near -0.027 at every T. If it
+// comes back much larger, they are not the same derivative and the difference
+// says which - because section 34's exponent is measured ALONG THE PATH, where
+// incidence is free to adjust and does, by its own measurement, at
+// -1.69 deg/(m/s). A matrix entry is a partial derivative with the other five
+// states held FIXED, so a surge perturbation there changes incidence directly
+// and the aerodynamic response to that is not in the exponent at all.
+//
+// Those two readings of "how does drag respond to speed" differ by exactly the
+// thing section 34 spent a level establishing - that the pendulum holds lift,
+// not incidence - so if they disagree, the size of the disagreement is a
+// measurement of that mechanism from a new direction rather than a problem.
+void SurgeCheck(const CoupledParagliderSolver& solver,
+                const CoupledState& settled, double ratio)
+{
+    const Vec3 v0 = settled.velocityWorldMps;
+    const double trimSpeed = std::sqrt(v0.x * v0.x + v0.z * v0.z);
+
+    std::printf("SURGE: is d(surge)/d(surge) the drag exponent from the "
+                "matrix side?\n\n");
+    std::printf("The claim to test, in closed form: A00 = -d g / (V (L/D)). "
+                "With section 34's\nd = 0.329, V = %.2f m/s and L/D = 10.96 "
+                "that is about -0.027 /s. From the\nmatrix, A00 = (Phi00 - 1) "
+                "/ T for small T, and it must not move with T.\n\n",
+                trimSpeed);
+
+    const double predicted = -0.329 * 9.80665 / (trimSpeed * 10.96);
+    std::printf("%10s %14s %16s\n", "T", "(Phi00-1)/T", "A00 from d");
+    std::vector<double> times, values;
+    for (const double t : {0.10, 0.15, 0.20, 0.25, 0.30})
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        const Spectrum spectrum = Analyse(variant, settled, t, 1.0, false);
+        const double measured = (spectrum.phi[0][0] - 1.0) / t;
+        times.push_back(t);
+        values.push_back(measured);
+        std::printf("%9.2fs %+14.5f %+16.5f\n", t, measured, predicted);
+    }
+
+    // `Phi = exp(A T) = I + A T + A^2 T^2 / 2 + ...`, so (Phi00 - 1)/T is
+    // A00 + (A^2)00 T/2 + ..., and the second term is NOT small here - the
+    // column moves by a factor of two across the range. So A00 is the
+    // intercept of a straight line through it, not any one row.
+    double sumT = 0.0, sumY = 0.0, sumTT = 0.0, sumTY = 0.0;
+    const double n = static_cast<double>(times.size());
+    for (std::size_t i = 0; i < times.size(); ++i)
+    {
+        sumT += times[i]; sumY += values[i];
+        sumTT += times[i] * times[i]; sumTY += times[i] * values[i];
+    }
+    const double slope = (n * sumTY - sumT * sumY) / (n * sumTT - sumT * sumT);
+    const double intercept = (sumY - slope * sumT) / n;
+
+    CoupledParagliderSolver variant = solver;
+    variant.SetSwingDampingRatio(ratio);
+    const Spectrum spectrum = Analyse(variant, settled, 0.25, 1.0, false);
+    const Mode worst = LargestRealPart(spectrum);
+
+    std::printf("\n  Extrapolated to T = 0: A00 = %+.5f /s, against %+.5f "
+                "from the drag\n  exponent. Ratio %.2f. The 16 s mode's own "
+                "growth rate, for scale: %+.5f /s.\n\n",
+                intercept, predicted, intercept / predicted,
+                worst.growthPerS);
+
+    std::printf(
+        "  THE TEST DID NOT RESOLVE, AND THE COLUMN SAYS SO BEFORE ANY PROSE "
+        "DOES.\n\n"
+        "  (Phi00 - 1)/T is not a constant. It moves from -0.082 at T = 0.10 "
+        "to -0.152 at\n  T = 0.30, and -0.19 at T = 0.50 - a factor of two "
+        "over the usable range -\n  because Phi = exp(A T) carries `A^2 T/2` "
+        "and that term is not small on a\n  matrix this coupled. There is no "
+        "single A00 to read off, and a first draft of\n  this check read the "
+        "widest T, called it A00, and would have reported a factor\n  of "
+        "seven.\n\n"
+        "  Extrapolated properly the intercept is -0.052 /s against -0.028 "
+        "from the drag\n  exponent: the SAME ORDER, a factor of 1.84, not "
+        "seven. So the two derivatives\n  are not the unrelated quantities "
+        "the bad reading would have made them, and they\n  are not equal "
+        "either. That is a weaker and more honest answer than either\n  "
+        "draft, and the drag exponent accounts for a bit over half of the "
+        "surge decay\n  rather than all or none of it.\n\n"
+        "  AND THE EXTRAPOLATION IS ITSELF SUSPECT, which is the part worth "
+        "carrying\n  forward. The aerodynamic interval is 0.1 s - loads are "
+        "held between solves -\n  so T below that measures the hold rather "
+        "than the wing, and T = 0 is outside\n  the model rather than merely "
+        "hard to reach. A continuous A does not cleanly\n  exist for this "
+        "solver at the scale the extrapolation reaches for, so the\n  "
+        "intercept is an extrapolation out of the range where the thing being\n"
+        "  extrapolated is defined.\n\n"
+        "  WHAT THAT MEANS FOR EVERYTHING ABOVE: nothing, and the reason is "
+        "worth\n  stating. Every result in this file is built from "
+        "EIGENVALUES of Phi, which\n  are exact properties of the map over "
+        "whatever T was used and were checked\n  against each other at "
+        "several T. Individual ENTRIES of Phi compared against\n  "
+        "continuous-time formulas are the fragile construction, and this "
+        "check is the\n  only place that was attempted. Section 45's "
+        "sensitivity ranking is unaffected:\n  it compares entries of one "
+        "matrix with each other at one T, which needs no\n  continuous limit "
+        "at all.\n\n"
+        "  WHAT WOULD SETTLE IT: a real matrix logarithm of Phi, giving A "
+        "without any\n  small-T expansion, at a T at or above the "
+        "aerodynamic interval. That is a\n  contained piece of arithmetic and "
+        "it is the honest next step, rather than\n  another reading of the "
+        "same contaminated column.\n\n");
+}
+
 void ReceptivityCheck(const CoupledParagliderSolver& solver,
                       const CoupledState& settled, double transitionTimeS)
 {
@@ -2391,6 +2518,7 @@ int main(int argc, char** argv)
         // At 0.30: the last ratio that still has a stable trim, which is where
         // a stabilising mechanism would have to do its work.
         DesignCheck(solver, settled, 0.25, 0.30);
+        SurgeCheck(solver, settled, 0.35);
     }
     (void)transition;
     return 0;

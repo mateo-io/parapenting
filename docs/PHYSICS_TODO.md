@@ -706,12 +706,24 @@ stands in for, and it is checkable against a real wing in a way "the period is
   retracted the *inference* that produced it (drawn from §34's anti-correlated
   damping formula). The claim is now supported by a measurement sharing no
   arithmetic with §34. The argument stays retracted; the claim does not.
-- **Next:** speed persistence is now the target with the best measured leverage,
-  so the question is which physical term sets `d(surge)/d(surge)` on this wing —
-  drag against speed at fixed incidence, which is §34's `d` exponent seen from
-  the matrix side rather than from the path. That connects the two halves of this
-  item's arithmetic for the first time and is checkable by differencing matrices
-  rather than by any new theory.
+- **That step ran and did not resolve** (`--shape`, `SurgeCheck`). `(Φ₀₀−1)/T` is
+  not a constant — −0.082 at T = 0.10, −0.152 at 0.30, −0.19 at 0.50 — because
+  `Φ = exp(AT)` carries `A²T/2` and it is not small here. There is no single A₀₀
+  to compare against the closed form, and a first draft that read the widest T
+  would have reported a factor of seven with a tidy story attached.
+- **Extrapolated: −0.052 /s against −0.028 from the drag exponent.** Same order,
+  factor 1.84 — the exponent accounts for a bit over half the surge decay. And
+  the extrapolation reaches below the 0.1 s aerodynamic interval, i.e. outside
+  the model, so it is not trustworthy either. `PHYSICS_LEARNINGS` §46.
+- **Scope of that caveat, deliberately narrow:** every other result here is built
+  from *eigenvalues* of Φ, exact for whatever T was used and cross-checked at
+  several T. Comparing individual *entries* against continuous-time formulas is
+  the fragile move and this is the only place it was made. §45's ranking compares
+  entries of one matrix at one T and is unaffected.
+- **Next:** a real matrix logarithm of Φ, giving A with no small-T expansion, at
+  or above the aerodynamic interval. Then the drag-exponent comparison can be
+  made properly, and the same A would let every earlier sensitivity be quoted in
+  continuous time rather than per-step.
 - **Still unclaimed either way:** the canopy-referenced link damper (the solver's
   own rejected alternative). Differencing its matrix would test whether the two
   failure modes are separable, but it needs a solver hook that does not exist and

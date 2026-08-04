@@ -135,9 +135,14 @@ that unblocks this stage before the asset exists are in
 - Replace primitives with a licensed, retargetable skeletal pilot at plausible
   seated scale, including helmet, clothing, footwear and hands.
 - Build a harness mesh with seat, back protection, shoulder straps, leg straps,
-  reserve volume and carabiner hang points.
+  reserve volume and carabiner hang points. **Done** as project-owned
+  procedural geometry; every strap ends on an anchor the load path already
+  uses, and the hang points follow the harness's own carabiner separation.
 - Drive pelvis from payload motion, chest and head from filtered inertial
-  response, and limbs through full-body IK.
+  response, and limbs through full-body IK. Pelvis and the filtered torso are
+  **done** — the lag is a first-order filter applied at the fixed step in
+  `BuildGliderRigSnapshot`, never in the render tick, so a replay leans the
+  same way at any frame rate. Full-body IK waits on the IK Rig.
 - Add seated, launch-run, landing-run, flare, impact and fallen pose families
   with inertial blending between them.
 - Keep face work minimal; silhouette, posture, grip and load response matter
@@ -145,6 +150,14 @@ that unblocks this stage before the asset exists are in
 
 Exit gate: no Engine primitive is visible in the live pilot; pose transitions
 have no pops; hands remain attached under full harness roll and pitch.
+
+Gate status: pose transitions are held by per-family weights with hysteresis on
+the flare threshold, and every limb chain holds its length at every input and
+every blend value under headless test. The first clause is **not** met and
+cannot be met from code: it needs the character asset, and until the Third
+Person feature pack or a licensed pilot exists in `Content/`, the skeletal mesh
+does not resolve and the primitive blockout is what renders. See
+[PILOT_CHARACTER_ASSET_GUIDE.md](PILOT_CHARACTER_ASSET_GUIDE.md).
 
 ### Stage 3 — hands, controls and riser webbing
 
@@ -254,6 +267,10 @@ detached endpoints across the incident replay matrix.
 - Every visible line endpoint resolves to an existing rig node.
 - No presentation path reads `AppliedControls` directly; control-derived visuals
   come from achieved telemetry only.
+- Secondary motion with memory — torso lag and anything like it — advances only
+  at the fixed step, from the previous snapshot. A repeated or rewound
+  timestamp must not advance it, or a paused replay keeps moving while the
+  solver stands still.
 - Cosmetic oscillation is a function of the interpolated snapshot time, never
   wall clock, frame count or raw solver time. Raw solver time is deterministic
   but stair-steps at fixed-step boundaries while the geometry around it moves

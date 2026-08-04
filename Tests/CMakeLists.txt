@@ -8,6 +8,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # type; these are test binaries, not shipping code.
 add_compile_options(-UNDEBUG)
 
+# Default to Release when the caller does not choose. The solver's calibrated
+# bounds were measured on an optimised build, and some of them are genuinely
+# rounding-sensitive: the deep symmetric frontal in CoupledTests peaks at
+# L 0.710 / R 0.710 and 2.06 rad/s optimised, and at L 0.710 / R 0.947 and
+# 5.40 rad/s unoptimised, which trips a bound that is not actually broken.
+# A bare `cmake -S Tests -B build` used to produce that second build and a
+# confusing failure, so the default is pinned here rather than left to the
+# caller to remember.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
 add_executable(parapenting_physics_tests
     PhysicsTests.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp

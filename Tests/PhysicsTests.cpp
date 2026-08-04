@@ -229,6 +229,67 @@ int main()
         }
     }
     {
+        // Torso lag. The chest and head must trail a surge and then settle on
+        // it, and the lag has to live on the fixed step so a replay at any
+        // frame rate produces the same lean.
+        constexpr double step = 1.0 / 120.0;
+        GliderRigSnapshotInput surging{};
+        surging.recoverySurge = 0.4;
+        auto snapshot = BuildGliderRigSnapshot(surging);
+        // With nothing to lag behind, the torso starts settled rather than
+        // swinging in from zero on the very first frame.
+        assert(std::abs(snapshot.torsoSurge - 0.4) < 1e-12);
+
+        GliderRigSnapshot settled = snapshot;
+        auto previous = BuildGliderRigSnapshot({});
+        double time = 0.0;
+        double lastLean = previous.torsoSurge;
+        for (int tick = 0; tick < 240; ++tick)
+        {
+            time += step;
+            surging.simulationTimeSeconds = time;
+            const auto next = BuildGliderRigSnapshot(surging, &previous);
+            // Monotone approach, never an overshoot past the commanded surge.
+            assert(next.torsoSurge >= lastLean - 1e-12);
+            assert(next.torsoSurge <= 0.4 + 1e-12);
+            // The chest leans on the filtered value, so it always trails the
+            // fully surged pose until the filter has settled.
+            assert(next.pilot.chestCm.x >= settled.pilot.chestCm.x - 1e-12);
+            lastLean = next.torsoSurge;
+            previous = next;
+        }
+        assert(std::abs(previous.torsoSurge - 0.4) < 1e-3);
+
+        // One 1/60 step must land where two 1/120 steps land: the filter is a
+        // function of elapsed simulation time, not of how often it was called.
+        auto coarse = BuildGliderRigSnapshot({});
+        GliderRigSnapshotInput coarseInput{};
+        coarseInput.recoverySurge = 0.4;
+        coarseInput.simulationTimeSeconds = 2.0 * step;
+        coarse = BuildGliderRigSnapshot(coarseInput, &coarse);
+        auto fine = BuildGliderRigSnapshot({});
+        GliderRigSnapshotInput fineInput{};
+        fineInput.recoverySurge = 0.4;
+        fineInput.simulationTimeSeconds = step;
+        fine = BuildGliderRigSnapshot(fineInput, &fine);
+        fineInput.simulationTimeSeconds = 2.0 * step;
+        fine = BuildGliderRigSnapshot(fineInput, &fine);
+        assert(std::abs(coarse.torsoSurge - fine.torsoSurge) < 1e-12);
+
+        // A repeated or rewound timestamp must not advance the filter, or a
+        // paused replay would keep leaning while the solver stands still.
+        auto paused = previous;
+        GliderRigSnapshotInput pausedInput{};
+        pausedInput.recoverySurge = 0.0;
+        pausedInput.simulationTimeSeconds = previous.simulationTimeSeconds;
+        const auto held = BuildGliderRigSnapshot(pausedInput, &paused);
+        assert(held.torsoSurge == paused.torsoSurge);
+        pausedInput.simulationTimeSeconds =
+            previous.simulationTimeSeconds - 1.0;
+        const auto rewound = BuildGliderRigSnapshot(pausedInput, &paused);
+        assert(rewound.torsoSurge == paused.torsoSurge);
+    }
+    {
         // One layout per surveyed region, and every one of them has to hold
         // the same two contracts: a vertex budget, and a mesh that never
         // claims ground the survey does not cover.

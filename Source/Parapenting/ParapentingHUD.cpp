@@ -178,7 +178,7 @@ void AParapentingHUD::DrawCompactHUD(
         constexpr float Left = 22.0f;
         constexpr float Top = 22.0f;
         constexpr float Width = 350.0f;
-        DrawRect(Panel, Left, Top, Width, 206.0f);
+        DrawRect(Panel, Left, Top, Width, 226.0f);
         DrawText(TEXT("PARAPENTING"), White, Left + 16.0f, Top + 12.0f,
             GEngine->GetSmallFont(), 1.08f);
         DrawText(TEXT("COMPACT  [TAB]"), Cyan, Left + 220.0f, Top + 12.0f,
@@ -227,6 +227,9 @@ void AParapentingHUD::DrawCompactHUD(
                 : FLinearColor(1.0f, 0.55f, 0.18f),
             Left + 16.0f, Top + 174.0f,
             GEngine->GetSmallFont(), 0.86f);
+        DrawText(Glider->GetScenicLandmarkText(),
+            FLinearColor(0.38f, 0.80f, 0.94f), Left + 16.0f, Top + 196.0f,
+            GEngine->GetSmallFont(), 0.78f);
 
         const float Right = Canvas->SizeX - 302.0f;
         DrawRect(Panel, Right, Top, 280.0f, 92.0f);
@@ -366,6 +369,10 @@ void AParapentingHUD::DrawHUD()
     const AParagliderPawn* Glider =
         PlayerOwner ? Cast<AParagliderPawn>(PlayerOwner->GetPawn()) : nullptr;
     const FLinearColor White(0.95f, 0.98f, 1.0f, 1.0f);
+
+    // Photo mode is intentionally just a clean presentation surface. It does
+    // not change camera state, simulation, replay stepping or scalability.
+    if (Glider && Glider->IsPhotoMode()) return;
 
     if (Glider && Glider->GetHudMode() != 1)
     {

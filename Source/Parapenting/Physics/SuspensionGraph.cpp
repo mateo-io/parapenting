@@ -1,5 +1,6 @@
 #include "SuspensionGraph.h"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -312,5 +313,50 @@ double LineFoldGapM(const SuspensionGraph& graph, double spanFraction)
         if (gap > 0.0 && gap < smallest) smallest = gap;
     }
     return smallest;
+}
+
+std::vector<double> BrakeStationSpans(const SuspensionGraph& graph)
+{
+    std::vector<double> spans;
+    for (const SuspensionNode& node : graph.nodes)
+    {
+        if (node.kind != SuspensionNodeKind::CanopyAttachment) continue;
+        if (node.row != LineRow::Brake) continue;
+        spans.push_back(node.spanFraction);
+    }
+    std::sort(spans.begin(), spans.end());
+    return spans;
+}
+
+double BrakeStationReach(const std::vector<double>& sortedStations)
+{
+    double gapSum = 0.0;
+    int gapCount = 0;
+    for (std::size_t index = 1; index < sortedStations.size(); ++index)
+    {
+        const double gap = sortedStations[index] - sortedStations[index - 1];
+        // Skip the jump across the centreline. The two sides are independent
+        // fans, so the space between them is not a station spacing.
+        if (gap <= 0.0 || gap > 0.5) continue;
+        gapSum += gap;
+        ++gapCount;
+    }
+    if (gapCount == 0) return 0.12;
+    return std::clamp(0.5 * gapSum / gapCount, 0.04, 0.35);
+}
+
+double BrakeStationInfluence(double spanFraction,
+    const std::vector<double>& stations, double reach)
+{
+    if (stations.empty()) return 1.0;
+    if (reach <= 0.0) return 0.0;
+    double influence = 0.0;
+    for (const double station : stations)
+    {
+        if ((station < 0.0) != (spanFraction < 0.0)) continue;
+        const double distance = (spanFraction - station) / reach;
+        influence = std::max(influence, std::exp(-distance * distance));
+    }
+    return influence;
 }
 }

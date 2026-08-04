@@ -27,9 +27,10 @@ credibility because:
 
 - the pilot is assembled from Engine cubes, cylinders and spheres rather than
   a human skeleton with stable joint lengths and anatomical limits;
-- `PilotPose` returns only a rig offset/rotation plus shoulder, elbow and hand
-  points per side — no pelvis, chest, head, knee or ankle targets, no wrist
-  orientation, grip state, hand inertia or two-handed coordination;
+- `PilotPose` now carries pelvis, chest, head, hip, knee and ankle targets
+  alongside shoulder, elbow and hand, but still has no wrist orientation, grip
+  state, hand inertia or two-handed coordination, and drives bone translation
+  only — so limbs do not twist and the skin shears at shoulder and wrist;
 - brake handles are scaled spheres, not loops held by fingers;
 - risers exist as drawn geometry — `RiserTopLocalCm` places four groups
   (A, A', B, C) 45 cm above the carabiner with a fore/aft spread, drawn as two
@@ -40,17 +41,9 @@ credibility because:
   four-sided tube with a fixed world-space radius, which makes sub-millimetre
   line groups read like rods at normal camera distance and gives no
   screen-space thickness floor at range;
-- main lines route through the solver's cascade junction, but the brake fan is
-  a parallel decorative plan: four hardcoded branches per side at span
-  `0.24 + 0.20 * branch`, a lerped mid-point, and a trailing edge built from
-  local constants rather than from the authoritative attachment list;
-- presentation reads commanded input (`AppliedControls.leftBrake` /
-  `rightBrake`) in several places where it should read achieved brake travel,
-  so the wing and lines can move before the control that caused them;
-- canopy, cascade and hand motion are updated as presentation subsystems, not
-  sampled from one time-coherent rig snapshot;
-- cloth deformation communicates global state, but local line pull is not yet
-  visibly carried into the matching trailing-edge stations;
+- cloth deformation communicates global state, and local brake pull now reaches
+  the matching trailing-edge stations, but the canopy is still a single skin
+  rather than sewn cell/rib topology;
 - there is no dedicated camera composition that keeps hands, risers, lines and
   enough of the wing readable together.
 
@@ -172,10 +165,9 @@ HUD assistance.
 ### Stage 4 — suspension line renderer
 
 - Render the authoritative graph, including mains, cascades, upper galleries
-  and brake fan; never author a parallel decorative line plan. Concretely:
-  retire the hardcoded four-branch brake fan and its local trailing-edge
-  constants, and take brake attachments from `SuspensionGeometry` the way the
-  main lines already do.
+  and brake fan; never author a parallel decorative line plan. **Done:** the
+  brake fan now iterates `LineGraph` brake attachments, so editing the line
+  plan changes what is drawn.
 - Replace the fixed world-space tube radius with a screen-space width floor so
   a line stays visible at range without becoming a rod up close.
 - Use camera-facing analytic lines or ribbons with stable sub-pixel coverage,
@@ -197,8 +189,10 @@ do not shimmer in motion and meet every hand, riser, cascade and canopy node.
 - Skin all authoritative attachment points into the fabric topology.
 - Map brake fan shortening into local trailing-edge displacement at the actual
   attachment stations before smoothing displacement through neighbouring
-  cloth vertices. This replaces the current uniform `Brake * 55 cm` drop
-  applied identically to every branch of a side.
+  cloth vertices. **Done:** `BrakeStationInfluence` weights the trailing-edge
+  drop by distance to the authoritative brake attachments, with the reach taken
+  from their spacing, so a denser fan gives a finer edge and one side's brake
+  cannot pull the other side's cloth.
 - Map pressure, span loading and collapse to a small set of stable deformation
   modes; avoid arbitrary noise and rubber-sheet stretching.
 
@@ -251,14 +245,22 @@ detached endpoints across the incident replay matrix.
 ### Headless contracts
 
 - Snapshot interpolation is bounded and never extrapolates past its limit.
-- Limb, webbing and suspension segment lengths stay within tolerance.
+- Limb, webbing and suspension segment lengths stay within tolerance. This
+  covers the leg chain as well as the arms, at every input and every pose-family
+  blend value — a blend between two length-correct poses is not itself
+  length-correct unless the blended quantity is the joint angle.
 - Left input changes no right grip or right brake attachment target.
 - Grip travel equals achieved brake-line take-up after free play.
 - Every visible line endpoint resolves to an existing rig node.
 - No presentation path reads `AppliedControls` directly; control-derived visuals
   come from achieved telemetry only.
-- Cosmetic oscillation is a function of simulation time, never wall clock or
-  frame count, so a replay at any frame rate produces identical geometry.
+- Cosmetic oscillation is a function of the interpolated snapshot time, never
+  wall clock, frame count or raw solver time. Raw solver time is deterministic
+  but stair-steps at fixed-step boundaries while the geometry around it moves
+  smoothly, so mixing the two sources is visible.
+- Brake influence at a span station never exceeds the achieved travel, is
+  exactly the travel at an attachment station, and is zero across the
+  centreline.
 - Presentation has no effect on solver state hashes or replay trajectories.
 
 ### Automated visual checks

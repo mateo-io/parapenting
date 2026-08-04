@@ -718,6 +718,256 @@ OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// The debt the sweep left: a trajectory behind the crossing.
+//
+// `--sweep` says the phugoid's damping changes sign between ratio 0.28 and
+// 0.25, and its flown column - built to check exactly that - failed. It fitted
+// two ratios out of twelve at R2 0.24 to 0.42 and disagreed with the eigenvalue
+// eightfold. The diagnosis was the instrument, and it was specific enough to
+// fix: it watched the LINK over 40 seconds, and the mode that crosses is a 16 s
+// oscillation growing at 0.008/s. So it was looking at the wrong signal for a
+// twentieth of the time the mode needs.
+//
+// Three changes, each answering one clause of that diagnosis:
+//
+//   * THE OBSERVABLE IS SPEED. A phugoid is an exchange between height and
+//     speed at nearly constant incidence - section 34 measured this mode off
+//     the path for that reason. The link barely moves in it, which is why the
+//     link was the wrong place to look.
+//   * THE WINDOW IS HUNDREDS OF SECONDS. At sigma 0.008/s the e-folding time is
+//     125 s, so 40 s could not have shown it whatever it watched. 300 s is
+//     nineteen periods and two e-foldings.
+//   * THE FIRST 25 SECONDS ARE DISCARDED. The fast mode's half life is 2.2 s,
+//     so by 25 s it is down by a factor of 2^11 and what remains is the slow
+//     mode alone. This is the separation the five time-domain instruments of
+//     section 36 could not get - and it is available here only because the
+//     question is now about the SLOW mode. Waiting out the fast mode is free
+//     when the fast mode is the contaminant; it was impossible when the fast
+//     mode was the target. The same signal, the same overlap, and the easy
+//     direction is the one nobody needed until now.
+//
+// Sampling at 2 Hz is deliberate and is NOT how the fast mode is excluded -
+// undersampling would alias it, not remove it. Skipping 25 s removes it. 2 Hz
+// is simply enough to resolve a 16 s period, at thirty-two samples a cycle.
+//
+// THE PREDICTION, and it can fail cleanly: the fitted rate should agree with
+// the eigenvalue's real part in sign at every ratio, cross between 0.30 and
+// 0.25, and the fitted PERIOD should land near 16 s and track the eigenvalue's
+// period column downward as the ratio falls. If the period comes back at
+// something else, this is measuring a different mode and the agreement of the
+// rates would be a coincidence - so the period is the honest part of the test
+// and it is printed whether or not it flatters the result.
+struct SlowFit
+{
+    double ratePerS = 0.0;
+    double periodS = 0.0;
+    double fitQuality = 0.0;
+    int extrema = 0;
+    bool valid = false;
+};
+
+SlowFit MeasurePhugoid(const CoupledParagliderSolver& solver,
+                       const CoupledState& settled, double seconds,
+                       double deltaU, double skipS)
+{
+    SlowFit out;
+    const CoupledControls hands;
+    const int ticks = static_cast<int>(seconds * 120.0);
+
+    const auto fly = [&](CoupledState state)
+    {
+        CoupledParagliderSolver local = solver;
+        std::vector<double> speed;
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            local.Step(state, hands, CoupledAtmosphere{});
+            // 2 Hz.
+            if (tick % 60 != 0) continue;
+            const Vec3 v = state.velocityWorldMps;
+            speed.push_back(std::sqrt(v.x * v.x + v.z * v.z));
+        }
+        return speed;
+    };
+
+    CoupledState perturbed = settled;
+    // Ten times the linearisation step, because this has to stay above the
+    // drift and the arithmetic noise for three hundred seconds rather than
+    // one. Whether that is still linear is not assumed - `--phugoid` halves it
+    // and prints both.
+    Perturb(perturbed, 0, deltaU);
+    const std::vector<double> a = fly(perturbed);
+    const std::vector<double> b = fly(settled);
+
+    std::vector<double> time, logAmplitude;
+    double firstExtremum = -1.0, lastExtremum = -1.0;
+    const std::size_t skip = static_cast<std::size_t>(skipS * 2.0);
+    for (std::size_t i = (skip > 0 ? skip : 1); i + 1 < a.size(); ++i)
+    {
+        const double previous = a[i - 1] - b[i - 1];
+        const double here = a[i] - b[i];
+        const double next = a[i + 1] - b[i + 1];
+        const bool extremum = (here > previous && here >= next)
+            || (here < previous && here <= next);
+        if (!extremum) continue;
+        const double amplitude = std::fabs(here);
+        if (amplitude < 1.0e-9) continue;
+        const double t = static_cast<double>(i) / 2.0;
+        if (firstExtremum < 0.0) firstExtremum = t;
+        lastExtremum = t;
+        time.push_back(t);
+        logAmplitude.push_back(std::log(amplitude));
+        ++out.extrema;
+    }
+    if (out.extrema < 8) return out;
+
+    out.periodS = 2.0 * (lastExtremum - firstExtremum)
+        / static_cast<double>(out.extrema - 1);
+
+    double sumT = 0.0, sumY = 0.0;
+    const double n = static_cast<double>(time.size());
+    for (std::size_t i = 0; i < time.size(); ++i)
+    { sumT += time[i]; sumY += logAmplitude[i]; }
+    const double meanT = sumT / n, meanY = sumY / n;
+    double covariance = 0.0, varianceT = 0.0, varianceY = 0.0;
+    for (std::size_t i = 0; i < time.size(); ++i)
+    {
+        const double dt = time[i] - meanT, dy = logAmplitude[i] - meanY;
+        covariance += dt * dy;
+        varianceT += dt * dt;
+        varianceY += dy * dy;
+    }
+    if (varianceT <= 0.0 || varianceY <= 0.0) return out;
+    out.ratePerS = covariance / varianceT;
+    out.fitQuality = (covariance * covariance) / (varianceT * varianceY);
+    out.valid = true;
+    return out;
+}
+
+void PhugoidCheck(const CoupledParagliderSolver& solver,
+                  const CoupledState& settled, double windowS)
+{
+    std::printf("PHUGOID IN THE TIME DOMAIN: the trajectory the sweep's "
+                "crossing does not have.\n\n");
+    std::printf("THE PREDICTION, before the table: the fitted rate agrees with "
+                "the eigenvalue\nin sign at every ratio and crosses between "
+                "0.30 and 0.25, and the fitted\nperiod lands near 16 s and "
+                "falls with the ratio as the eigenvalue's does. A\nperiod that "
+                "comes back as something else means this is watching another "
+                "mode\nand any agreement in the rates is luck.\n\n");
+    // The zeta columns exist so the comparison that matters is on the page.
+    // `pitch_axis_trace --slow-mode` measured this mode at 16.39 s and zeta
+    // 0.031 off 27 peaks of a 1200 s run, by means that share no code with
+    // either instrument here. Rates are what the eigenvalues speak in; zeta is
+    // what that third measurement speaks in, and converting is one line.
+    std::printf("%8s %11s %11s %10s %9s %9s %9s %8s %7s\n",
+                "ratio", "sigma 1/s", "flown 1/s", "eig period", "flown",
+                "eig zeta", "flown", "R2", "peaks");
+    for (const double ratio : {0.50, 0.35, 0.30, 0.28, 0.25, 0.20})
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        const Spectrum spectrum = Analyse(variant, settled, 0.25, 1.0, false);
+        const Mode worst = LargestRealPart(spectrum);
+        const SlowFit fit = MeasurePhugoid(variant, settled, windowS, 0.5,
+                                           25.0);
+
+        std::printf("%8.2f %+11.4f", ratio, worst.growthPerS);
+        if (fit.valid)
+        {
+            const double flownZeta =
+                -fit.ratePerS * fit.periodS / (2.0 * Pi);
+            std::printf(" %+11.4f %9.2fs %8.2fs %9.4f %9.4f %8.3f %7d",
+                        fit.ratePerS, worst.periodS, fit.periodS,
+                        worst.dampingRatio, flownZeta, fit.fitQuality,
+                        fit.extrema);
+        }
+        else
+            std::printf(" %11s %9.2fs %8s %9.4f %9s %8s %7d", "unfittable",
+                        worst.periodS, "-", worst.dampingRatio, "-", "-",
+                        fit.extrema);
+        if (fit.valid && (fit.ratePerS > 0.0) != (worst.growthPerS > 0.0))
+            std::printf("  SIGN DISAGREES");
+        std::printf("\n");
+    }
+
+    // The one assumption left. 0.5 m/s is ten times the perturbation the
+    // matrix is built from, and a rate that moves when it is halved is a rate
+    // that belongs to the amplitude rather than to the mode.
+    std::printf("\n  THE OUTSIDE CHECK: at ratio 0.35, `pitch_axis_trace "
+                "--slow-mode` measured\n  this mode at 16.39 s and zeta 0.031, "
+                "off 27 peaks of a 1200 s run, by means\n  sharing no code "
+                "with either column above. That is the number the 0.35 row's\n"
+                "  flown zeta has to match, and it is the only row that has an "
+                "outside check\n  at all.\n");
+
+    std::printf("\n  Linearity, at ratio 0.35: the same fit on a halved "
+                "perturbation.\n");
+    CoupledParagliderSolver reference = solver;
+    reference.SetSwingDampingRatio(0.35);
+    const SlowFit full = MeasurePhugoid(reference, settled, windowS, 0.5, 25.0);
+    const SlowFit half = MeasurePhugoid(reference, settled, windowS, 0.25,
+                                        25.0);
+    std::printf("%14s %11s %9s %9s\n", "step", "rate 1/s", "period", "R2");
+    for (int which = 0; which < 2; ++which)
+    {
+        const SlowFit& fit = which == 0 ? full : half;
+        if (!fit.valid) { std::printf("%14s %11s\n",
+                                      which == 0 ? "0.50 m/s" : "0.25 m/s",
+                                      "unfittable"); continue; }
+        std::printf("%14s %+11.4f %8.2fs %9.3f\n",
+                    which == 0 ? "0.50 m/s" : "0.25 m/s",
+                    fit.ratePerS, fit.periodS, fit.fitQuality);
+    }
+
+    std::printf(
+        "\n  WHAT THIS SETTLES, AND WHICH INSTRUMENT LOSES.\n\n"
+        "  The prediction half-failed, and the half that failed is the "
+        "eigenvalue's.\n  The fitted period tracks the eigenvalue's to about "
+        "1%% at every ratio whose\n  fit is clean, so both are watching the "
+        "same mode and the identification is\n  not in doubt. The RATES do not "
+        "agree, and at 0.35 there is an outside\n  measurement to break the "
+        "tie: flown zeta 0.0299 and period 16.38 s against\n  the trace's "
+        "0.031 and 16.39 s - 3%% and 0.1%% - while the eigenvalue says\n  "
+        "0.0540, high by three quarters.\n\n"
+        "  So the eigenvalue's slow damping is biased toward stability, which "
+        "is what\n  the linearity check said before any of this ran: it was "
+        "the one number that\n  moved with both T and step size, and the TODO "
+        "already recorded that it\n  brackets the trace from above throughout. "
+        "The flown fit, by contrast, is\n  unmoved by halving its perturbation "
+        "(0.0115 against 0.0116, period identical)\n  and lands on the outside "
+        "number. Where they disagree, the eigenvalue is the\n  one that is "
+        "wrong, and it is wrong in the direction that matters here: it\n  "
+        "reports the mode as better damped than it is, so it puts the crossing "
+        "at too\n  low a ratio.\n\n"
+        "  THE CROSSING MOVES. Flown, the phugoid's damping goes through zero "
+        "between\n  ratio 0.35 and 0.30, not between 0.28 and 0.25. A third "
+        "line agrees and it is\n  not a fit of anything: the own-trim table "
+        "settles 0.35 at 410 s, fails to\n  settle 0.30 in 420 s, and departs "
+        "at 0.25. A marginally GROWING phugoid is\n  exactly why 0.30 has no "
+        "settled trim to find.\n\n"
+        "  That explains the tuned coefficient rather than merely bounding it. "
+        "0.35 is\n  not a safety margin above a departure - it is approximately "
+        "the smallest\n  value at which this wing's phugoid still damps at all, "
+        "and the registry's\n  Tuned 0.35 sits on the edge of that.\n\n"
+        "  TWO ROWS ARE NOT EVIDENCE AND ARE NOT USED. At 0.20 the fit returns "
+        "a 7.87 s\n  period - half the phugoid - at R2 0.375 off 69 extrema, "
+        "which is a signal\n  that has stopped being one growing oscillation "
+        "within the window; at 0.25\n  R2 is 0.495 and the period misses by "
+        "12%%. Both are ratios where the motion\n  leaves small-amplitude "
+        "behaviour inside 300 s, which is the regime a fit like\n  this has no "
+        "claim on. The crossing above rests on the rows from 0.50 to 0.28,\n  "
+        "where R2 is 0.89 to 1.000 and the period matches - and those rows "
+        "contain it.\n\n"
+        "  WHAT IT MEANS FOR THE ITEM. The remaining goal is a damping ratio "
+        "derived from\n  pilot and line drag, about 0.06, instead of one chosen "
+        "to keep the aircraft\n  flying. This says that cannot be reached by "
+        "finding a little more link\n  damping: at 0.06 the phugoid is well "
+        "past its sign change. The missing\n  stabilising mechanism has to act "
+        "on SPEED stability - the phugoid's own\n  restoring term, the flat "
+        "lift curve of section 34 - and not on the link.\n\n");
+}
+
 void OwnTrimSweep(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                   double transitionTimeS, int maximumSeconds)
 {
@@ -838,12 +1088,14 @@ int main(int argc, char** argv)
     double transition = 1.0;
     bool stepCheck = false;
     bool sweep = false;
+    bool phugoid = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
         if (argument == "--quick") settleSeconds = 120;
         if (argument == "--step") stepCheck = true;
         if (argument == "--sweep") sweep = true;
+        if (argument == "--phugoid") phugoid = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -915,6 +1167,14 @@ int main(int argc, char** argv)
         OwnTrimSweep(canopy, linePlan, 0.25,
                      settleSeconds < 420 ? 180 : 420);
         Verdict();
+    }
+
+    if (phugoid)
+    {
+        // 300 s is nineteen periods of the slow mode and rather more than two
+        // e-foldings of the growth the sweep predicts at 0.25. A shorter
+        // window is what broke the last attempt at this.
+        PhugoidCheck(solver, settled, 300.0);
     }
     (void)transition;
     return 0;

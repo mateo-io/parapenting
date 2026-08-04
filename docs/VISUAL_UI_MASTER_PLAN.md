@@ -756,6 +756,11 @@ bounded on all profiles.
 
 ## Level 8 — Camera, replay and final-pixel polish
 
+**Implementation status (2026-08-04): first capture slice.** `F12` now toggles
+a clean photo presentation mode. It hides only the HUD and onboarding layer;
+the deterministic camera feedback, fixed simulation clock, replay inputs and
+graphics profile remain untouched. `Esc` exits it along with any Flight Deck.
+
 **Outcome:** ordinary flying feels authored and recordings look intentional,
 while camera feedback remains subordinate to spatial judgement.
 
@@ -773,7 +778,9 @@ while camera feedback remains subordinate to spatial judgement.
   (`ParagliderPawn.h:437`). Note it replays inputs, not state, so scrubbing
   backwards means re-simulating from a keyframe — design for that rather than
   discovering it.
-- [ ] Add photo mode with quality overrides isolated from live gameplay.
+- [~] Add photo mode with quality overrides isolated from live gameplay. The
+  first safe slice is live: clean HUD-free framing (`F12`) with no quality or
+  simulation override. Per-camera high-quality capture overrides remain open.
 - [ ] Implement tasteful event emphasis for launch commitment, thermal entry,
   collapse and touchdown using coordinated camera, VFX, UI and audio cues.
 - [ ] Perform a complete aliasing, ghosting, translucency, shadow and LOD-pop

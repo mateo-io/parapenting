@@ -4,9 +4,20 @@ Companion to [GLIDER_PILOT_VISUAL_MASTER_PLAN.md](GLIDER_PILOT_VISUAL_MASTER_PLA
 Covers Stage 2 only: what to acquire, how to judge it, and how to integrate it
 against the existing rig contract.
 
-Status: **blocked on a decision**. The project contains no skeletal mesh, no
-animation set and no importable character source. `PilotRig` is assembled from
-Engine `BasicShapes` cylinders and spheres posed by `PosePilotSegment`.
+Status: **blockout implemented, asset decision still open.** The runtime now
+carries a `UPoseableMeshComponent` (`PilotCharacter`) driven from
+`GliderRigSnapshot`, a project-owned procedural harness mesh, and pose-family
+blending. The primitive body parts hide themselves whenever a skeletal mesh
+resolves.
+
+There is still no character asset in the repository, and one further gap is
+worth being explicit about: **`SKM_Manny` is not engine content.** It ships with
+the Third Person feature pack, which copies it into `/Game/Characters/...`.
+This project has no `Content/Characters` directory, so the mesh does not
+resolve, the mannequin is invisible and the primitive blockout stays on screen.
+Adding the Third Person feature pack in the editor is enough to light it up.
+The pawn now logs a warning naming this document when the mesh is missing,
+rather than silently falling back.
 
 ## What is already fixed, and therefore constrains the asset
 
@@ -136,6 +147,19 @@ Proposed order, which removes the dependency from the critical path:
 The one exit gate this cannot satisfy is "no Engine primitive is visible in the
 live pilot" at *shippable* quality — the Mannequin is a placeholder, not a
 paraglider pilot. Everything else is reachable now.
+
+### Known limits of the current blockout
+
+Both are expected at this stage and both are the IK Rig's job, not the poseable
+component's:
+
+- `UpdatePilotSkeleton` sets bone **translation only**. The skin follows the
+  joints, but limbs do not twist about their own axis, so the mesh shears at
+  the shoulder and wrist under brake load. Fixing this needs bone rotation,
+  which is what the IK Rig replacing that function provides.
+- Steps 2–3 above are still outstanding: there is no IK Rig, IK Retargeter or
+  saved retargeter data asset yet, so today's swap path is "assign a
+  Mannequin-skeleton mesh", not "retarget an arbitrary character".
 
 ## Acceptance checklist
 

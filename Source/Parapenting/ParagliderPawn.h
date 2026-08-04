@@ -27,6 +27,7 @@
 #include "Physics/FlightNavigation.h"
 #include "Physics/LandingRolloutModel.h"
 #include <array>
+#include <vector>
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "ParagliderPawn.generated.h"
@@ -113,7 +114,9 @@ public:
     int32 GetHudMode() const { return HudMode; }
     const char* GetHudModeName() const;
     bool IsFlightDeckVisible() const { return bFlightDeckVisible; }
+    bool IsPhotoMode() const { return bPhotoMode; }
     const char* GetSiteWindAssessmentName() const;
+    FString GetScenicLandmarkText() const;
     const char* GetLaunchHazardText() const;
     const char* GetLandingCircuitText() const;
     Parapenting::Physics::SiteWindAssessment GetSiteWindAssessment() const;
@@ -256,6 +259,7 @@ private:
     void TogglePreflightBriefing();
     void OpenFlightDeck();
     void CloseFlightDeck();
+    void TogglePhotoMode();
     void SaveReplayManifest();
     void RefreshReplayCatalogue();
     bool LoadReplayFile(const FString& Path);
@@ -308,6 +312,12 @@ private:
     FVector BrakeHandLocalCm(bool bLeft) const;
     FVector CanopyAttachmentLocalCm(double SpanFraction,
         double ChordFraction) const;
+    // How much of the brake travel this span station actually sees. A brake
+    // fan pulls at its own attachment stations and the cloth between them
+    // follows; applying the full travel to the whole half-span made the
+    // trailing edge drop as one rigid flap.
+    float BrakeStationInfluence(float SpanFraction) const;
+    void RefreshBrakeStationCache();
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> Root;
@@ -429,6 +439,9 @@ private:
     // rather than becoming a second owner for route, weather or accessibility.
     bool bFlightDeckVisible = true;
     float FlightDeckAutoCloseSeconds = 5.0f;
+    // Render/HUD-only mode. It must not affect replay inputs, camera feedback,
+    // graphics tiers or the fixed simulation clock.
+    bool bPhotoMode = false;
     bool bHardLanding = false;
     bool bRolloutFinalized = false;
     double LandingDistanceM = 0.0;
@@ -443,6 +456,11 @@ private:
     // galleries, the brake fan and every canopy attachment, built from the
     // geometry above so the lines cannot describe a different wing.
     Parapenting::Physics::SuspensionGraph LineGraph;
+    // Span fractions of the authoritative brake attachments, and the spanwise
+    // reach of one station, derived from their spacing. Refreshed whenever the
+    // graph is solved so a different wing changes the deformation.
+    std::vector<double> BrakeStationSpans;
+    double BrakeStationReach = 0.12;
     Parapenting::Physics::SuspensionSolution LineSolution;
     // Where the solver puts the cascade junctions, as a shape the render path
     // can apply to the deformed canopy: how far up the riser-to-attachment run

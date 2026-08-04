@@ -1107,8 +1107,10 @@ change in the coefficient, its period does not move at all — 1.86 s at every
 ratio — and it is still firmly damped at 0.10 where the aircraft certainly
 leaves.
 
-Something does cross, between **0.28 and 0.25**, and it is the **16 s phugoid**
-arriving by its damping. Its period tracks 23.9 → 14.0 s as the ratio falls and
+Something does cross, and it is the **16 s phugoid** arriving by its damping.
+The eigenvalues put the crossing between **0.28 and 0.25**; §39 measured it in
+the time domain at **0.35 to 0.30** and showed why the eigenvalue is the one to
+distrust here. The mode and the mechanism below stand; the interval is §39's. Its period tracks 23.9 → 14.0 s as the ratio falls and
 its real part goes through zero right at the documented boundary, at both
 transition times.
 
@@ -1157,6 +1159,65 @@ was taken at large amplitude on a wing already leaving, where a linearisation
 has no claim — so the two are not in contradiction, and they are also not
 reconciled.
 
+## 39. The corroborating instrument won, and it was the eigenvalue that lost
+
+§38 ended owing a trajectory: the phugoid's damping crossing zero was a claim
+made by eigenvalues alone, and the sweep's own flown column had failed to check
+it. `--phugoid` is that check built properly, and the diagnosis of the failure
+was specific enough to fix in three moves — **watch speed, not the link**,
+because a phugoid is a height-speed exchange the link barely participates in;
+**300 s, not 40**, because at 0.008/s the e-folding time alone is 125 s; and
+**discard the first 25 s**, after which the fast mode is down by 2¹¹ and the
+signal is the slow mode alone.
+
+That third move is the one worth keeping. Five instruments in §36 could not
+separate these two modes, and here the separation is free — because the *fast*
+mode is now the contaminant rather than the target. Waiting out a mode is
+trivial when you want the slow one and impossible when you want the fast one.
+Same signal, same overlap; the easy direction is the one nobody needed until
+now.
+
+**It works, and the period is what proves it.** The fitted period tracks the
+eigenvalue's to about 1% at every ratio with a clean fit (18.28 vs 18.56, 16.38
+vs 16.60, 15.82 vs 15.99), so both instruments are demonstrably watching the
+same mode. R² is 0.98–1.000 on the good rows, off 30-plus extrema, and halving
+the perturbation moves the rate from 0.0115 to 0.0116 with the period
+unchanged.
+
+**The rates disagree, and there is an outside measurement to break the tie.**
+At ratio 0.35 `pitch_axis_trace --slow-mode` measured this mode at 16.39 s and
+ζ 0.031 off 27 peaks of a 1200 s run, sharing no code with either instrument.
+The flown fit returns **16.38 s and ζ 0.0299** — 0.1% and 3%. The eigenvalue
+returns ζ 0.0540, high by three quarters.
+
+So **the eigenvalue's slow damping is biased toward stability**, exactly as
+§37's linearity check warned before any of this ran: it was the one number that
+moved with both T and step size, and the TODO already recorded that it brackets
+the trace from above throughout. A caveat that was written down honestly, one
+level early, turned out to name the number that would later be wrong. That is
+what the caveat was for.
+
+**The crossing moves: between ratio 0.35 and 0.30, not 0.28 and 0.25.** A third
+line agrees and it fits nothing — the own-trim table settles 0.35 at 410 s,
+fails to settle 0.30 in 420 s, and departs at 0.25. A marginally *growing*
+phugoid is precisely why 0.30 has no settled trim to find.
+
+**This explains the tuned coefficient instead of bounding it.** 0.35 is not a
+safety margin chosen above a departure; it is approximately the smallest value
+at which this wing's phugoid still damps at all, and the registry's `Tuned` 0.35
+sits on that edge. It also redirects what is left of item 11: the target of
+~0.06 from pilot and line drag cannot be reached by finding more *link* damping,
+because at 0.06 the phugoid is far past its sign change. The missing mechanism
+has to act on **speed stability** — the flat lift curve of §34 — not on the
+link.
+
+**Two rows are not evidence and are excluded in the output, not just here.** At
+0.20 the fit returns a 7.87 s period, half the phugoid, at R² 0.375 off 69
+extrema; at 0.25 R² is 0.495 and the period misses by 12%. Both are ratios where
+the motion stops being one small oscillation inside the window, which is the
+regime this fit has no claim on. The finding rests on 0.50 through 0.28, where
+R² is 0.89–1.000 and the periods match — and those rows contain the crossing.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1204,6 +1265,11 @@ reconciled.
 | mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
-| mode whose damping DOES cross | the 16 s phugoid | between ratio 0.28 and 0.25 - §38 |
+| mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |
+| where it crosses, FLOWN | ratio 0.35 to 0.30 | the number to use - §39 |
+| where it crosses, by eigenvalue | ratio 0.28 to 0.25 | biased stable; the eigenvalue loses - §39 |
 | phugoid period, ratio 0.90 to 0.10 | 23.9 s to 14.0 s | the frequency never goes imaginary |
 | lowest ratio with a trim at all | 0.30 | 0.25 departs at 348 s of its own settle |
+| slow mode at 0.35, flown | 16.38 s, zeta 0.0299 | against 16.39 / 0.031 from a 1200 s trace |
+| the same, by eigenvalue at T=0.25 | zeta 0.0540 | high by 3/4; §37's linearity check said so |
+| what `swingDampingRatio` 0.35 IS | the phugoid's stability edge | not a margin above one - §39 |

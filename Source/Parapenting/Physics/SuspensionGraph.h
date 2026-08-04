@@ -241,4 +241,27 @@ double TotalLineLengthM(const SuspensionGraph& graph);
 // Returns a large number where there is no attachment outboard of the station,
 // which is the outermost line - fabric there has nothing to catch on.
 double LineFoldGapM(const SuspensionGraph& graph, double spanFraction);
+
+// The brake fan's canopy attachment span fractions, ascending. This is the
+// authoritative list the trailing-edge deformation is built from; there is no
+// separate decorative station plan.
+std::vector<double> BrakeStationSpans(const SuspensionGraph& graph);
+
+// Spanwise reach of one brake station: half the mean gap between neighbours on
+// the same side. A denser fan therefore produces a finer trailing edge rather
+// than the same shape at a different resolution.
+double BrakeStationReach(const std::vector<double>& sortedStations);
+
+// Fraction of the achieved brake travel the trailing edge sees at this span
+// station. A brake fan pulls at its own attachments and the cloth between them
+// follows; applying full travel across the half-span makes the trailing edge
+// drop as one rigid flap and lets an inboard station pull the tip.
+//
+// Peak of a Gaussian per station rather than a sum, so a station reaches
+// exactly full travel and overlapping stations never exceed it. Stations on
+// the other side of the centreline are ignored: the two fans are independent.
+// With no stations the result is 1, which preserves whole-span behaviour
+// rather than silently flattening the wing.
+double BrakeStationInfluence(double spanFraction,
+    const std::vector<double>& stations, double reach);
 }

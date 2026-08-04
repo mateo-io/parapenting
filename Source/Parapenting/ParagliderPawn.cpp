@@ -216,7 +216,7 @@ void AParagliderPawn::BeginPlay()
         TintPart(Limb, FLinearColor(0.035f, 0.045f, 0.065f));
     TintPart(LeftBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
     TintPart(RightBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
-    if (PilotCharacter && PilotCharacter->GetSkeletalMeshAsset())
+    if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {
         // The poseable mannequin replaces only the body blockout. Hardware is
         // deliberately retained for Stage 3, where it becomes real controls.
@@ -1039,9 +1039,14 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 * FMath::Pow(AbsSpan, 1.65f)
             + static_cast<float>(SuspensionLoadPose.lineStretchCm);
         const float Drop = 255.0f * Collapse + 330.0f * Cravat;
+        // Snapshot time, not raw solver time: every other oscillator in the
+        // draw path is interpolated, and mixing the two makes the cosmetic
+        // motion stair-step at fixed-step boundaries while the geometry
+        // around it moves smoothly.
         const float Flutter = (1.0f - Pressure)
             * 24.0f * FMath::Sin(static_cast<float>(
-                SimulationTimeSeconds * 12.0 + Span01 * 9.0));
+                RenderRigSnapshot.simulationTimeSeconds * 12.0
+                + Span01 * 9.0));
         // Which riser this group hangs from. RiserGroup indexes the same
         // A/A'/B/C ordering the riser draw uses, so a main line starts exactly
         // where its riser ends; TensionGroup indexes the telemetry, which
@@ -1181,7 +1186,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             const float RotorFlutter = static_cast<float>(
                 bGroundLaunching ? 0.0 : Telemetry.rotorStrength)
                 * TipBlend * 15.0f * FMath::Sin(static_cast<float>(
-                    SimulationTimeSeconds * 11.0 + Span01 * 8.0));
+                    RenderRigSnapshot.simulationTimeSeconds * 11.0
+                    + Span01 * 8.0));
             FVector TrailingEdge = CanopyAttachmentLocalCm(
                 BrakeAttachment.spanFraction, BrakeAttachment.chordFraction);
             TrailingEdge =
@@ -1387,6 +1393,21 @@ FVector AParagliderPawn::BrakeHandLocalCm(bool bLeft) const
         FVector(Hand.x, Hand.y, Hand.z));
 }
 
+void AParagliderPawn::RefreshBrakeStationCache()
+{
+    BrakeStationSpans =
+        Parapenting::Physics::BrakeStationSpans(LineGraph);
+    BrakeStationReach =
+        Parapenting::Physics::BrakeStationReach(BrakeStationSpans);
+}
+
+float AParagliderPawn::BrakeStationInfluence(float SpanFraction) const
+{
+    return static_cast<float>(
+        Parapenting::Physics::BrakeStationInfluence(
+            SpanFraction, BrakeStationSpans, BrakeStationReach));
+}
+
 FVector AParagliderPawn::CanopyAttachmentLocalCm(
     double SpanFraction, double ChordFraction) const
 {
@@ -1426,7 +1447,7 @@ FVector AParagliderPawn::CanopyAttachmentLocalCm(
     const float Brake = static_cast<float>(RenderRigSnapshot.brakeTravel[
         bLeft ? 0 : 1]);
     const float Trailing = FMath::SmoothStep(0.68f, 1.0f, Chord01)
-        * Brake * 55.0f;
+        * Brake * 55.0f * BrakeStationInfluence(Span01);
     const float RotorFlutter = static_cast<float>(bGroundLaunching ? 0.0
         : T.rotorStrength) * TipBlend * 15.0f * FMath::Sin(
             static_cast<float>(RenderRigSnapshot.simulationTimeSeconds * 11.0
@@ -1634,7 +1655,7 @@ void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)
 void AParagliderPawn::UpdatePilotSkeleton(
     const Parapenting::Physics::PilotPose& Pose)
 {
-    if (!PilotCharacter || !PilotCharacter->GetSkeletalMeshAsset()) return;
+    if (!PilotCharacter || !PilotCharacter->GetSkinnedAsset()) return;
     const auto SetBone = [this](const TCHAR* Bone,
         const Parapenting::Physics::Vec3& Target)
     {
@@ -1996,8 +2017,9 @@ void AParagliderPawn::UpdateCanopyMesh()
         const float CollapseDrop = 255.0f * Collapse + 330.0f * Cravat;
         const float RotorFlutter = static_cast<float>(
             bGroundLaunching ? 0.0 : T.rotorStrength) * TipBlend
-            * 15.0f * FMath::Sin(
-                static_cast<float>(SimulationTimeSeconds * 11.0 + Span01 * 8.0));
+            * 15.0f * FMath::Sin(static_cast<float>(
+                RenderRigSnapshot.simulationTimeSeconds * 11.0
+                + Span01 * 8.0));
         for (int32 C = 0; C < ChordCount; ++C)
         {
             const float Chord01 = static_cast<float>(C) / (ChordCount - 1);
@@ -2016,7 +2038,7 @@ void AParagliderPawn::UpdateCanopyMesh()
             const float Brake = static_cast<float>(
                 RenderRigSnapshot.brakeTravel[Span01 < 0.0f ? 0 : 1]);
             const float TrailingEdge = FMath::SmoothStep(0.68f, 1.0f, Chord01)
-                * Brake * 55.0f;
+                * Brake * 55.0f * BrakeStationInfluence(Span01);
             const int32 Index = S * ChordCount + C;
             const FVector UpperVertex(
                 (0.48f - Chord01) * LoadedChord
@@ -2027,7 +2049,7 @@ void AParagliderPawn::UpdateCanopyMesh()
                 Arch + Camber - CollapseDrop - TrailingEdge + RotorFlutter
                     + static_cast<float>(LoadPose.rippleAmplitudeCm)
                         * TipBlend * FMath::Sin(static_cast<float>(
-                            SimulationTimeSeconds * 24.0
+                            RenderRigSnapshot.simulationTimeSeconds * 24.0
                             + Span01 * 18.0 + Chord01 * 3.0))
                     - Frontal * 125.0f
                     - static_cast<float>(
@@ -2250,6 +2272,9 @@ void AParagliderPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
     PlayerInputComponent->BindAction(
         TEXT("CloseFlightDeck"), IE_Pressed,
         this, &AParagliderPawn::CloseFlightDeck);
+    PlayerInputComponent->BindAction(
+        TEXT("TogglePhotoMode"), IE_Pressed,
+        this, &AParagliderPawn::TogglePhotoMode);
     PlayerInputComponent->BindAction(
         TEXT("NextScenario"), IE_Pressed, this, &AParagliderPawn::NextTrainingScenario);
     PlayerInputComponent->BindAction(
@@ -2835,6 +2860,23 @@ const char* AParagliderPawn::GetSiteWindAssessmentName() const
         GetSiteWindAssessment());
 }
 
+FString AParagliderPawn::GetScenicLandmarkText() const
+{
+    // Lake Thun's surveyed presentation centre. It is a visual landmark, not
+    // a navigation target or physics input; retain one coordinate contract so
+    // the HUD cannot point somewhere different from the actual water mesh.
+    constexpr double LakeThunX = 700.0;
+    constexpr double LakeThunY = 1450.0;
+    if (SelectedRouteIndex >= 8)
+        return TEXT("GRINDELWALD VALLEY");
+
+    const double DX = LakeThunX - State.positionWorldM.x;
+    const double DY = LakeThunY - State.positionWorldM.y;
+    const double DistanceM = FMath::Sqrt(DX * DX + DY * DY);
+    return FString::Printf(TEXT("LAKE THUN  %.1f km  %s"), DistanceM / 1000.0,
+        DY >= 0.0 ? TEXT("RIGHT") : TEXT("LEFT"));
+}
+
 const char* AParagliderPawn::GetLaunchHazardText() const
 {
     return Parapenting::Physics::GetRouteProfileByIndex(
@@ -3192,7 +3234,7 @@ void AParagliderPawn::DrawCanopyGeometryDebug()
                     + FVector(0.0f, 0.0f, 10.0f),
                 FString(NodeLabel), nullptr,
                 bCarabiner ? FColor(205, 205, 210) : RowColour(Node.row),
-                false, 0.0f, true, 0.8f);
+                0.0f, true, 0.8f);
         }
 
         DrawDebugString(World,
@@ -3256,6 +3298,7 @@ void AParagliderPawn::SolveSuspensionGraph()
     Input.rightBrake = AppliedControls.rightBrake;
     Input.weightShift = AppliedControls.weightShift;
     LineSolution = Parapenting::Physics::SolveSuspension(LineGraph, Input);
+    RefreshBrakeStationCache();
 
     // Reduce the solved network to a shape the line rendering can apply to the
     // canopy as it is actually drawn - deformed by collapse, cravat and load,
@@ -3571,6 +3614,19 @@ void AParagliderPawn::CloseFlightDeck()
 {
     bFlightDeckVisible = false;
     FlightDeckAutoCloseSeconds = 0.0f;
+    bPhotoMode = false;
+}
+
+void AParagliderPawn::TogglePhotoMode()
+{
+    bPhotoMode = !bPhotoMode;
+    // A photo shot should never be obscured by onboarding UI. The controls and
+    // deterministic camera response stay live, so the mode is safe in replay.
+    if (bPhotoMode)
+    {
+        bFlightDeckVisible = false;
+        FlightDeckAutoCloseSeconds = 0.0f;
+    }
 }
 
 void AParagliderPawn::CycleGraphicsProfile()

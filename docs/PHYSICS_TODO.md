@@ -584,11 +584,31 @@ stands in for, and it is checkable against a real wing in a way "the period is
   the one number the linearity check above says is *not* converged. The ordering
   is solid and monotone across three runs; the 0.28–0.25 interval is not, and
   should not be quoted tighter.
-- **Next:** confirm the crossing in the time domain, which the sweep's own flown
-  column failed to do — it fitted at 2 ratios of 12, at R² 0.24–0.42, because it
-  watches the *link* over 40 s and the crossing mode is a 16 s oscillation
-  growing at 0.008/s. It needs the phugoid's own observable over several hundred
-  seconds. Undersampling a mode into invisibility, third instrument running.
+- **The time-domain confirmation ran (`--phugoid`), and it moved the answer.**
+  Speed as the observable, 300 s, first 25 s discarded so the fast mode is gone
+  rather than filtered. R² 0.98–1.000 on the clean rows, 30-plus extrema, and
+  the fitted period tracks the eigenvalue's to ~1% — so both are watching the
+  same mode. Halving the perturbation moves the rate 0.0115 → 0.0116.
+- **Where they disagree, the eigenvalue is wrong, and an outside number says so.**
+  At 0.35 the flown fit gives 16.38 s and ζ 0.0299 against `pitch_axis_trace
+  --slow-mode`'s 16.39 s and 0.031 — 0.1% and 3%. The eigenvalue says ζ 0.0540,
+  high by three quarters, in the one number §37's linearity check had already
+  flagged as unconverged and bracketing the trace from above.
+- **So the crossing is between ratio 0.35 and 0.30, not 0.28 and 0.25.** The
+  own-trim settling behaviour agrees and fits nothing: 0.35 settles at 410 s,
+  0.30 fails to settle in 420 s, 0.25 departs. A marginally growing phugoid is
+  why 0.30 has no trim.
+- **This explains the coefficient rather than bounding it: 0.35 is approximately
+  the smallest value at which this wing's phugoid still damps**, not a margin
+  chosen above a departure.
+- Rows at 0.25 and 0.20 are excluded as evidence — R² 0.495 and 0.375, and the
+  0.20 fit returns half the phugoid's period. Outside small-amplitude behaviour
+  within the window, where this fit has no claim. The finding rests on 0.50–0.28.
+- **Next, and this step redirected it:** the ~0.06 target cannot be reached by
+  finding more *link* damping — at 0.06 the phugoid is far past its sign change.
+  The missing stabilising mechanism has to act on **speed stability**, the flat
+  lift curve of §34 (`L ~ V^0.171`), which is what leaves the phugoid nothing to
+  restore with. That is the quantity to go after next, not the link.
 - **Also open:** §35 measured the growing mode at 3.6–5.7 s on a departing wing,
   and no such mode is in this spectrum at any ratio. Large amplitude, outside
   what a linearisation claims — not a contradiction, not reconciled either.

@@ -542,7 +542,11 @@ void AParapentingGameMode::BeginPlay()
         {
             const int32 A = Edge + 1;
             const int32 B = ((Edge + 1) % ShoreM.Num()) + 1;
-            LakeTriangles.Append({0, B, A});
+            // Procedural terrain uses clockwise front faces in Unreal's
+            // coordinate convention. The old (0,B,A) order pointed this
+            // single-sided opaque surface down, so Lake Thun was culled when
+            // viewed from the air despite having valid vertices/material.
+            LakeTriangles.Append({0, A, B});
         }
         LakeSurface->CreateMeshSection(
             0, LakeVertices, LakeTriangles, LakeNormals, LakeUVs,
@@ -552,6 +556,10 @@ void AParapentingGameMode::BeginPlay()
         {
             UMaterialInstanceDynamic* LakeMaterial =
                 UMaterialInstanceDynamic::Create(AuthoredWater, Lake);
+            LakeMaterial->SetVectorParameterValue(
+                TEXT("DeepWaterColor"), FLinearColor(0.004f, 0.070f, 0.105f));
+            LakeMaterial->SetVectorParameterValue(
+                TEXT("GrazingWaterColor"), FLinearColor(0.035f, 0.30f, 0.38f));
             LakeSurface->SetMaterial(0, LakeMaterial);
             WaterMaterialInstances.Add(LakeMaterial);
         }

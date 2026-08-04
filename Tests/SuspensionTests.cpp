@@ -9,7 +9,9 @@
 #include "SuspensionGraph.h"
 #include "TensionCableSolver.h"
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 #include <cstdio>
 #include <string>
 
@@ -373,6 +375,56 @@ int main(int argc, char** argv)
               "a missing file fails to load");
         Check(untouched.brakeTravelM == 1.234,
               "a failed load leaves the spec untouched");
+    }
+
+    // -- brake station influence ------------------------------------------
+    {
+        const std::vector<double> stations = BrakeStationSpans(graph);
+        Check(!stations.empty(), "the graph publishes brake stations");
+        Check(std::is_sorted(stations.begin(), stations.end()),
+              "brake stations come back ascending");
+        const double reach = BrakeStationReach(stations);
+        Check(reach > 0.0 && reach <= 0.35, "station reach is bounded");
+
+        // A station pulls its own trailing edge at full travel.
+        for (const double station : stations)
+            Check(std::fabs(BrakeStationInfluence(station, stations, reach)
+                      - 1.0) < 1e-9,
+                  "a brake station sees the whole travel");
+
+        // Never more than the travel that was actually pulled, anywhere.
+        double peak = 0.0;
+        for (int step = -200; step <= 200; ++step)
+            peak = std::max(peak,
+                BrakeStationInfluence(step / 200.0, stations, reach));
+        Check(peak <= 1.0 + 1e-12, "influence never exceeds the travel");
+
+        // The point of the change: one side's brake must not pull the other
+        // side's trailing edge.
+        std::vector<double> leftOnly;
+        for (const double station : stations)
+            if (station < 0.0) leftOnly.push_back(station);
+        Check(!leftOnly.empty(), "the left fan has stations");
+        for (int step = 1; step <= 200; ++step)
+            Check(BrakeStationInfluence(step / 200.0, leftOnly, reach) == 0.0,
+                  "a left-side fan leaves the right trailing edge alone");
+
+        // And it must fall off between stations rather than acting as one
+        // rigid flap across the half span.
+        const double outermost = stations.front();
+        Check(BrakeStationInfluence(outermost - 4.0 * reach, stations, reach)
+                  < 0.05,
+              "influence decays away from the outermost station");
+        Check(BrakeStationInfluence(0.0, {-0.9}, 0.1) < 0.05,
+              "an outboard station does not pull the centre");
+
+        // Degenerate inputs keep the old whole-span behaviour rather than
+        // silently flattening the wing.
+        Check(BrakeStationInfluence(0.3, {}, reach) == 1.0,
+              "no stations means undiminished travel");
+        Check(BrakeStationReach({}) > 0.0, "an empty fan still has a reach");
+        Check(BrakeStationReach({-0.5, 0.5}) > 0.0,
+              "a centreline-only gap does not collapse the reach");
     }
 
     if (Failures == 0) std::printf("All suspension checks passed.\n");

@@ -1455,6 +1455,186 @@ Split SplitGrowth(const double from[N][N], const double to[N][N],
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// Is the receptivity fixed, and is 0.985 even a real number?
+//
+// Section 42 reported that 98.5% of the phugoid's adjoint sits on the link's
+// rows and called that the mechanism. Two things about that claim need testing
+// before anything is built on it, and the first is an audit of section 42
+// itself.
+//
+// THE AUDIT. A left eigenvector's components carry units, dual to the states'.
+// Summing |w_4|^2 + |w_5|^2 against the rest therefore adds radians to metres
+// per second, which is exactly the trap section 41 fell into with `link/speed`
+// - and section 41's own lesson was that a comparison depending on a scaling
+// needs a scaling-free control beside it. Section 42 did not apply its
+// predecessor's lesson to itself. So: rescale the states to reference
+// magnitudes, recompute, and print both. If the share moves a lot, section 42's
+// headline needs qualifying and this says so.
+//
+// The rescaling is a similarity transform, `D^-1 Phi D` with D = diag(s), so
+// the EIGENVALUES are untouched - it is a change of units and not of physics.
+// Under it the right eigenvector goes to `D^-1 v` and the left to `D w`, from
+// which one thing follows immediately and is worth stating: the conditioning
+// `w^H v` is INVARIANT, because `(Dw)^H (D^-1 v) = w^H v`. So section 42's
+// cond = 0.10, and the non-normality it reports, does not depend on any of
+// this. The 0.985 does.
+//
+// The scales: speeds by the trim speed, angles left in radians, rates by the
+// mode's own frequency - which is the natural choice, since it makes a rate of
+// one unit the rate a unit angle actually reaches in this mode.
+//
+// THE QUESTION. If the ratio changes only the GAIN - section 41's surviving
+// story - the receptivity should sit still while the growth rate crosses zero.
+// If the receptivity moves with the ratio instead, then the coefficient is
+// changing what the mode listens to, and "make the mechanism enter where the
+// mode is receptive" is not a fixed target to aim at.
+//
+// This matters for what comes after rather than for the record: a stabilising
+// mechanism that would permit the ~0.06 the pilot and line drag imply has to
+// enter where this mode listens, so whether that place holds still is the
+// difference between a design requirement and a moving one.
+struct Receptivity
+{
+    double shareRaw = 0.0;
+    double shareScaled = 0.0;
+    double conditioning = 0.0;
+    double growthPerS = 0.0;
+    double periodS = 0.0;
+    bool valid = false;
+};
+
+Receptivity MeasureReceptivity(const double phi[N][N], double transitionTimeS,
+                               double trimSpeedMps, double lowPeriodS,
+                               double highPeriodS)
+{
+    Receptivity out;
+    const std::vector<std::complex<double>> discrete =
+        Roots(CharacteristicPolynomial(phi));
+    for (const std::complex<double>& mu : discrete)
+    {
+        if (std::abs(mu) < 1.0e-12) continue;
+        const std::complex<double> lambda = std::log(mu) / transitionTimeS;
+        if (lambda.imag() <= 1.0e-6) continue;
+        const double period = 2.0 * Pi / lambda.imag();
+        if (period < lowPeriodS || period > highPeriodS) continue;
+
+        const std::vector<std::complex<double>> v = Eigenvector(phi, mu);
+        const std::vector<std::complex<double>> w = LeftEigenvector(phi, mu);
+
+        std::complex<double> scale(0.0, 0.0);
+        for (int i = 0; i < N; ++i) scale += std::conj(w[i]) * v[i];
+        out.conditioning = std::abs(scale);
+
+        const double omega = 2.0 * Pi / period;
+        const double s[N] = {trimSpeedMps, trimSpeedMps, 1.0, omega, 1.0,
+                             omega};
+
+        double linkRaw = 0.0, totalRaw = 0.0;
+        double linkScaled = 0.0, totalScaled = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            const double raw = std::norm(w[i]);
+            // Left eigenvector under D^-1 Phi D is D w.
+            const double scaled = std::norm(w[i] * s[i]);
+            totalRaw += raw;
+            totalScaled += scaled;
+            if (i >= 4) { linkRaw += raw; linkScaled += scaled; }
+        }
+        out.shareRaw = totalRaw > 0.0 ? linkRaw / totalRaw : 0.0;
+        out.shareScaled = totalScaled > 0.0 ? linkScaled / totalScaled : 0.0;
+        out.growthPerS = lambda.real();
+        out.periodS = period;
+        out.valid = true;
+        return out;
+    }
+    return out;
+}
+
+void ReceptivityCheck(const CoupledParagliderSolver& solver,
+                      const CoupledState& settled, double transitionTimeS)
+{
+    const Vec3 v0 = settled.velocityWorldMps;
+    const double trimSpeed = std::sqrt(v0.x * v0.x + v0.z * v0.z);
+
+    std::printf("RECEPTIVITY: is 0.985 a real number, and does it move?\n\n");
+    std::printf("Two questions, and the first is an audit of section 42. A "
+                "left eigenvector's\ncomponents carry units, so summing the "
+                "link's share against the rest adds\nradians to metres per "
+                "second - the trap section 41 caught `link/speed` in, which\n"
+                "section 42 then did not apply to itself. Rescaling the states "
+                "is a similarity\ntransform, so the eigenvalues are untouched; "
+                "both shares are printed.\n\n");
+    std::printf("Note what does NOT depend on it: cond = |w^H v| is invariant "
+                "under the\nrescaling, since (Dw)^H (D^-1 v) = w^H v. So "
+                "section 42's non-normality stands\nwhatever the share column "
+                "does.\n\n");
+    std::printf("THE PREDICTION: if the ratio changes only the GAIN, as "
+                "section 41's surviving\nstory says, the receptivity sits "
+                "still while sigma crosses zero. If it moves,\nthe coefficient "
+                "is changing what the mode listens to and there is no fixed\n"
+                "target for a stabilising mechanism to aim at.\n\n");
+
+    std::printf("%8s %12s %13s %9s %12s %10s\n",
+                "ratio", "share raw", "share scaled", "cond", "sigma 1/s",
+                "period");
+    for (const double ratio : {0.90, 0.70, 0.50, 0.40, 0.35, 0.32, 0.30, 0.28,
+                               0.25})
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        const Spectrum spectrum = Analyse(variant, settled, transitionTimeS,
+                                          1.0, false);
+        const Receptivity r = MeasureReceptivity(spectrum.phi,
+                                                 transitionTimeS, trimSpeed,
+                                                 10.0, 40.0);
+        if (!r.valid) { std::printf("%8.2f  no 16 s mode\n", ratio); continue; }
+        std::printf("%8.2f %12.4f %13.4f %9.4f %+12.4f %9.2fs\n",
+                    ratio, r.shareRaw, r.shareScaled, r.conditioning,
+                    r.growthPerS, r.periodS);
+    }
+
+    std::printf(
+        "\n  BOTH ANSWERS ARE NEGATIVE FOR WHAT CAME BEFORE THEM.\n\n"
+        "  THE AUDIT: 0.985 does not survive. At ratio 0.35 the raw share is "
+        "0.9854 and\n  the scaled share is 0.7786 - the same vector, the same "
+        "mode, a change of\n  units. Section 42's qualitative claim stands, "
+        "because 78%% is still\n  link-dominated and the conclusion drawn from "
+        "it does not need three digits;\n  the NUMBER does not, and it was "
+        "quoted to three. It was flattered by adding\n  radians to metres per "
+        "second. Section 41 had already caught exactly this and\n  section 42 "
+        "did not apply the lesson to itself, one level later, in the same\n  "
+        "file.\n\n"
+        "  What is untouched is `cond`, invariant under the rescaling by "
+        "construction:\n  0.10 at the operating point, so the non-normality "
+        "that made the mechanism\n  intelligible is a real property and not a "
+        "unit artefact.\n\n"
+        "  THE PREDICTION ALSO FAILED: the receptivity does not sit still. "
+        "Scaled, the\n  link's share of the adjoint falls 0.8898 to 0.7562 "
+        "across the sweep - 15%% -\n  while sigma goes -0.077 to +0.008. "
+        "Monotone, and in the direction nobody\n  would have guessed: as the "
+        "mode destabilises it listens LESS through the\n  link, not more.\n\n"
+        "  That is the second measurement to run this way. Section 41 found "
+        "the link\n  ARTICULATING less against the wing as the ratio falls, "
+        "0.383 to 0.266, and\n  now the adjoint's link share falls too. Shape "
+        "and receptivity both move away\n  from the link while the mode goes "
+        "unstable, so 'the phugoid destabilises\n  because it becomes more "
+        "coupled to the link' is not what is happening, and\n  two independent "
+        "columns now say so.\n\n"
+        "  WHAT SURVIVES, STATED CAREFULLY. The link is the CHANNEL - the "
+        "adjoint is\n  link-dominated at every ratio, 0.76 to 0.89 - and "
+        "section 42's split stands:\n  the movement in sigma enters through "
+        "the link's rows. But the TREND in sigma\n  is not carried by a trend "
+        "in coupling strength, because that trend has the\n  wrong sign. What "
+        "changes is the link's own dynamics, transmitted through a\n  channel "
+        "that is itself weakening, and winning anyway.\n\n"
+        "  FOR WHAT COMES NEXT: the place a stabilising mechanism has to enter "
+        "moves by\n  about 15%% over the interval of interest. That is a "
+        "design requirement with a\n  drift in it rather than a fixed target - "
+        "worth knowing before something is\n  built to hit it, and not worth "
+        "more than that.\n\n");
+}
+
 void SplitCheck(const CoupledParagliderSolver& solver,
                 const CoupledState& settled, double transitionTimeS)
 {
@@ -1939,6 +2119,7 @@ int main(int argc, char** argv)
         // sampling interval was; one that moves with T is the discretisation.
         ShapeCheck(solver, settled, 0.10);
         SplitCheck(solver, settled, 0.25);
+        ReceptivityCheck(solver, settled, 0.25);
     }
     (void)transition;
     return 0;

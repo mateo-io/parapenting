@@ -1377,6 +1377,55 @@ ratio worth quoting. And link→wing contributing 0.5% says only that the link's
 influence *on* the wing is not what changes; it does not say that influence is
 small, which is a different measurement and was not made.
 
+## 43. The lesson from two levels ago, not applied to the level in between
+
+§42 reported that 98.5% of the phugoid's adjoint sits on the link's rows. Two
+things needed testing before anything was built on that, and the first was an
+audit of §42 itself.
+
+**The audit: 0.985 does not survive a change of units.** A left eigenvector's
+components carry units dual to the states', so summing |w₄|²+|w₅|² against the
+rest adds radians to metres per second. Rescaling the states is a similarity
+transform — the eigenvalues are untouched, it is a change of units and not of
+physics — and under it the share at ratio 0.35 goes **0.9854 → 0.7786**.
+
+§42's qualitative claim stands: 78% is still link-dominated, and nothing that
+was concluded from it needs three digits. **The number does not stand, and it
+was quoted to three.** §41's entire lesson was that a comparison depending on a
+scaling needs a scaling-free control beside it — and §42 failed to apply it to
+itself, one level later, in the same file. Knowing a lesson and applying it to
+the thing in front of you are different acts, and the gap between them is one
+level wide here.
+
+What *is* untouched is the conditioning: `(Dw)^H(D⁻¹v) = w^H v`, invariant by
+construction. **cond = 0.10 at the operating point**, so the non-normality that
+made the mechanism intelligible in the first place is a real property and not a
+unit artefact. The part of §42 that mattered is the part that was safe.
+
+**The prediction also failed: the receptivity does not sit still.** Scaled, the
+link's share of the adjoint falls **0.8898 → 0.7562** across the sweep, 15%,
+while σ goes −0.077 to +0.008. Monotone, and in the direction nobody would have
+guessed: **as the mode destabilises it listens *less* through the link.**
+
+That is now the second measurement to run this way. §41 found the link
+articulating *less* against the wing as the ratio falls (0.383 → 0.266); now the
+adjoint's link share falls too. Shape and receptivity both move away from the
+link while the mode goes unstable. So *"the phugoid destabilises because it
+becomes more coupled to the link"* is not what is happening, and two independent
+columns say so.
+
+**What survives, stated carefully.** The link is the *channel* — the adjoint is
+link-dominated at every ratio, 0.76 to 0.89 — and §42's split stands: the
+movement in σ enters through the link's rows. But the *trend* in σ is not
+carried by a trend in coupling strength, because that trend has the wrong sign.
+What changes is the link's own dynamics, transmitted through a channel that is
+itself weakening, and winning anyway.
+
+For what comes next: the place a stabilising mechanism must enter drifts about
+15% over the interval of interest. A design requirement with a drift in it
+rather than a fixed target — worth knowing before something is built to hit it,
+and not worth more than that.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1438,6 +1487,7 @@ small, which is a different measurement and was not made.
 | link/attitude articulation, fast vs slow | 1.07 vs 0.29 | the fast mode IS the pendulum - §41 |
 | link-to-surge phase in the 16 s mode | -107 to -109 deg | constant across the sign change - §41 |
 | link/speed in the 16 s mode, 0.90 to 0.25 | 0.319 to 0.510 | amplitude moves where phase does not |
-| phugoid adjoint on the link's rows | 0.985 | it listens through the link - §42 |
+| phugoid adjoint on the link's rows | 0.78 scaled (0.985 raw) | link-dominated; the raw figure was unit-flattered - §43 |
+| the same, ratio 0.90 to 0.25 | 0.89 falling to 0.76 | it listens LESS as it destabilises - §43 |
 | phugoid mode conditioning, \|w^H v\| | 0.10 | non-normal: looks unlike what it listens to |
 | share of d(sigma) entering rows 4-5 | 99% | near-tautological; the coefficient lives there |

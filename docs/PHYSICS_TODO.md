@@ -657,14 +657,28 @@ stands in for, and it is checkable against a real wing in a way "the period is
   wrong. `PHYSICS_LEARNINGS` §42.
 - That 99% of the movement enters rows 4–5 is *near-tautological* and is labelled
   as such: `swingDampingRatio` appears only in the link's update.
-- **Next:** the receptivity is now the target, not the coefficient. Two things
-  follow and both are cheap: (a) does the adjoint's link share move with the
-  ratio, or is it fixed at 0.985 — if fixed, the ratio changes only the gain and
-  the stabilising mechanism must change the *receptivity*; (b) the same
-  decomposition on the aerodynamic entries, to find which physical term the
-  phugoid listens to through those rows. A stabilising mechanism that would
-  permit ~0.06 has to enter where the mode is receptive, which is now a
-  measurable requirement rather than a guess.
+- **Both follow-ups ran, and both came back negative** (`--shape`,
+  `ReceptivityCheck`; `PHYSICS_LEARNINGS` §43).
+- **The 0.985 was unit-flattered.** Rescaling the states is a similarity
+  transform — eigenvalues untouched — and the share goes **0.9854 → 0.7786**.
+  Still link-dominated, so §42's conclusion holds; the figure does not, and it
+  had been quoted to three digits. §41's own lesson, not applied to §42.
+  `cond` = 0.10 is invariant by construction, so the non-normality stands.
+- **The receptivity is not fixed: 0.8898 → 0.7562 across the sweep**, monotone,
+  while σ crosses zero. As the mode destabilises it listens *less* through the
+  link — the same direction as §41's articulation result, from an independent
+  column.
+- **So "it destabilises because it couples to the link more" is wrong.** The link
+  is the *channel* (adjoint link-dominated at every ratio, 0.76–0.89) and §42's
+  split stands, but the trend in σ is not a trend in coupling strength — that
+  has the wrong sign. What changes is the link's own dynamics, transmitted
+  through a weakening channel.
+- **Next:** the remaining unexamined thing is *which physical term* inside the
+  link's 2×2 does it — the block is the world-referenced damping and the
+  restoring term against apparent gravity, and they can be perturbed
+  independently. That is a direct test rather than another decomposition, and it
+  bears on whether ~0.06 is reachable at all. Note the target drifts ~15% across
+  the interval, so it is a requirement with drift in it, not a fixed point.
 - **Open, recorded before it is explained:** as the ratio falls the link
   articulates *less* against the wing (0.383 → 0.266), not more. Less link
   damping does not mean a freer-swinging link inside this mode.

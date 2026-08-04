@@ -1264,6 +1264,61 @@ damping formula — the half this run shows is anti-correlated with the truth ov
 the very parameter in question. The conclusion inherited the error of its
 premise. The quantity to go after is the pendulum–phugoid coupling itself.
 
+## 41. A control that cannot fail decidably is not a control
+
+§40 put the mechanism in the pendulum–phugoid coupling. Coupling is a property
+of the mode *shape*, and the shapes were already in the transition matrix the
+eigenvalues came from — so this cost no new flying.
+
+**The control failed, and it failed undecidably.** It was stated in advance: the
+1.86 s mode is the pendulum, so it must come back link-dominated, and the 16 s
+mode speed-dominated. It did not — link/speed 0.42 for the fast mode against
+0.46 for the slow. But *"this code is broken"* and *"my expectation about the
+number was wrong"* both predict that, and the column as written could not
+separate them. **A control has to be able to fail in a way that names what
+failed.**
+
+The fix was two more columns rather than a reinterpretation of the first:
+
+- `residual` = ‖(Φ − μI)v‖/‖v‖, the arithmetic's own verdict with no physics in
+  it. It comes back **1e-16 to 1e-12**. The eigenvectors are exact; the code was
+  never the problem.
+- `articulation` = |swing − attitude| / |attitude|, both radians, so there is no
+  scaling choice to argue about. **Fast 1.07, slow 0.29.** The control passes on
+  the scaling-free measure: the fast mode articulates the link against the wing
+  nearly four times as hard.
+
+So `link/speed` was the wrong instrument, not a wrong answer — surge is not a
+phugoid-only coordinate, because both modes move the canopy's velocity. The
+original column is kept, and kept honest, by printing what it did.
+
+**The real prediction also failed: the phase does not move.** It sits between
+−107.4° and −109.3° across the whole sweep — 1.9° — while σ goes −0.077 to
++0.008 and changes sign. At T = 0.10 it is −106.4° to −108.2°: the same span in
+the same place, so this is the aircraft and not the discretisation.
+
+**And the prediction was badly posed, which is the more useful half.** It
+treated phase as the only way a coupling can change the energy it moves. Work
+per cycle goes as amplitude × sin(phase), and the amplitude is *not* fixed —
+link/speed rises monotonically 0.319 → 0.510 over the same sweep, 60%, while the
+phase holds. So what is refuted is the **lag** version of the coupling
+hypothesis, and a **gain** version is left standing.
+
+That distinction is worth the run, because the lag version is the one the solver
+itself blames: the link is damped against the world, and the comment on that
+line calls the tracking lag "a cost paid knowingly". It was the natural suspect,
+the phase column is exactly where it would have shown, and it does not show.
+
+**Not established:** the gain story was not predicted in advance and is not
+claimed. It is consistent with one column, which is precisely the trap §40 caught
+§34 in. The test it needs is the **energy integral** — the work the link term
+does on the phugoid over a cycle, evaluated on the eigenvector, a number whose
+*sign* is the answer, and computable from what is already built.
+
+**Recorded before it is explained:** as the ratio falls the link articulates
+*less* against the wing, 0.383 → 0.266, not more. Less link damping does not
+mean a link swinging more freely inside this mode. Nothing here explains that.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1322,3 +1377,6 @@ premise. The quantity to go after is the pendulum–phugoid coupling itself.
 | drag exponent d, ratio 0.50 to 0.28 | 0.281 rising to 0.459 | it never crosses zero - §40 |
 | zeta predicted by §34 over that sweep | 0.034 rising to 0.051 | flown zeta FALLS 0.160 to -0.017 |
 | §34's period prediction over the sweep | within 1-4% at every ratio | the frequency half still holds |
+| link/attitude articulation, fast vs slow | 1.07 vs 0.29 | the fast mode IS the pendulum - §41 |
+| link-to-surge phase in the 16 s mode | -107 to -109 deg | constant across the sign change - §41 |
+| link/speed in the 16 s mode, 0.90 to 0.25 | 0.319 to 0.510 | amplitude moves where phase does not |

@@ -631,6 +631,28 @@ stands in for, and it is checkable against a real wing in a way "the period is
   are the obvious next instrument — they are already computable from the
   transition matrix `--sweep` builds, and they would say how much link motion
   the 16 s mode actually carries and how that changes as the ratio falls.
+- **The eigenvectors ran (`--shape`), and they kill the lag story specifically.**
+  The link-to-surge phase in the 16 s mode is **constant within 1.9°** (−107.4 to
+  −109.3) across the whole sweep while σ crosses zero — and −106.4 to −108.2 at
+  T = 0.10, so it is the aircraft, not the discretisation. A tracking lag is
+  exactly what would have moved that phase, and it is the mechanism the solver's
+  own comment blames ("damped against the WORLD… a cost paid knowingly").
+- **The prediction was badly posed and the amplitude column says so.** Work per
+  cycle is amplitude × sin(phase); link/speed rises 0.319 → 0.510 (60%) over the
+  same sweep. So a **gain** version of the coupling survives — but it was not
+  predicted in advance and is not claimed, which is the §40 trap.
+- **Next:** the **energy integral** — the work the link term does on the phugoid
+  over a cycle, evaluated on the eigenvector. A number whose *sign* is the
+  answer, computable from what is already built, and it can fail cleanly.
+- **Open, recorded before it is explained:** as the ratio falls the link
+  articulates *less* against the wing (0.383 → 0.266), not more. Less link
+  damping does not mean a freer-swinging link inside this mode.
+- **Method note (`PHYSICS_LEARNINGS` §41):** this level's stated control failed
+  *undecidably* — "the code is broken" and "my expectation was wrong" both
+  predicted the observed number. It was fixed by adding a physics-free residual
+  (1e-16 to 1e-12: eigenvectors exact) and a scaling-free articulation ratio
+  (fast 1.07, slow 0.29: control passes), not by reinterpreting the number after
+  seeing it.
 - **Also open:** §35 measured the growing mode at 3.6–5.7 s on a departing wing,
   and no such mode is in this spectrum at any ratio. Large amplitude, outside
   what a linearisation claims — not a contradiction, not reconciled either.

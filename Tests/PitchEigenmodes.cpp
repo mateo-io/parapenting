@@ -1177,6 +1177,281 @@ void ExponentCheck(const CoupledParagliderSolver& solver,
         "quantity to go after is the pendulum-phugoid coupling itself.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The eigenVECTORS, which have been sitting in the transition matrix all along.
+//
+// Section 40 left the mechanism in one place: the ratio's effect on the
+// phugoid's damping is essentially absent from the two-state theory, and the
+// link is the state that theory does not have. That makes the pendulum-phugoid
+// coupling the suspect, and the coupling is a property of the MODE SHAPE, which
+// costs no new runs - the same matrix whose eigenvalues gave the periods gives
+// the eigenvectors, and a discrete-time eigenvector is the continuous one
+// unchanged, so there is nothing to convert.
+//
+// AMPLITUDE IS NOT THE MEASUREMENT. A pilot hanging under a wing that is
+// accelerating along its path will lean whether or not anything interesting is
+// happening - that is the pendulum tracking apparent gravity, which sections 34
+// and 35 already measured as dA/dV. A nonzero link component in the phugoid is
+// therefore expected and proves nothing.
+//
+// PHASE is the measurement. The solver damps the link against the WORLD, and
+// its own comment calls the resulting tracking lag "a cost paid knowingly". A
+// lag inside a feedback loop is the textbook way to turn a restoring term into
+// a driving one: what decides whether the link's motion removes energy from the
+// phugoid or feeds it is WHEN the lean happens relative to the speed
+// oscillation, not how big it is. So the number below is the phase of the link
+// swing relative to surge in the 16 s mode, and the prediction is that it moves
+// systematically with the ratio and that the damping follows it.
+//
+// THE CONTROL, and it can fail: the 1.86 s mode is the pendulum and the 16 s
+// mode is the phugoid. If this code is right, the fast mode must come back
+// LINK-dominated and the slow mode SPEED-dominated. If it does not, the
+// eigenvectors are wrong and the phase column means nothing. That check is
+// printed first and costs nothing.
+//
+// The two states are compared after scaling, because they have different units
+// and an unscaled comparison would be a statement about metres and radians
+// rather than about the aircraft: surge is divided by the trim speed, giving a
+// fractional speed change, and the link angle is left in radians. So the
+// amplitude column reads "radians of link lean per unit fractional speed
+// change". The scaling is stated because the number depends on it.
+std::vector<std::complex<double>> Eigenvector(const double a[N][N],
+                                              std::complex<double> mu)
+{
+    // Inverse iteration. (A - mu I) is singular by construction, which is the
+    // point: a solve against it amplifies the eigendirection enormously. The
+    // shift keeps the arithmetic finite without moving the answer.
+    const std::complex<double> shift(1.0e-9, 1.0e-9);
+    std::vector<std::complex<double>> v(N, std::complex<double>(1.0, 0.0));
+    for (int iteration = 0; iteration < 4; ++iteration)
+    {
+        std::complex<double> m[N][N + 1];
+        for (int i = 0; i < N; ++i)
+        {
+            for (int j = 0; j < N; ++j)
+                m[i][j] = std::complex<double>(a[i][j], 0.0)
+                    - ((i == j) ? mu + shift : std::complex<double>(0.0, 0.0));
+            m[i][N] = v[i];
+        }
+        // Gaussian elimination, partial pivoting on magnitude.
+        for (int column = 0; column < N; ++column)
+        {
+            int pivot = column;
+            for (int row = column + 1; row < N; ++row)
+                if (std::abs(m[row][column]) > std::abs(m[pivot][column]))
+                    pivot = row;
+            if (std::abs(m[pivot][column]) < 1.0e-300) continue;
+            if (pivot != column)
+                for (int j = column; j <= N; ++j)
+                    std::swap(m[column][j], m[pivot][j]);
+            for (int row = column + 1; row < N; ++row)
+            {
+                const std::complex<double> factor =
+                    m[row][column] / m[column][column];
+                for (int j = column; j <= N; ++j)
+                    m[row][j] -= factor * m[column][j];
+            }
+        }
+        for (int row = N - 1; row >= 0; --row)
+        {
+            std::complex<double> sum = m[row][N];
+            for (int j = row + 1; j < N; ++j) sum -= m[row][j] * v[j];
+            v[row] = std::abs(m[row][row]) > 1.0e-300
+                ? sum / m[row][row] : std::complex<double>(0.0, 0.0);
+        }
+        double largest = 0.0;
+        for (int i = 0; i < N; ++i) largest = std::max(largest, std::abs(v[i]));
+        if (largest <= 0.0) break;
+        for (int i = 0; i < N; ++i) v[i] /= largest;
+    }
+    return v;
+}
+
+struct Shape
+{
+    double linkPerSpeed = 0.0;     // rad of lean per unit fractional speed
+    double phaseDeg = 0.0;         // link swing relative to surge
+    // How much the link ARTICULATES against the wing, rather than riding with
+    // it: |swing - attitude| over |attitude|, both in radians, so there is no
+    // scaling choice in it at all. Added after the first control failed - see
+    // the note in `ShapeCheck`. This is what "the pendulum mode" means
+    // physically, and unlike link/speed it cannot be argued about by picking a
+    // different normalisation.
+    double articulation = 0.0;
+    // ||(Phi - mu I) v|| / ||v||. The arithmetic's own answer for whether the
+    // vector really is an eigenvector, independent of any physical
+    // expectation. This is the check that can tell a broken solve from a
+    // wrong prediction, which the control on its own could not.
+    double residual = 0.0;
+    double periodS = 0.0;
+    double growthPerS = 0.0;
+    bool valid = false;
+};
+
+Shape ShapeOf(const Spectrum& spectrum, const double phi[N][N],
+              double transitionTimeS, double trimSpeedMps,
+              double lowPeriodS, double highPeriodS)
+{
+    Shape out;
+    // Re-derive the discrete eigenvalue for the mode in the wanted band.
+    const std::vector<double> polynomial = CharacteristicPolynomial(phi);
+    const std::vector<std::complex<double>> discrete = Roots(polynomial);
+    for (const std::complex<double>& mu : discrete)
+    {
+        if (std::abs(mu) < 1.0e-12) continue;
+        const std::complex<double> lambda = std::log(mu) / transitionTimeS;
+        if (std::fabs(lambda.imag()) < 1.0e-6) continue;
+        const double period = 2.0 * Pi / std::fabs(lambda.imag());
+        if (period < lowPeriodS || period > highPeriodS) continue;
+        // One of the conjugate pair is enough; take the one with positive
+        // imaginary part so the phase sign means the same thing every time.
+        if (lambda.imag() < 0.0) continue;
+        const std::vector<std::complex<double>> v = Eigenvector(phi, mu);
+        const std::complex<double> surge = v[0] / trimSpeedMps;
+        const std::complex<double> swing = v[4];
+        if (std::abs(surge) < 1.0e-300) continue;
+        out.linkPerSpeed = std::abs(swing) / std::abs(surge);
+        out.phaseDeg = std::arg(swing / surge) * 180.0 / Pi;
+        if (std::abs(v[2]) > 1.0e-300)
+            out.articulation = std::abs(v[4] - v[2]) / std::abs(v[2]);
+        double largest = 0.0, worst = 0.0;
+        for (int i = 0; i < N; ++i) largest = std::max(largest, std::abs(v[i]));
+        for (int i = 0; i < N; ++i)
+        {
+            std::complex<double> row(0.0, 0.0);
+            for (int j = 0; j < N; ++j) row += phi[i][j] * v[j];
+            worst = std::max(worst, std::abs(row - mu * v[i]));
+        }
+        out.residual = largest > 0.0 ? worst / largest : 0.0;
+        out.periodS = period;
+        out.growthPerS = lambda.real();
+        out.valid = true;
+        return out;
+    }
+    (void)spectrum;
+    return out;
+}
+
+void ShapeCheck(const CoupledParagliderSolver& solver,
+                const CoupledState& settled, double transitionTimeS)
+{
+    const Vec3 v0 = settled.velocityWorldMps;
+    const double trimSpeed = std::sqrt(v0.x * v0.x + v0.z * v0.z);
+
+    std::printf("MODE SHAPE: what the link is doing inside the 16 s mode, and "
+                "WHEN.\n\n");
+    std::printf("Section 40 put the mechanism in the pendulum-phugoid "
+                "coupling, which is a\nproperty of the mode SHAPE - and the "
+                "shapes are already in the matrix the\neigenvalues came from. "
+                "Amplitude alone proves nothing: a pilot under an\n"
+                "accelerating wing leans regardless, which is the apparent-"
+                "gravity tracking\nsections 34 and 35 measured. PHASE is the "
+                "measurement, because a lag inside\na feedback loop is what "
+                "turns a restoring term into a driving one.\n\n");
+    std::printf("THE PREDICTION: the link's phase against surge in the 16 s "
+                "mode moves\nsystematically as the ratio falls, and the "
+                "damping follows it. If the phase\nsits still while the "
+                "damping crosses zero, the coupling is not the mechanism\n"
+                "either and section 40's suspect is wrong too.\n\n");
+
+    std::printf("THE CONTROL FIRST: the 1.86 s mode is the pendulum and the "
+                "16 s mode is the\nphugoid, so the fast mode must come back "
+                "LINK-heavy and the slow mode\nSPEED-heavy. If it does not, "
+                "this code is broken and the table after it is\nnoise.\n\n");
+    std::printf("  The FIRST version of this control failed - fast 0.42 "
+                "against slow 0.46 on\n  link/speed, when the pendulum should "
+                "have dominated - and the failure was\n  not decidable as "
+                "written: a control that compares a scaled amplitude cannot\n"
+                "  tell a broken eigenvector from a wrong expectation about "
+                "it. Two columns\n  were added rather than reinterpreting the "
+                "number after seeing it. `residual`\n  is the arithmetic's own "
+                "verdict, ||(Phi - mu I)v|| / ||v||, which answers the\n  "
+                "first question with no physics in it; `articulation` is "
+                "|swing - attitude|\n  over |attitude|, both radians, which "
+                "answers the second with no scaling in\n  it. link/speed is "
+                "kept, and kept honest, by printing what it did.\n\n");
+    std::printf("%10s %12s %13s %13s %11s %10s\n",
+                "mode", "residual", "articulation", "link/speed", "phase deg",
+                "period");
+    {
+        CoupledParagliderSolver reference = solver;
+        reference.SetSwingDampingRatio(0.35);
+        const Spectrum spectrum = Analyse(reference, settled, transitionTimeS,
+                                          1.0, false);
+        const Shape fast = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                   trimSpeed, 1.0, 8.0);
+        const Shape slow = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                   trimSpeed, 10.0, 40.0);
+        if (fast.valid)
+            std::printf("%10s %12.2e %13.2f %13.2f %11.1f %9.2fs\n", "fast",
+                        fast.residual, fast.articulation, fast.linkPerSpeed,
+                        fast.phaseDeg, fast.periodS);
+        if (slow.valid)
+            std::printf("%10s %12.2e %13.2f %13.2f %11.1f %9.2fs\n", "slow",
+                        slow.residual, slow.articulation, slow.linkPerSpeed,
+                        slow.phaseDeg, slow.periodS);
+    }
+
+    std::printf("\n%8s %11s %13s %12s %11s %11s\n",
+                "ratio", "residual", "articulation", "phase deg", "sigma 1/s",
+                "period");
+    for (const double ratio : {0.90, 0.70, 0.50, 0.40, 0.35, 0.32, 0.30, 0.28,
+                               0.25})
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        const Spectrum spectrum = Analyse(variant, settled, transitionTimeS,
+                                          1.0, false);
+        const Shape slow = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                   trimSpeed, 10.0, 40.0);
+        if (!slow.valid) { std::printf("%8.2f  no 16 s mode\n", ratio);
+                           continue; }
+        std::printf("%8.2f %11.2e %13.3f %12.1f %+11.4f %10.2fs\n", ratio,
+                    slow.residual, slow.articulation, slow.phaseDeg,
+                    slow.growthPerS, slow.periodS);
+    }
+    std::printf("\n  `link/speed` is radians of link lean per unit fractional "
+                "speed change -\n  surge divided by the trim speed, the link "
+                "angle left in radians. The scaling\n  is stated because the "
+                "number depends on it; the PHASE does not.\n\n");
+
+    std::printf(
+        "  THE PREDICTION FAILED, AND IT WAS ALSO BADLY POSED. Both are worth "
+        "saying.\n\n"
+        "  Failed: the phase does not move. It sits between -107.4 and -109.3 "
+        "degrees\n  across the entire sweep - 1.9 degrees - while sigma goes "
+        "from -0.077 to +0.008\n  and changes sign. At T = 0.10 it is -106.4 "
+        "to -108.2, the same span in the\n  same place, so this is the "
+        "aircraft and not the sampling interval.\n\n"
+        "  Badly posed: the prediction treated phase as the only way a "
+        "coupling can\n  change how much energy it moves. It is not. Work per "
+        "cycle goes as amplitude\n  TIMES the sine of the phase, and the "
+        "amplitude is not fixed - link/speed\n  rises monotonically from 0.319 "
+        "to 0.510 over the same sweep, a 60%% change,\n  while the phase "
+        "holds. So the test refutes the LAG version of the coupling\n  "
+        "hypothesis and leaves a GAIN version standing.\n\n"
+        "  That distinction is worth the run, because the lag version is the "
+        "one the\n  solver itself blames: the link is damped against the "
+        "WORLD, and the comment\n  on that line calls the resulting tracking "
+        "lag 'a cost paid knowingly'. A lag\n  inside a feedback loop is the "
+        "textbook way to sustain an oscillation, it was\n  the natural "
+        "suspect, and the phase column is where it would have shown. It\n  "
+        "does not show.\n\n"
+        "  WHAT IS NOT ESTABLISHED: the gain story was not predicted in "
+        "advance and is\n  not claimed here. It is consistent with the "
+        "amplitude column and that is all\n  - the same trap section 40 caught "
+        "section 34 in, where a quantity that moved\n  the right way at one "
+        "point was mistaken for a mechanism. The test it needs is\n  the "
+        "energy integral: how much work the link term does on the phugoid over "
+        "a\n  cycle, evaluated on the eigenvector, which is computable from "
+        "what is already\n  here and is a number whose SIGN is the answer.\n\n"
+        "  ONE THING RUNS AGAINST INTUITION AND IS RECORDED BEFORE IT IS "
+        "EXPLAINED: as the\n  ratio falls the link ARTICULATES LESS against "
+        "the wing, 0.383 down to 0.266,\n  not more. Less link damping does "
+        "not mean a link swinging more freely inside\n  this mode. Nothing "
+        "here explains that yet.\n\n");
+}
+
 void OwnTrimSweep(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                   double transitionTimeS, int maximumSeconds)
 {
@@ -1298,6 +1573,7 @@ int main(int argc, char** argv)
     bool stepCheck = false;
     bool sweep = false;
     bool phugoid = false;
+    bool shape = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -1305,6 +1581,7 @@ int main(int argc, char** argv)
         if (argument == "--step") stepCheck = true;
         if (argument == "--sweep") sweep = true;
         if (argument == "--phugoid") phugoid = true;
+        if (argument == "--shape") shape = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -1385,6 +1662,15 @@ int main(int argc, char** argv)
         // window is what broke the last attempt at this.
         PhugoidCheck(solver, settled, 300.0);
         ExponentCheck(solver, settled, 300.0);
+    }
+
+    if (shape)
+    {
+        // Free: no new flying, the same matrix the eigenvalues came from.
+        ShapeCheck(solver, settled, 0.25);
+        // A phase that is a property of the aircraft does not care what the
+        // sampling interval was; one that moves with T is the discretisation.
+        ShapeCheck(solver, settled, 0.10);
     }
     (void)transition;
     return 0;

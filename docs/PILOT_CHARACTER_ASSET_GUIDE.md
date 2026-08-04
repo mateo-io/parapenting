@@ -82,34 +82,61 @@ for launch run, flare, landing run and fallen.
 
 ## Sourcing options
 
-I have not verified current licence terms for any of these — terms change, and
-the licence text at download time is the one that binds. Whichever route we
-take, the licence file must be committed alongside the asset (see below) and
-read before use.
+Terms below were checked in August 2026, but the licence text at download time
+is the one that binds. Whichever route we take, the licence must be committed
+alongside the asset (see below) and read before use.
 
-**Option A — UE Marketplace / Fab character.** Best fit: assets are already
-Mannequin-skeleton, UE-scaled and LODed, so integration is hours not days.
-Cost is typically low tens of dollars. Risk: seated deformation is rarely
-tested by the seller. Recommended if we find one with finger bones and a
-usable body type.
+**Option A — the Third Person feature pack. Free, zero download, already
+licensed.** `SKM_Manny` / `SKM_Quinn` ship with the engine and are covered by
+the licence you already hold. Correct scale, Mannequin skeleton, finger bones,
+LODs, and no procurement decision at all. This is the fastest way to make the
+blockout visible and it is what the code currently looks for.
 
-**Option B — Mixamo.** Free, auto-rigged, well-known. Risk: the Mixamo
-skeleton needs retargeting to UE5, hand quality varies, and the characters are
-stylised. Workable but it costs a retarget step and probably a hand fix.
+**Option B — MetaHuman Creator. Free, and the licence changed in our favour.**
+Since June 2025 MetaHuman is covered by the standard Unreal Engine licence:
+free under $1M revenue, usable in other engines, and MetaHuman characters may
+be sold on Fab. This removes the licence hesitation recorded in earlier
+versions of this document. Best quality-per-effort for a *real* pilot: full
+body and face rig, finger bones, LODs, clothing system. Costs a heavier
+pipeline and still needs the seated-deformation check like anything else.
 
-**Option C — Character Creator / MetaHuman-adjacent pipelines.** Highest
-quality and full control over body type and clothing, at the cost of a much
-heavier pipeline and, for MetaHuman specifically, licence terms that are worth
-reading closely before committing a shipped product to them.
+**Option C — Fab.** Large catalogue, often Mannequin-skeleton already. Two
+traps: sellers rarely test seated deformation, and "free" on Fab does not
+reliably mean "free for commercial use" — the licence tier is per listing and
+must be read, not assumed.
 
-**Option D — Commission or author in-house.** Only worth it if the harness and
-pilot need to be modelled as one garment system. Weeks, not days.
+**Option D — Mixamo. Free, but treat it as unmaintained.** Adobe has left it in
+maintenance mode with repeated outages through 2025–26 and support statements
+that it is no longer supported. Fine for a throwaway test, poor thing to make a
+shipped product depend on. Free alternatives in the same niche: Mesh2Motion
+(open source), AccuRIG, Blender Rigify for rigging your own mesh, Quaternius
+(CC0) for animation.
 
-My recommendation is **Option A, with Option B as the fallback** if nothing
-with proper hands turns up in budget. The plan's own position is that the
-character is not the hard part — the causal chain is — so buy the cheapest
-asset that passes the acceptance checklist and spend the effort on the harness
-and the IK.
+**Option E — commission or author in-house.** Only worth it if the harness and
+pilot must be modelled as one garment system. Weeks, not days.
+
+### Recommendation
+
+Option A now, Option B for the shipped pilot. A is free and unblocks the rig
+work today; B is free, higher quality than anything we would buy, and no longer
+carries the licence question that made it a last resort here before.
+
+The plan's own position is that the character is not the hard part — the causal
+chain is — so take the cheapest asset that passes the acceptance checklist and
+spend the effort on the harness and the IK. On current terms that means paying
+nothing.
+
+### Why not generate the character from code
+
+The harness is procedural because it is project-specific: no one sells a
+paragliding harness built around *our* carabiner separation. A human body is
+the opposite. A skinned humanoid could be emitted from code — a glTF is JSON
+plus a binary buffer, and joints, weights and a Mannequin-compatible hierarchy
+can all be written directly — but the result would be a smooth mannequin with
+hand-guessed weights, no LODs and no clothing. That is not better than the free
+engine mannequin, which is already rigged, weighted, LODed and licensed. Code
+generation here would cost real time to land something strictly worse than
+Option A, so it is not the recommended path.
 
 ## What I need from you
 

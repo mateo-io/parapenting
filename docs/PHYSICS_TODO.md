@@ -604,11 +604,33 @@ stands in for, and it is checkable against a real wing in a way "the period is
 - Rows at 0.25 and 0.20 are excluded as evidence — R² 0.495 and 0.375, and the
   0.20 fit returns half the phugoid's period. Outside small-amplitude behaviour
   within the window, where this fit has no claim. The finding rests on 0.50–0.28.
-- **Next, and this step redirected it:** the ~0.06 target cannot be reached by
-  finding more *link* damping — at 0.06 the phugoid is far past its sign change.
-  The missing stabilising mechanism has to act on **speed stability**, the flat
-  lift curve of §34 (`L ~ V^0.171`), which is what leaves the phugoid nothing to
-  restore with. That is the quantity to go after next, not the link.
+- ~~**Next:** the missing mechanism has to act on **speed stability**, the flat
+  lift curve of §34, not on the link.~~ **RETRACTED by the run below.** That was
+  inferred from §34's damping formula, which `--phugoid`'s exponent table then
+  showed is anti-correlated with the truth over exactly this parameter. The
+  conclusion inherited the error of its premise.
+- **§34's damping formula cannot contain this instability, and the test was one
+  line of algebra nobody had run:** `ζ = (d/2)/((L/D)√n)` is positive whenever n
+  and d are. The flown damping goes negative. So either d crosses zero or the
+  model is structurally incapable — and §35 had only ever tested n.
+- **d does not cross. It rises, 0.281 → 0.459 as the ratio falls**, so predicted
+  ζ *rises* 0.0341 → 0.0510 over the interval where flown ζ *falls* through zero,
+  0.1598 → −0.0167. Opposite directions.
+- **The control holds, which is what makes that conclusive.** The same fit's
+  period prediction lands within 1–4% at every ratio (18.07 vs 18.28, 16.44 vs
+  16.38, 16.02 vs 15.82, 16.52 vs 15.88). The exponents are real; only the
+  damping half of the model fails.
+- **§34 is right at a point and wrong as a function.** At ratio 0.35 it still
+  gives 0.0363 against 0.0299 flown — its original 0.034 against 0.031. A
+  point-fit had been serving as a mechanism for three levels.
+- **Next:** the dependence is not in the two-state theory at all — n and d move
+  25% and 60% while flown damping moves 0.18 and changes sign. What the ratio
+  changes is the **link**, the one state the two-state phugoid lacks. So the
+  target is the **pendulum–phugoid coupling**: the six-state eigenproblem
+  contains it and the two-state formula structurally cannot. The eigenvectors
+  are the obvious next instrument — they are already computable from the
+  transition matrix `--sweep` builds, and they would say how much link motion
+  the 16 s mode actually carries and how that changes as the ratio falls.
 - **Also open:** §35 measured the growing mode at 3.6–5.7 s on a departing wing,
   and no such mode is in this spectrum at any ratio. Large amplitude, outside
   what a linearisation claims — not a contradiction, not reconciled either.

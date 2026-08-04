@@ -968,6 +968,215 @@ void PhugoidCheck(const CoupledParagliderSolver& solver,
         "lift curve of section 34 - and not on the link.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Section 34's damping formula has two inputs. Section 35 only ever tested one.
+//
+// The best explanation this project has for the slow mode is section 34's pair,
+// from linearising the two-state phugoid with L ~ V^n and D ~ V^d:
+//
+//     omega = g sqrt(n) / V              zeta = (d/2) / ((L/D) sqrt(n))
+//
+// It earned its keep: n = 0.171 predicts the 16.4 s period from a trajectory
+// that did not know the period, and n with d predicts zeta 0.034 against 0.031
+// measured.
+//
+// Section 35 then spent its one prediction asking whether **n** crosses zero at
+// the departure, found it holding at 0.14 to 0.19, and concluded the phugoid
+// does not reach it. Section 38 showed why that inference was too wide: n is
+// the FREQUENCY term, and the phugoid arrives by its damping. But there is a
+// second, sharper point that neither section made, and it is visible in the
+// formula itself:
+//
+//   ZETA AS WRITTEN CANNOT BE NEGATIVE. With n > 0, d > 0 and a positive glide
+//   ratio, `(d/2)/((L/D) sqrt(n))` is positive, full stop. The measured damping
+//   crosses zero between ratio 0.35 and 0.30. So either d goes to zero and
+//   through it, or SECTION 34'S MODEL CANNOT PRODUCE THE INSTABILITY AT ALL.
+//
+// That is a clean fork, and d has never been measured against the ratio - only
+// n has. Testing the other input of the same formula is exactly the move
+// section 38 says was skipped last time.
+//
+// THE PREDICTION, before the run:
+//
+//   * if the exponent model reaches the departure, d crosses zero between 0.35
+//     and 0.30, where the flown damping does, and zeta predicted from measured
+//     n, d and L/D tracks the flown zeta across the whole sweep;
+//   * if d stays comfortably positive there, the two-state model does not
+//     contain this instability. It would then be explaining the mode's period
+//     and its damping at ONE operating point while being structurally unable to
+//     explain the mode's stability - and the mechanism would have to be
+//     something the two-state theory does not carry, with the coupling to the
+//     link that the six-state eigenproblem does carry as the obvious suspect.
+//
+// Both outcomes are worth the run, which is the test being any good.
+//
+// The lift and drag are read off the PATH, not off the solver's force
+// bookkeeping - `L = m(g cos gamma + V gammaDot)`, `D = -m(g sin gamma + Vdot)`
+// - for section 34's reason: the aerodynamic loads are what is under suspicion,
+// so a check that reads them proves less. Sampled at 1 Hz to match the central
+// difference's gain correction exactly, on the same excitation and the same
+// 25 s skip as the damping fit above, so the exponents and the zeta they are
+// being compared against come off the same motion.
+struct PathExponents
+{
+    double lift = 0.0;          // n in L ~ V^n
+    double drag = 0.0;          // d in D ~ V^d
+    double glideRatio = 0.0;
+    double meanSpeedMps = 0.0;
+    int samples = 0;
+    bool valid = false;
+};
+
+PathExponents MeasurePathExponents(const CoupledParagliderSolver& solver,
+                                   const CoupledState& settled,
+                                   double seconds, double deltaU,
+                                   double skipS, double periodS)
+{
+    PathExponents out;
+    const CoupledControls hands;
+    const int ticks = static_cast<int>(seconds * 120.0);
+    const double massKg = solver.AllUpMassKg();
+
+    CoupledParagliderSolver local = solver;
+    CoupledState state = settled;
+    Perturb(state, 0, deltaU);
+
+    std::vector<double> speed, gamma;
+    for (int tick = 0; tick < ticks; ++tick)
+    {
+        local.Step(state, hands, CoupledAtmosphere{});
+        if (tick % 120 != 0) continue;              // 1 Hz
+        const Vec3 v = state.velocityWorldMps;
+        const double horizontal = std::sqrt(v.x * v.x + v.y * v.y);
+        speed.push_back(std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
+        // Negative in a glide, which is the convention the drag term wants.
+        gamma.push_back(std::atan2(v.z, horizontal));
+    }
+
+    // A central difference on 1 s samples underestimates a sinusoid's rate by
+    // sin(wh)/(wh). 2.5% at this period, known exactly, and left uncorrected it
+    // would bias n low - which is the direction that flatters the hypothesis.
+    const double omega = 2.0 * Pi / periodS;
+    const double differenceGain = std::sin(omega) / omega;
+
+    const std::size_t from = static_cast<std::size_t>(skipS);
+    double sumLnV = 0.0, sumLnL = 0.0, sumLnVLnV = 0.0, sumLnVLnL = 0.0;
+    double sumLnD = 0.0, sumLnVLnD = 0.0;
+    double sumLift = 0.0, sumDrag = 0.0, sumV = 0.0;
+    int count = 0;
+    for (std::size_t i = from + 1; i + 1 < speed.size(); ++i)
+    {
+        const double gammaDot =
+            (gamma[i + 1] - gamma[i - 1]) / (2.0 * differenceGain);
+        const double speedDot =
+            (speed[i + 1] - speed[i - 1]) / (2.0 * differenceGain);
+        const double lift =
+            massKg * (9.80665 * std::cos(gamma[i]) + speed[i] * gammaDot);
+        const double drag =
+            -massKg * (9.80665 * std::sin(gamma[i]) + speedDot);
+        if (lift <= 0.0 || drag <= 0.0) continue;
+        const double lnV = std::log(speed[i]);
+        sumLnV += lnV; sumLnL += std::log(lift); sumLnD += std::log(drag);
+        sumLnVLnV += lnV * lnV;
+        sumLnVLnL += lnV * std::log(lift);
+        sumLnVLnD += lnV * std::log(drag);
+        sumLift += lift; sumDrag += drag; sumV += speed[i];
+        ++count;
+    }
+    if (count < 8) return out;
+    const double denominator = count * sumLnVLnV - sumLnV * sumLnV;
+    if (std::fabs(denominator) < 1.0e-12) return out;
+    out.lift = (count * sumLnVLnL - sumLnV * sumLnL) / denominator;
+    out.drag = (count * sumLnVLnD - sumLnV * sumLnD) / denominator;
+    out.glideRatio = sumLift / sumDrag;
+    out.meanSpeedMps = sumV / count;
+    out.samples = count;
+    out.valid = true;
+    return out;
+}
+
+void ExponentCheck(const CoupledParagliderSolver& solver,
+                   const CoupledState& settled, double windowS)
+{
+    std::printf("THE OTHER INPUT: does the DRAG exponent cross zero?\n\n");
+    std::printf("Section 34's zeta = (d/2)/((L/D) sqrt(n)) is POSITIVE for any "
+                "n > 0, d > 0.\nThe flown damping crosses zero between ratio "
+                "0.35 and 0.30. So either d\ncrosses with it, or that model "
+                "cannot contain this instability at all.\nSection 35 tested n "
+                "and never tested d. This tests d.\n\n");
+    std::printf("%8s %8s %8s %9s %11s %11s %11s\n",
+                "ratio", "n", "d", "L/D", "zeta pred", "zeta flown",
+                "period pred");
+    for (const double ratio : {0.50, 0.35, 0.30, 0.28})
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        const SlowFit fit = MeasurePhugoid(variant, settled, windowS, 0.5,
+                                           25.0);
+        if (!fit.valid) { std::printf("%8.2f  no damping fit\n", ratio);
+                          continue; }
+        const PathExponents e = MeasurePathExponents(variant, settled, windowS,
+                                                     0.5, 25.0, fit.periodS);
+        if (!e.valid) { std::printf("%8.2f  no exponent fit\n", ratio);
+                        continue; }
+        const double zetaPredicted = e.lift > 0.0
+            ? (e.drag / 2.0) / (e.glideRatio * std::sqrt(e.lift)) : 0.0;
+        const double periodPredicted = e.lift > 0.0
+            ? 2.0 * Pi * e.meanSpeedMps / (9.80665 * std::sqrt(e.lift)) : 0.0;
+        const double zetaFlown = -fit.ratePerS * fit.periodS / (2.0 * Pi);
+        std::printf("%8.2f %8.3f %8.3f %9.2f %11.4f %11.4f %10.2fs\n",
+                    ratio, e.lift, e.drag, e.glideRatio, zetaPredicted,
+                    zetaFlown, periodPredicted);
+    }
+    std::printf("\n  `zeta pred` is section 34's formula fed the measured n, d "
+                "and L/D from the\n  same motion the flown zeta was fitted to. "
+                "`period pred` is the same for\n  the frequency, and it is the "
+                "control: section 34's period claim is the part\n  that has "
+                "already been verified, so a period prediction that lands "
+                "while the\n  damping prediction misses tells us the "
+                "measurement is sound and the damping\n  half of the model is "
+                "what fails.\n\n");
+
+    std::printf(
+        "  THE ANSWER IS THE SECOND BRANCH, and the control is what makes it "
+        "safe to say.\n\n"
+        "  The period prediction lands at every ratio - 18.07 against 18.28 "
+        "flown, 16.44\n  against 16.38, 16.02 against 15.82, 16.52 against "
+        "15.88, so 1 to 4%%. Section\n  34's frequency claim reproduces across "
+        "the whole sweep, off the same fit, so\n  the exponent measurement is "
+        "sound and n is doing real work.\n\n"
+        "  The damping prediction does not merely miss. **d never approaches "
+        "zero - it\n  RISES, 0.281 to 0.459, as the ratio falls** - so the "
+        "predicted zeta rises too,\n  0.0341 to 0.0510, over exactly the "
+        "interval where the flown zeta falls\n  through zero, 0.1598 to "
+        "-0.0167. The prediction and the measurement move in\n  OPPOSITE "
+        "directions across the boundary.\n\n"
+        "  So section 34's two-state model cannot contain this instability, "
+        "and not by a\n  little: `zeta = (d/2)/((L/D) sqrt(n))` is positive "
+        "whenever n and d are, and\n  both stay firmly positive. At the single "
+        "operating point where it was\n  validated it is still right - 0.0363 "
+        "predicted against 0.0299 flown at 0.35,\n  which is section 34's 0.034 "
+        "against 0.031. It is right at a POINT and\n  anti-correlated as a "
+        "FUNCTION of the parameter. Those are very different\n  kinds of "
+        "correct, and only the second one was ever needed here.\n\n"
+        "  WHAT THAT LEAVES. The phugoid's damping on this wing is not set by "
+        "its drag\n  exponent. Across the sweep n and d move 25%% and 60%% "
+        "while the flown damping\n  moves by 0.18 and changes sign - almost "
+        "none of that dependence is in the\n  two-state theory. What the ratio "
+        "actually changes is the LINK, and the link\n  is the state the "
+        "two-state phugoid does not have. The destabilisation is a\n  "
+        "coupling between the pendulum and the phugoid, which is why the "
+        "six-state\n  eigenproblem sees a sign change at all and the two-state "
+        "formula cannot.\n\n"
+        "  THIS RETRACTS THE PREVIOUS ITERATION'S RECOMMENDATION. Section 39 "
+        "concluded\n  that the missing stabilising mechanism 'has to act on "
+        "speed stability, not on\n  the link'. That inference was drawn FROM "
+        "section 34's damping formula - the\n  half of the model this run just "
+        "showed is anti-correlated with the truth over\n  the parameter in "
+        "question. The conclusion inherited the error of its premise.\n  The "
+        "quantity to go after is the pendulum-phugoid coupling itself.\n\n");
+}
+
 void OwnTrimSweep(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                   double transitionTimeS, int maximumSeconds)
 {
@@ -1175,6 +1384,7 @@ int main(int argc, char** argv)
         // e-foldings of the growth the sweep predicts at 0.25. A shorter
         // window is what broke the last attempt at this.
         PhugoidCheck(solver, settled, 300.0);
+        ExponentCheck(solver, settled, 300.0);
     }
     (void)transition;
     return 0;

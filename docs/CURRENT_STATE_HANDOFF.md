@@ -265,7 +265,8 @@ departure should have been n crossing zero. It is not: n stays 0.14–0.19 acros
 the boundary, and `--departure` shows the thing actually growing is a
 **3.6–5.7 s** mode — the pendulum band — with damping −0.017 at ratio 0.25 and
 −0.042 at 0.20. So item 11 is two problems, not one: the slow mode is explained,
-the fast one is not. `PHYSICS_LEARNINGS` §35.
+the fast one is not. `PHYSICS_LEARNINGS` §35. **§38 below overturns the
+conclusion of this paragraph — read it before acting on any of it.**
 
 **Measuring the fast mode directly was then attempted and failed**, through five
 instruments; the sweep is printed by `--fast-mode` and marked NOT REPORTABLE
@@ -287,6 +288,51 @@ gives the fast mode that five time-domain instruments could not:
 the gated `calibration_tests` value of 2.91 s / 0.28. Re-deriving that gate is
 the next change and deliberately has not been made here.
 `PHYSICS_LEARNINGS` §37.
+
+**Then the modal instrument was pointed at the departure, and it moved the
+answer twice.** Three levels in one place, because the corrections matter more
+than the conclusions:
+
+- **It is not the fast mode.** Sweeping `swingDampingRatio` from 0.90 to 0.10,
+  the pendulum's real part goes −0.357 to −0.291 /s and its period does not move
+  at all — still 1.86 s, still firmly damped, at ratios where the wing certainly
+  departs. What crosses is the **16 s phugoid**, by its damping. So the
+  "3.6–5.7 s mode" paragraph above is superseded: that reading came off a
+  departing wing at large amplitude, and no such mode is in the spectrum at any
+  ratio. Unreconciled, and flagged as such rather than explained away.
+  `PHYSICS_LEARNINGS` §38.
+- **§35's acquittal of the phugoid was sound arithmetic drawn too wide.** It
+  tested whether the lift exponent n crosses zero — a claim about the mode's
+  *frequency*. The phugoid arrives by its *damping*, which that says nothing
+  about.
+- **The crossing is at ratio 0.35–0.30, measured in the time domain** (speed as
+  the observable, 300 s, first 25 s discarded so the fast mode is gone rather
+  than filtered; R² 0.98–1.000). Where this disagrees with the eigenvalues
+  (which said 0.28–0.25), the eigenvalue is wrong: at 0.35 the flown fit gives
+  16.38 s and ζ 0.0299 against the independent 1200 s trace's 16.39 s and 0.031,
+  while the eigenvalue claims ζ 0.0540. §37's linearity check had already
+  flagged that exact number as the one not converged. `PHYSICS_LEARNINGS` §39.
+- **So `swingDampingRatio` = 0.35 is explained, not merely bounded:** it is
+  approximately the smallest value at which this wing's phugoid still damps at
+  all. The own-trim runs agree without fitting anything — 0.35 settles at 410 s,
+  0.30 fails to settle in 420 s, 0.25 departs during its own settle.
+- **And §34's damping formula cannot be the mechanism.** `ζ = (d/2)/((L/D)√n)`
+  is positive whenever n and d are; the measured damping goes negative. d never
+  crosses — it *rises* 0.281 → 0.459 as the ratio falls, so predicted ζ rises
+  while flown ζ falls through zero. The formula's *period* half still reproduces
+  within 1–4% across the same sweep, which is the control that makes this a
+  statement about the model rather than about the fit. It is right at the one
+  operating point it was validated at and anti-correlated as a function of the
+  parameter. `PHYSICS_LEARNINGS` §40.
+
+**What to pick up:** the ratio's effect on damping is essentially absent from
+the two-state phugoid theory, and the link is the state that theory does not
+have — so the target is the **pendulum–phugoid coupling**. The eigenvectors are
+the cheap next instrument: the transition matrix `--sweep` already builds
+contains them, so asking how much link motion the 16 s mode carries costs no new
+runs. Note also that a recommendation to chase *speed stability* instead was
+made one level ago and **retracted** — it had been inferred from the half of
+§34 that this work showed is anti-correlated.
 
 What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
 pendulum mode — the wing swinging against the pilot after a brake pulse — which

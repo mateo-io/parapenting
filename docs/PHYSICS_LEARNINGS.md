@@ -1218,6 +1218,52 @@ the motion stops being one small oscillation inside the window, which is the
 regime this fit has no claim on. The finding rests on 0.50 through 0.28, where
 R² is 0.89–1.000 and the periods match — and those rows contain the crossing.
 
+## 40. Right at a point, anti-correlated as a function
+
+§34's phugoid model has two inputs — `ω = g√n/V` and `ζ = (d/2)/((L/D)√n)`. §35
+spent its one prediction asking whether **n** crosses zero at the departure and
+concluded the phugoid was not involved. §38 showed that inference was too wide.
+But there is a sharper point neither made, visible in the formula itself:
+
+**ζ as written cannot be negative.** With n > 0, d > 0 and a positive glide
+ratio it is positive, full stop. The measured damping crosses zero between ratio
+0.35 and 0.30. So either d crosses with it, or the model cannot produce this
+instability at all. Nobody had ever measured d against the ratio.
+
+**It does not cross. It rises — 0.281 → 0.459 as the ratio falls.** So predicted
+ζ rises, 0.0341 → 0.0510, over exactly the interval where flown ζ falls through
+zero, 0.1598 → −0.0167. Prediction and measurement move in **opposite
+directions** across the boundary.
+
+**The control is what makes that safe to assert.** The same fit's period
+prediction lands at every ratio — 18.07 vs 18.28 flown, 16.44 vs 16.38, 16.02 vs
+15.82, 16.52 vs 15.88 — 1 to 4%. §34's frequency claim reproduces across the
+whole sweep off the same measurement, so the exponents are real and n is doing
+real work. Only the damping half fails. Building the control in was the
+difference between "the model's damping is wrong" and "my exponent fit is
+broken", and those are indistinguishable without it.
+
+**Right at a point, wrong as a function.** At the one operating point where §34
+validated it, the formula still works: 0.0363 predicted against 0.0299 flown at
+ratio 0.35 — §34's own 0.034 against 0.031. It is accurate at a point and
+anti-correlated as a function of the parameter. Two very different kinds of
+correct, and only the second was ever needed here. **An explanation validated at
+one operating point has not been tested as a function of anything**, and the
+project had been treating a point-fit as a mechanism for three levels.
+
+**What it leaves.** Across the sweep n and d move 25% and 60% while the flown
+damping moves by 0.18 and changes sign — almost none of that dependence lives in
+the two-state theory. What the ratio changes is the **link**, and the link is
+precisely the state the two-state phugoid does not have. The destabilisation is
+a pendulum–phugoid *coupling*, which is why the six-state eigenproblem sees a
+sign change and the two-state formula structurally cannot.
+
+**Retraction, one level old.** §39 concluded the missing stabilising mechanism
+"has to act on speed stability, not on the link". That was inferred *from* §34's
+damping formula — the half this run shows is anti-correlated with the truth over
+the very parameter in question. The conclusion inherited the error of its
+premise. The quantity to go after is the pendulum–phugoid coupling itself.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1273,3 +1319,6 @@ R² is 0.89–1.000 and the periods match — and those rows contain the crossin
 | slow mode at 0.35, flown | 16.38 s, zeta 0.0299 | against 16.39 / 0.031 from a 1200 s trace |
 | the same, by eigenvalue at T=0.25 | zeta 0.0540 | high by 3/4; §37's linearity check said so |
 | what `swingDampingRatio` 0.35 IS | the phugoid's stability edge | not a margin above one - §39 |
+| drag exponent d, ratio 0.50 to 0.28 | 0.281 rising to 0.459 | it never crosses zero - §40 |
+| zeta predicted by §34 over that sweep | 0.034 rising to 0.051 | flown zeta FALLS 0.160 to -0.017 |
+| §34's period prediction over the sweep | within 1-4% at every ratio | the frequency half still holds |

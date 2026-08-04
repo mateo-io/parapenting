@@ -115,11 +115,56 @@ shipped product depend on. Free alternatives in the same niche: Mesh2Motion
 **Option E — commission or author in-house.** Only worth it if the harness and
 pilot must be modelled as one garment system. Weeks, not days.
 
-### Recommendation
+### Decision
 
-Option A now, Option B for the shipped pilot. A is free and unblocks the rig
-work today; B is free, higher quality than anything we would buy, and no longer
-carries the licence question that made it a last resort here before.
+**MetaHuman (Option B), with the engine mannequin as the working placeholder.**
+Taken August 2026 on the basis that the project will not cross the $1M revenue
+threshold, and that paying the licence would be a welcome problem if it did.
+
+## MetaHuman integration
+
+### Why this is smaller than it looks
+
+The core bone names are shared between the UE5 Mannequin and the MetaHuman
+skeleton — `pelvis`, `spine_01`…`spine_03`, `clavicle_*`, `upperarm_*`,
+`lowerarm_*`, `hand_*`, `thigh_*`, `calf_*`, `foot_*`, `head`. Those are exactly
+the bones `UpdatePilotSkeleton` drives, so the rig code needs no change at all.
+MetaHuman adds spine, twist and facial bones on top; extra bones we do not
+drive are harmless.
+
+`PilotMeshOverride` on the pawn is the swap point: assign the MetaHuman **body**
+mesh there in the editor and the pawn uses it instead of the mannequin. Leave it
+empty and the mannequin is used. No code edit, no rebuild.
+
+### Steps
+
+1. Create the character in MetaHuman Creator and bring it into the project.
+2. Assign the **body** mesh to `PilotMeshOverride` on the paraglider pawn. The
+   face is a separate mesh on its own rig — this rig has nothing to say to it,
+   and a helmeted pilot barely shows a face anyway.
+3. Check scale against the anchor table above. The seated pilot should measure
+   about 150 cm boot-to-crown in rig space, shoulders level with the
+   carabiners.
+4. Force a fixed LOD. MetaHuman LOD0 is built for cinematics; a chase-camera
+   paraglider does not need it, and the wing and lines are where the frame
+   budget should go.
+5. Skip the groom. The pilot wears a helmet, so hair is cost with no picture.
+
+### What to expect to go wrong
+
+- **Shearing gets more visible, not less.** `UpdatePilotSkeleton` sets bone
+  translation only, so limbs never twist. On the mannequin that reads as
+  stiffness; on a detailed body it will read as a defect. This makes the IK Rig
+  the next real piece of work rather than a nicety.
+- **Seated deformation is still unverified.** MetaHuman bodies are authored for
+  standing locomotion like everything else. Check the hip and knee at the
+  seated angles before committing.
+- **Do not assign the mannequin skeleton to the MetaHuman mesh.** It produces
+  seams and breaks the rig. If animation retargeting is ever needed, UE ships
+  `RTG_UE5Mannequin_To_MetaHuman` for it — though this project drives bones
+  directly and may never need a retargeter at all.
+- **Cost.** A MetaHuman is a heavy asset for a character usually seen at chase
+  distance. If the frame budget bites, that is the LOD setting, not the rig.
 
 The plan's own position is that the character is not the hard part — the causal
 chain is — so take the cheapest asset that passes the acceptance checklist and
@@ -138,18 +183,13 @@ engine mannequin, which is already rigged, weighted, LODed and licensed. Code
 generation here would cost real time to land something strictly worse than
 Option A, so it is not the recommended path.
 
-## What I need from you
+## What is left for you to do
 
-Pick one:
+The sourcing decision is made and the code-side swap point exists. The two
+remaining steps both need the editor and an Epic account, so they are yours:
 
-1. **Provide the asset.** Drop the FBX/GLB plus its licence file in
-   `Content/Characters/Pilot/Source/` and tell me it is there.
-2. **Authorize me to select one.** Say so, give a budget ceiling and a
-   preferred option letter above, and I will shortlist candidates with links,
-   prices and licence summaries for you to approve **before** anything is
-   downloaded or purchased. I will not download files or complete a purchase
-   without your explicit go-ahead on the specific item.
-3. **Unblock the stage without the asset** — see the blockout path below.
+1. Add the Third Person feature pack, so the blockout renders today.
+2. Create the MetaHuman and assign its body mesh to `PilotMeshOverride`.
 
 ## Blockout path (unblocks Stage 2 today)
 

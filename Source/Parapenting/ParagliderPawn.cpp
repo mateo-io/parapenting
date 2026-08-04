@@ -216,6 +216,16 @@ void AParagliderPawn::BeginPlay()
         TintPart(Limb, FLinearColor(0.035f, 0.045f, 0.065f));
     TintPart(LeftBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
     TintPart(RightBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
+    // The licensed pilot is assigned in the editor, not found by path here. A
+    // MetaHuman lands under its own character name, so no constructor path can
+    // guess it - and the promise made in the plan was that swapping the pilot
+    // is a data change. This is that swap. The engine mannequin found in the
+    // constructor stays as the fallback when nothing is assigned.
+    if (PilotCharacter && !PilotMeshOverride.IsNull())
+    {
+        if (USkeletalMesh* const Assigned = PilotMeshOverride.LoadSynchronous())
+            PilotCharacter->SetSkeletalMesh(Assigned);
+    }
     if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {
         // The poseable mannequin replaces only the body blockout. Hardware is

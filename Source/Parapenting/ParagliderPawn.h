@@ -36,6 +36,7 @@ class UCameraComponent;
 class UProceduralMeshComponent;
 class UParaglidingAudioComponent;
 class UPoseableMeshComponent;
+class USkeletalMesh;
 class USceneComponent;
 class UStaticMeshComponent;
 
@@ -347,6 +348,15 @@ private:
     // Mannequin-compatible skeleton/retargeter without changing rig code.
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UPoseableMeshComponent> PilotCharacter;
+
+    // The pilot body mesh, assigned in the editor. Leave it empty to use the
+    // engine mannequin. A MetaHuman body mesh goes here: its core bone names
+    // (pelvis, spine_01, spine_03, clavicle/upperarm/lowerarm/hand,
+    // thigh/calf/foot, head) are the ones UpdatePilotSkeleton drives, so no
+    // code changes when it is set. Assign the BODY mesh - the face is a
+    // separate mesh and this rig has nothing to say to it.
+    UPROPERTY(EditAnywhere, Category = "Pilot")
+    TSoftObjectPtr<USkeletalMesh> PilotMeshOverride;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> PilotRig;

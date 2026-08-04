@@ -1647,10 +1647,20 @@ void DesignCheck(const CoupledParagliderSolver& solver,
                 "entries of the matrix\ncan.\n\n", ratio, growth, period);
     std::printf("Per unit RELATIVE change (section 43's scaling; a sensitivity "
                 "is not a\nmechanism - see the note in the source).\n\n");
+    // ALL THIRTY-SIX, not just the link's twelve.
+    //
+    // Section 44 looked only at the link's rows, found them fiercely
+    // sensitive, and concluded the boundary's location is a property of how the
+    // LINK is written. That conclusion needs the rest of the matrix to mean
+    // anything: if the wing's rows are just as sensitive, then fragility is a
+    // property of this mode - a non-normal eigenvalue moves far for a small
+    // change anywhere it is receptive - and singling out the link's formulation
+    // is looking where the light is. The comparison costs nothing, and it is
+    // the control section 44 should have carried.
     std::printf("%22s %16s\n", "entry", "dsigma per unit");
     struct Entry { int i, j; double sensitivity; };
     std::vector<Entry> entries;
-    for (int i = 4; i < N; ++i)
+    for (int i = 0; i < N; ++i)
     {
         for (int j = 0; j < N; ++j)
         {
@@ -1662,13 +1672,46 @@ void DesignCheck(const CoupledParagliderSolver& solver,
     std::sort(entries.begin(), entries.end(),
               [](const Entry& a, const Entry& b)
               { return std::fabs(a.sensitivity) > std::fabs(b.sensitivity); });
-    for (const Entry& e : entries)
+    for (std::size_t k = 0; k < entries.size() && k < 10; ++k)
     {
+        const Entry& e = entries[k];
         char label[48];
         std::snprintf(label, sizeof label, "d(%s)/d(%s)", names[e.i],
                       names[e.j]);
-        std::printf("%22s %+16.5f\n", label, e.sensitivity);
+        std::printf("%22s %+16.5f   %s\n", label, e.sensitivity,
+                    e.i >= 4 ? "link row" : "wing row");
     }
+
+    // The block comparison, which is what decides section 44's framing.
+    {
+        double linkSum = 0.0, wingSum = 0.0, linkPeak = 0.0, wingPeak = 0.0;
+        int linkCount = 0, wingCount = 0;
+        for (const Entry& e : entries)
+        {
+            const double magnitude = std::fabs(e.sensitivity);
+            if (e.i >= 4)
+            {
+                linkSum += magnitude * magnitude;
+                linkPeak = std::max(linkPeak, magnitude);
+                ++linkCount;
+            }
+            else
+            {
+                wingSum += magnitude * magnitude;
+                wingPeak = std::max(wingPeak, magnitude);
+                ++wingCount;
+            }
+        }
+        const double linkRms = std::sqrt(linkSum / std::max(1, linkCount));
+        const double wingRms = std::sqrt(wingSum / std::max(1, wingCount));
+        std::printf("\n%22s %12s %12s\n", "rows", "rms", "peak");
+        std::printf("%22s %12.5f %12.5f\n", "link (4-5)", linkRms, linkPeak);
+        std::printf("%22s %12.5f %12.5f\n", "wing (0-3)", wingRms, wingPeak);
+        std::printf("%22s %12.2f %12.2f\n", "link / wing",
+                    wingRms > 0.0 ? linkRms / wingRms : 0.0,
+                    wingPeak > 0.0 ? linkPeak / wingPeak : 0.0);
+    }
+    std::printf("\n");
 
     std::printf("\n  THE CHECK: a finite change to the top entries, predicted "
                 "against measured.\n\n");
@@ -1712,8 +1755,19 @@ void DesignCheck(const CoupledParagliderSolver& solver,
         "coefficient the whole way from 0.35\n  to 0.30 - the step that "
         "carries this wing from settling to not settling -\n  moves it "
         "+0.0129. ONE PER CENT OF ONE MATRIX ENTRY IS WORTH THE ENTIRE\n  "
-        "COEFFICIENT STEP, and the top three entries are all within a quarter "
-        "of each\n  other.\n\n"
+        "COEFFICIENT STEP.\n\n"
+        "  AND THE BIGGEST LEVER IS NOT IN THE LINK AT ALL. The control this "
+        "check did\n  not originally carry - the other twenty-four entries - "
+        "puts d(surge)/d(surge)\n  at +1.631, above every link entry, worth "
+        "+0.0163 per 1%% or about one and a\n  quarter coefficient steps. By "
+        "block the link's rows are still the more\n  sensitive on average, rms "
+        "0.822 against 0.433, but the single largest lever\n  sits in the "
+        "wing's own rows.\n\n"
+        "  That is a real qualification of the paragraph above. Fragility here "
+        "is a\n  property of a non-normal MODE, which moves far for a small "
+        "change anywhere it\n  is receptive, and not a peculiarity of how the "
+        "link is written - the same\n  fragility lands on core aerodynamics. "
+        "Looking only at the link's rows was\n  looking where the light was.\n\n"
         "  So the phugoid's stability sits on a knife edge with respect to the "
         "link's\n  rows. That is consistent with everything above rather than "
         "new: cond = 0.10\n  said the mode is non-normal, and a non-normal "
@@ -1731,7 +1785,23 @@ void DesignCheck(const CoupledParagliderSolver& solver,
         "less sensitive would be the real requirement. Stated as the\n  "
         "hypothesis it is, because section 40 is what happens when a quantity "
         "that\n  moved the right way once gets promoted to a mechanism.\n\n"
-        "  ONE CONNECTION WORTH NOTING. The top entries are in the swing "
+        "  A RETRACTED CLAIM COMES BACK BY A DIFFERENT ROAD, AND THE "
+        "RETRACTION STILL\n  STANDS. Section 39 concluded that the missing "
+        "stabilising mechanism 'has to\n  act on speed stability'. Section 40 "
+        "retracted it, because it had been inferred\n  from section 34's "
+        "damping formula and that formula is anti-correlated with\n  the truth "
+        "over this very parameter. The inference was invalid and remains\n  "
+        "invalid.\n\n"
+        "  But d(surge)/d(surge) is speed persistence - it IS speed stability - "
+        "and it is\n  now the largest single lever in the matrix, measured by "
+        "something that shares\n  no arithmetic with section 34. A conclusion "
+        "can be correct while the argument\n  for it is worthless, and "
+        "arriving at it again by a sound route is not the same\n  act as "
+        "un-retracting it. The claim has support now; the reasoning that "
+        "first\n  produced it is still wrong, and both of those go in the "
+        "record.\n\n"
+        "  ONE CONNECTION WORTH NOTING. The top entries in the LINK's rows are "
+        "in the swing "
         "ANGLE row, and\n  two of the three - d(swing)/d(attitude) and "
         "d(swing)/d(heave) - are the link\n  taking its lean from the wing's "
         "attitude and its vertical motion. That is the\n  apparent-gravity "

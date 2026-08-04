@@ -693,13 +693,29 @@ stands in for, and it is checkable against a real wing in a way "the period is
   frame, with "a formulation whose stability is less sensitive" the real
   requirement. Not a conclusion; §40 is what happens when that step is skipped.
   `PHYSICS_LEARNINGS` §44.
-- **Next:** test that hypothesis where it can fail — take the alternative the
-  solver's own comment says was tried and rejected (damping the link against the
-  CANOPY rather than the world, which "left the envelope inside twenty seconds")
-  and difference its matrix against this one. If the canopy-referenced form is
-  *less* sensitive on these entries while being unstable for a different reason,
-  the two failures are separable and the frame above is worth adopting. If it is
-  equally sensitive, it is not.
+- **The cheaper falsifier ran first, and it was the control §44 lacked:** the
+  other twenty-four entries. **`d(surge)/d(surge)` = +1.631 is the largest
+  sensitivity in the matrix**, above every link entry — worth +0.0163 per 1%, or
+  about 1.25 coefficient steps, confirmed by finite difference to 0.3%.
+- By block the link rows remain the more sensitive on average (rms 0.822 vs
+  0.433) but the peak is on the wing side. **So fragility is a property of a
+  non-normal mode, not of the link's formulation**, and §44's reframing is
+  weakened by its own missing control. `PHYSICS_LEARNINGS` §45.
+- **§39's retracted claim has independent support now, and the retraction still
+  stands.** `d(surge)/d(surge)` *is* speed stability; §39 named it, §40 correctly
+  retracted the *inference* that produced it (drawn from §34's anti-correlated
+  damping formula). The claim is now supported by a measurement sharing no
+  arithmetic with §34. The argument stays retracted; the claim does not.
+- **Next:** speed persistence is now the target with the best measured leverage,
+  so the question is which physical term sets `d(surge)/d(surge)` on this wing —
+  drag against speed at fixed incidence, which is §34's `d` exponent seen from
+  the matrix side rather than from the path. That connects the two halves of this
+  item's arithmetic for the first time and is checkable by differencing matrices
+  rather than by any new theory.
+- **Still unclaimed either way:** the canopy-referenced link damper (the solver's
+  own rejected alternative). Differencing its matrix would test whether the two
+  failure modes are separable, but it needs a solver hook that does not exist and
+  was not added for a test.
 - **Open, recorded before it is explained:** as the ratio falls the link
   articulates *less* against the wing (0.383 → 0.266), not more. Less link
   damping does not mean a freer-swinging link inside this mode.

@@ -1485,6 +1485,45 @@ coherently and they could cancel. The map says where the mode is sensitive, not
 what any physical change would do — checking a candidate means differencing its
 matrix, which is what §42's split already does.
 
+## 45. Looking where the light was, and a retracted claim coming back another way
+
+§44 mapped `∂σ/∂Φ` over the **link's** rows, found them fiercely sensitive, and
+concluded the departure boundary's location is a property of how the link is
+written. It never looked at the other twenty-four entries. That control costs
+nothing — the left and right eigenvectors are already in hand — and it changes
+the conclusion.
+
+**The single largest lever in the whole matrix is a wing row.**
+`d(surge)/d(surge)` = **+1.631**, above every link entry, worth +0.0163 per 1% —
+about one and a quarter of the entire 0.35→0.30 coefficient step. Finite
+difference confirms it to 0.3%.
+
+By block the link's rows are still the more sensitive *on average* — rms 0.822
+against 0.433, a factor 1.9 — so §44 was not wrong about the block. But the peak
+ratio is 0.81: the biggest single lever sits in the wing's own rows. **Fragility
+here is a property of a non-normal mode, which moves far for a small change
+anywhere it is receptive, and not a peculiarity of the link's formulation** —
+the same fragility lands on core aerodynamics. §44's hypothesis that 0.35 is
+"more a property of how the link is written than of a paraglider" is weakened by
+its own missing control.
+
+**And a retracted claim comes back by a different road, while the retraction
+still stands.** §39 concluded the missing stabilising mechanism "has to act on
+speed stability". §40 retracted it: it had been inferred from §34's damping
+formula, which §40 showed is anti-correlated with the truth over this very
+parameter. That inference was invalid and remains invalid.
+
+But `d(surge)/d(surge)` *is* speed persistence — it is speed stability — and it
+is now the largest single lever in the matrix, measured by something sharing no
+arithmetic with §34. **A conclusion can be correct while the argument for it is
+worthless, and arriving at it again by a sound route is not the same act as
+un-retracting it.** The claim has support now; the reasoning that first produced
+it is still wrong. Both belong in the record, and collapsing them would lose the
+part that was actually learned.
+
+The caveat from §44 is unchanged and limits this too: single-entry changes with
+the other thirty-five fixed, and a sensitivity is not a mechanism.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1552,3 +1591,5 @@ matrix, which is what §42's split already does.
 | share of d(sigma) entering rows 4-5 | 99% | near-tautological; the coefficient lives there |
 | d(sigma) per 1% on d(swing)/d(swing) | +0.0133 /s | the whole 0.35->0.30 step is +0.0129 - §44 |
 | top three sensitivities, link rows | 1.33, 1.31, 1.26 | all in the swing ANGLE row - §44 |
+| largest sensitivity in the whole matrix | d(surge)/d(surge), +1.63 | a WING row, worth 1.25 coefficient steps - §45 |
+| sensitivity rms, link rows vs wing rows | 0.822 vs 0.433 | link block more sensitive on average, peak is not |

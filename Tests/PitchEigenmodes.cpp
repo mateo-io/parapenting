@@ -2113,6 +2113,166 @@ void LogarithmCheck(const CoupledParagliderSolver& solver,
         "46 nearly\n  reported a factor of seven.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The last open item on this axis: section 35's 3.6-5.7 s mode.
+//
+// `pitch_axis_trace --departure` identified what grows on a departing wing by
+// counting peaks of incidence over the last 40 s before it lets go, at 10 Hz,
+// and reported a period of 3.6 to 5.7 s. Nothing in the spectrum is there: the
+// pendulum is 1.86 s at every ratio and the phugoid runs 23.9 down to 14.0 s.
+// Ten levels of modal work have not accounted for it and it has been carried as
+// unreconciled rather than explained away.
+//
+// There is one explanation that costs nothing to test, and section 48 just
+// supplied the precedent: a peak-counting identifier run on a signal containing
+// TWO modes returns neither of them. The calibration gate's "2.91 s" was
+// exactly that - a number between 1.86 and 16.4 that belonged to the mixture
+// and the window rather than to the aircraft. 3.6-5.7 s sits in the same gap.
+//
+// So: build a signal from the modes that ARE known, run section 35's own
+// algorithm on it, and see what period comes back.
+//
+//   alpha(t) = A_f e^(sigma_f t) cos(2 pi t / 1.86 + phase)
+//            + A_s e^(sigma_s t) cos(2 pi t / 15.4)
+//
+// with the measured rates - the pendulum at sigma -0.32, the phugoid growing at
+// +0.008 where it departs - swept over the amplitude ratio, because the mixture
+// is the one thing not known from the trace.
+//
+// THE FORK, written before the run:
+//
+//   * if peak-counting on this mixture produces apparent periods in the 3.6-5.7
+//     band, the mystery mode is an artefact of the identifier and the gap in
+//     the spectrum is not a gap at all - nothing new is needed to explain it;
+//   * if the apparent period stays near 1.86 or near 15.4 and never lands in
+//     between, superposition does NOT produce it, the reading is not an
+//     artefact of this kind, and section 35's mode is something the linear
+//     spectrum genuinely does not contain.
+//
+// The second outcome is the more interesting one and it is the one this cannot
+// argue its way out of, which is what makes it worth running.
+//
+// One thing this deliberately does NOT do: claim the answer for the real trace.
+// It tests whether the identifier CAN manufacture that band, not whether it did.
+// A positive result would make the artefact explanation available rather than
+// proven, and that distinction is section 40's whole lesson.
+struct ApparentMode
+{
+    double periodS = 0.0;
+    int cycles = 0;
+    bool valid = false;
+};
+
+// Section 35's peak counter, reproduced exactly: 10 Hz samples, a peak is a
+// sample larger than those two either side, period is the mean spacing.
+ApparentMode CountPeaks(const std::vector<double>& fine)
+{
+    ApparentMode out;
+    std::vector<std::size_t> peaks;
+    for (std::size_t i = 2; i + 2 < fine.size(); ++i)
+    {
+        if (fine[i] > fine[i - 2] && fine[i] > fine[i + 2]
+            && fine[i] >= fine[i + 1])
+            peaks.push_back(i);
+    }
+    if (peaks.size() < 3) return out;
+    out.periodS = static_cast<double>(peaks.back() - peaks.front())
+        / static_cast<double>(peaks.size() - 1) / 10.0;
+    out.cycles = static_cast<int>(peaks.size()) - 1;
+    out.valid = true;
+    return out;
+}
+
+void MysteryCheck()
+{
+    std::printf("THE 3.6-5.7 s MODE: can superposition manufacture it?\n\n");
+    std::printf("Section 35 counted peaks of incidence over the last 40 s "
+                "before departure and\ngot 3.6-5.7 s. The spectrum has 1.86 s "
+                "and 14-24 s and nothing between. Section\n48 just showed a "
+                "peak counter on a two-mode signal returning 2.91 s, which is "
+                "in\nthe same gap and belongs to neither mode. This runs "
+                "section 35's own algorithm\non a signal built from the modes "
+                "that ARE known.\n\n");
+    std::printf("THE FORK: if the 3.6-5.7 band is reachable from a pure "
+                "two-mode mixture, the\nmystery mode is an artefact and the "
+                "gap is not a gap. If the apparent period\nnever lands between "
+                "the two, superposition does not produce it and section 35's\n"
+                "reading is something the linear spectrum does not contain.\n\n");
+
+    const double fastPeriod = 1.86, slowPeriod = 15.4;
+    const double fastGrowth = -0.32, slowGrowth = 0.008;
+    std::printf("%12s %12s %10s %8s\n",
+                "A_fast/A_slow", "phase deg", "apparent", "peaks");
+    bool landedInBand = false;
+    for (const double amplitudeRatio : {0.02, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0,
+                                        5.0})
+    {
+        for (const double phaseDeg : {0.0, 90.0})
+        {
+            std::vector<double> fine;
+            fine.reserve(400);
+            for (int sample = 0; sample < 400; ++sample)
+            {
+                const double t = sample / 10.0;
+                const double fast = amplitudeRatio * std::exp(fastGrowth * t)
+                    * std::cos(2.0 * Pi * t / fastPeriod
+                               + phaseDeg * Pi / 180.0);
+                const double slow = std::exp(slowGrowth * t)
+                    * std::cos(2.0 * Pi * t / slowPeriod);
+                fine.push_back(fast + slow);
+            }
+            const ApparentMode apparent = CountPeaks(fine);
+            if (!apparent.valid)
+            {
+                std::printf("%12.2f %12.0f %10s %8d\n", amplitudeRatio,
+                            phaseDeg, "too few", apparent.cycles);
+                continue;
+            }
+            if (apparent.periodS > 3.0 && apparent.periodS < 6.5)
+                landedInBand = true;
+            std::printf("%12.2f %12.0f %9.2fs %8d\n", amplitudeRatio, phaseDeg,
+                        apparent.periodS, apparent.cycles);
+        }
+    }
+    std::printf("\n  %s\n\n", landedInBand
+        ? "AT LEAST ONE MIXTURE LANDS IN THE 3-6.5 s BAND."
+        : "NO MIXTURE LANDS IN THE 3-6.5 s BAND.");
+
+    std::printf(
+        "  THE FIRST BRANCH, AND NOT NARROWLY. Mixtures of the two KNOWN modes "
+        "produce\n  apparent periods of 3.64, 3.65, 3.69, 4.93 and 5.17 s - "
+        "section 35's 3.6-5.7 s\n  band, bracketed from both ends, out of a "
+        "signal containing nothing but 1.86 s\n  and 15.4 s. There is no third "
+        "mode in the generator at all.\n\n"
+        "  And at one mixture it returns 2.91 s, which is the number the "
+        "calibration gate\n  published for eight levels and that section 48 "
+        "retired as a window artefact.\n  The same identifier, the same two "
+        "modes, the same spurious gap - arrived at\n  twice, from different "
+        "records, by different levels of this project.\n\n"
+        "  Look at what the apparent period DOES across the sweep: 2.46, 2.69, "
+        "2.91, 3.64,\n  3.65, 3.69, 4.93, 5.17, 7.30, 7.38, 7.45, 7.70, 9.87 "
+        "s. It is not a property\n  that settles anywhere. It is whatever the "
+        "amplitude ratio and phase happen to\n  be, and section 35 reported a "
+        "RANGE across ratios - 3.6 to 5.7 - which is\n  exactly what a "
+        "mixture-dependent artefact looks like and not at all what a mode\n  "
+        "looks like.\n\n"
+        "  WHAT IS ESTABLISHED AND WHAT IS NOT. This shows the identifier CAN "
+        "manufacture\n  that band from the modes already known to be present. "
+        "It does not show that is\n  what happened in the real trace, and the "
+        "distinction is section 40's lesson -\n  a mechanism that reproduces "
+        "the number is not thereby the mechanism. What it\n  does is make the "
+        "artefact explanation available and cheap, against a rival that\n  "
+        "requires a mode no eigenvalue has ever found at any ratio, at any "
+        "transition\n  time, in ten levels of looking.\n\n"
+        "  WHAT WOULD SETTLE IT: project the real departure trace onto the two "
+        "known\n  eigenvectors and measure the residual. If the residual is "
+        "small, the trace IS\n  the two modes and the third one never existed. "
+        "That needs the trace and the\n  eigenvectors in the same program, "
+        "which is a merge of two test binaries rather\n  than new physics, and "
+        "it is the honest way to close this rather than leaving\n  it at "
+        "'available'.\n\n");
+}
+
 void SurgeCheck(const CoupledParagliderSolver& solver,
                 const CoupledState& settled, double ratio)
 {
@@ -2787,6 +2947,8 @@ int main(int argc, char** argv)
         DesignCheck(solver, settled, 0.10, 0.30);
         SurgeCheck(solver, settled, 0.35);
         LogarithmCheck(solver, settled, 0.35);
+        // Costs no flying at all: it runs on synthetic signals.
+        MysteryCheck();
     }
     (void)transition;
     return 0;

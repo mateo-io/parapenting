@@ -299,8 +299,13 @@ than the conclusions:
   departs. What crosses is the **16 s phugoid**, by its damping. So the
   "3.6–5.7 s mode" paragraph above is superseded: that reading came off a
   departing wing at large amplitude, and no such mode is in the spectrum at any
-  ratio. Unreconciled, and flagged as such rather than explained away.
-  `PHYSICS_LEARNINGS` §38.
+  ratio. `PHYSICS_LEARNINGS` §38. **And it is now retired outright (§49):**
+  running §35's own peak counter on a signal containing ONLY the two known modes
+  reproduces the band — 3.64 to 5.17 s — and at one mixture returns 2.91 s, the
+  number §48 retired from the calibration gate. Across the sweep the apparent
+  period runs 2.46 to 9.87 s and settles nowhere, which is what §35's *range*
+  across ratios actually was. Strongly supported rather than proven; projecting
+  the real trace onto the two eigenvectors would close it.
 - **§35's acquittal of the phugoid was sound arithmetic drawn too wide.** It
   tested whether the lift exponent n crosses zero — a claim about the mode's
   *frequency*. The phugoid arrives by its *damping*, which that says nothing

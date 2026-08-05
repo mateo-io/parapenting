@@ -747,11 +747,22 @@ stands in for, and it is checkable against a real wing in a way "the period is
   bound, and names the eigenmodes as the authority. Note the old bounds passed
   *both* 2.91/0.28 and 1.86/0.09 — they never distinguished them, so their
   passing was never evidence. All twelve suites green with the change.
-- **Next:** the last open item on this axis is §35's **3.6–5.7 s mode**, seen on a
-  departing wing and matched by nothing in the spectrum at any ratio. It was
-  measured at large amplitude on a wing already leaving, where linearisation has
-  no claim — so it needs a large-amplitude method, and none of the machinery
-  built over the last ten levels applies to it.
+- **§35's 3.6–5.7 s mode is retired as an artefact (§49).** Running §35's own
+  peak counter on a synthetic signal containing **only** the two known modes —
+  1.86 s decaying, 15.4 s growing — returns 3.64, 3.65, 3.69, 4.93 and 5.17 s,
+  bracketing the reported band from both ends. At one mixture it returns 2.91 s,
+  the number §48 retired from the calibration gate. Across the sweep the
+  apparent period runs 2.46 to 9.87 s: it settles nowhere, which is what §35's
+  *range across ratios* actually was.
+- Status is "available and strongly supported", not proven — the test shows the
+  identifier *can* manufacture the band, not that it did. **To close it
+  properly:** project the real departure trace onto the two known eigenvectors
+  and measure the residual. A merge of two test binaries, not new physics.
+- **Method lesson, paid for three times now (§36, §48, §49):** a crossing- or
+  peak-counting identifier on a signal holding two modes an order of magnitude
+  apart reports neither, and does not fail — it returns a confident intermediate
+  number that moves with the mixture and the window. When a period lands between
+  two known modes and moves with conditions, suspect the identifier.
 - **Still unclaimed either way:** the canopy-referenced link damper (the solver's
   own rejected alternative). Differencing its matrix would test whether the two
   failure modes are separable, but it needs a solver hook that does not exist and

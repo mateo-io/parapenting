@@ -1673,6 +1673,58 @@ so they never distinguished them, and their passing was never evidence. A test
 that cannot fail differently for a wrong answer is decoration, and this one had
 been decorating a published number for eight levels.
 
+## 49. The third mode was two modes and a peak counter
+
+§35 identified what grows on a departing wing by counting peaks of incidence
+over the last 40 s before it lets go, and reported **3.6–5.7 s**. Nothing in the
+spectrum is there — the pendulum is 1.86 s at every ratio, the phugoid runs 23.9
+down to 14.0 — and ten levels of modal work never accounted for it. It was
+carried as unreconciled.
+
+§48 supplied the precedent without meaning to: a peak counter on a two-mode
+signal returned 2.91 s, a number between 1.86 and 16.4 belonging to the mixture
+rather than the aircraft. 3.6–5.7 sits in the same gap. So run §35's own
+algorithm on a signal built from the modes that *are* known — 1.86 s decaying at
+σ −0.32, 15.4 s growing at +0.008 — swept over the amplitude ratio and phase,
+with **no third mode in the generator at all**.
+
+**It produces the band, and not narrowly:** 3.64, 3.65, 3.69, 4.93, 5.17 s.
+§35's range bracketed from both ends. And at one mixture it returns **2.91 s** —
+the number the calibration gate published for eight levels. The same identifier,
+the same two modes, the same spurious gap, arrived at twice from different
+records by different levels of this project.
+
+**The giveaway is what the apparent period does across the sweep:** 2.46, 2.69,
+2.91, 3.64, 3.65, 3.69, 4.93, 5.17, 7.30, 7.38, 7.45, 7.70, 9.87 s. It settles
+nowhere. It is whatever the amplitude ratio and phase happen to be — and §35
+reported a *range across ratios*, 3.6 to 5.7, which is exactly what a
+mixture-dependent artefact looks like and not at all what a mode looks like.
+That range had been read as scatter in a measurement; it was the signature of
+the thing being measured not existing.
+
+**What is established and what is not.** This shows the identifier *can*
+manufacture that band from modes already known to be present. It does not show
+that is what happened in the real trace — §40's lesson is that a mechanism which
+reproduces a number is not thereby the mechanism. What it does is make the
+artefact explanation cheap and available, against a rival requiring a mode no
+eigenvalue has found at any ratio, at any transition time, in ten levels of
+looking.
+
+**What would settle it:** project the real departure trace onto the two known
+eigenvectors and measure the residual. Small residual means the trace *is* the
+two modes and the third never existed. That is a merge of two test binaries
+rather than new physics, and it is the honest way to close this instead of
+leaving it at "available".
+
+**The general lesson, which this project has now paid for three times.** A
+peak-counting or crossing-counting identifier run on a signal containing two
+modes an order of magnitude apart does not report either one, and does not fail
+either — it reports a confident intermediate number that moves with the mixture
+and the window. §36 lost four instruments to it, §48 found it in a shipped gate,
+and §49 finds it behind the last unexplained result on this axis. **When a
+period lands between two known modes and moves with the conditions, suspect the
+identifier before the aircraft.**
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1718,7 +1770,8 @@ been decorating a published number for eight levels.
 | fast pitch mode, by eigenvalue | 1.86 s, zeta 0.09 | the authority; the gate no longer claims otherwise - §48 |
 | the old gated "2.91 s / 0.28" | a window artefact | 1.42 / 1.51 / 2.91 / nothing, by window end - §48 |
 | slow mode, by eigenvalue | 16.40 s, zeta 0.033 | against 16.39 / 0.031 off a trace |
-| mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
+| mode that diverges at low swing damping | 3.6-5.7 s | RETIRED: a peak-counter artefact - §49 |
+| two-mode mixture under §35's peak counter | 2.46 to 9.87 s apparent | includes 3.64-5.17 and 2.91 - §49 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |

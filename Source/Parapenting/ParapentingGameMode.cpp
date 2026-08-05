@@ -504,17 +504,27 @@ void AParapentingGameMode::BeginPlay()
         // the Amisbuehl corridor. Coordinates remain in the same surveyed
         // route frame and the water elevation remains -6.8 m in the Lehn
         // datum (558 m MSL).
-        constexpr float LakeHeightCm = -680.0f;
+        constexpr float LakeHeightCm = -700.0f;
         const TArray<FVector2D> ShoreM = {
-            FVector2D(-900.0f, 1200.0f),
-            FVector2D(-620.0f, 1880.0f),
-            FVector2D(120.0f, 2110.0f),
-            FVector2D(1040.0f, 2040.0f),
-            FVector2D(1880.0f, 1760.0f),
-            FVector2D(2310.0f, 1450.0f),
-            FVector2D(1630.0f, 1130.0f),
-            FVector2D(720.0f, 850.0f),
-            FVector2D(-120.0f, 860.0f)
+            // Derived from the contiguous -7 m water footprint in the
+            // surveyed Interlaken heightfield, simplified only enough to keep
+            // the procedural shoreline light. The previous 3 km fragment was
+            // north-west of this footprint and therefore almost never entered
+            // a normal Amisbuehl flight view.
+            // Convex, survey-aligned silhouette: keeping it convex is
+            // intentional because this lightweight mesh uses a centre fan;
+            // a future exact shoreline uses an ear-clipped/vector import.
+            FVector2D(2040.0f, 4500.0f),
+            FVector2D(4980.0f, 4500.0f),
+            FVector2D(5020.0f, 4100.0f),
+            FVector2D(4800.0f, 3000.0f),
+            FVector2D(4720.0f, 700.0f),
+            FVector2D(4340.0f, -100.0f),
+            FVector2D(3780.0f, -700.0f),
+            FVector2D(2720.0f, -1900.0f),
+            FVector2D(2540.0f, -1700.0f),
+            FVector2D(1800.0f, 2500.0f),
+            FVector2D(1960.0f, 3100.0f)
         };
         TArray<FVector> LakeVertices;
         TArray<int32> LakeTriangles;
@@ -522,7 +532,7 @@ void AParapentingGameMode::BeginPlay()
         TArray<FVector2D> LakeUVs;
         TArray<FColor> LakeColors;
         TArray<FProcMeshTangent> LakeTangents;
-        LakeVertices.Add(FVector(70000.0f, 145000.0f, LakeHeightCm));
+        LakeVertices.Add(FVector(340000.0f, 240000.0f, LakeHeightCm));
         LakeNormals.Add(FVector::UpVector);
         LakeUVs.Add(FVector2D(0.5f, 0.5f));
         LakeColors.Add(FColor::White);
@@ -533,8 +543,8 @@ void AParapentingGameMode::BeginPlay()
                 PointM.X * 100.0f, PointM.Y * 100.0f, LakeHeightCm));
             LakeNormals.Add(FVector::UpVector);
             LakeUVs.Add(FVector2D(
-                (PointM.X + 900.0f) / 3210.0f,
-                (PointM.Y - 850.0f) / 1260.0f));
+                (PointM.X - 1800.0f) / 3300.0f,
+                (PointM.Y + 1900.0f) / 6400.0f));
             LakeColors.Add(FColor::White);
             LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
         }
@@ -588,7 +598,7 @@ void AParapentingGameMode::BeginPlay()
         TArray<FVector2D> ShoreUVs;
         TArray<FColor> ShoreColors;
         TArray<FProcMeshTangent> ShoreTangents;
-        const FVector2D ShoreCentreM(700.0f, 1450.0f);
+        const FVector2D ShoreCentreM(3400.0f, 2400.0f);
         constexpr float ShoreWidthM = 18.0f;
         for (int32 PointIndex = 0; PointIndex < ShoreM.Num(); ++PointIndex)
         {

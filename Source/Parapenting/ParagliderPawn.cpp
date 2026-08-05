@@ -2905,8 +2905,8 @@ FString AParagliderPawn::GetScenicLandmarkText() const
     // Lake Thun's surveyed presentation centre. It is a visual landmark, not
     // a navigation target or physics input; retain one coordinate contract so
     // the HUD cannot point somewhere different from the actual water mesh.
-    constexpr double LakeThunX = 700.0;
-    constexpr double LakeThunY = 1450.0;
+    constexpr double LakeThunX = 3400.0;
+    constexpr double LakeThunY = 2400.0;
     if (SelectedRouteIndex >= 8)
         return TEXT("GRINDELWALD VALLEY");
 

@@ -63,8 +63,10 @@ Quaternion IntegrateAttitude(
 
 CoupledParagliderSolver::CoupledParagliderSolver(
     const CanopyGeometry& geometry, const LinePlanSpec& linePlan,
-    const CoupledSchedule& schedule, const PayloadMassProperties& payload)
-    : ScheduleValue(schedule),
+    const CoupledSchedule& schedule, const PayloadMassProperties& payload,
+    const ConstructionProbe& probe)
+    : ConstructionProbeSettings(probe),
+      ScheduleValue(schedule),
       Aerodynamics(geometry,
                    SectionPolarTable::ForSection(geometry.Spec().section),
                    geometry.Spec().cellCount),
@@ -187,12 +189,45 @@ void CoupledParagliderSolver::MeasureLineStiffness()
     probe.canopyWeightN = CanopyMassKg * GravityMps2;
 
     SuspensionSolverSettings settings;
-    // 12000, and it is not a round number chosen for comfort. Held at 0.02 rad
-    // this probe returns 19849 Nm/rad at 120 iterations, 9228 at 2000 and
-    // 6371 at 48000; it is converged to within 0.3% by 12000 and nowhere near
-    // it before 6000. A warm-started in-flight solve cannot answer this
-    // question, which is why it is asked once, here.
-    settings.iterations = 12000;
+    // 4000 iterations at 0.995 velocity retention, and BOTH numbers moved
+    // together for one reason: the fictitious dynamics was under-damped, so
+    // most of those 12000 iterations were spent ringing rather than
+    // converging. Held at 0.02 rad the probe swings +177%, -176%, +27%, -13%
+    // of its converged value at 500, 1000, 2000 and 4000 iterations - that is
+    // not a solve creeping up on an answer, it is one oscillating about it.
+    //
+    // Measured against 48000 iterations at the old settings, which is the
+    // reference this has to reproduce and does not share a path with:
+    //
+    //   0.999 (was), 12000 iterations   6246.3 Nm/rad   -0.69%   19.3 ms
+    //   0.995,        4000 iterations   6298.8 Nm/rad   +0.15%    6.4 ms
+    //   0.995,       12000 iterations   6289.8 Nm/rad    0.00%   19.4 ms
+    //   reference: 0.999, 48000         6289.5 Nm/rad             79 ms
+    //
+    // So the new setting is three times faster AND four times closer to the
+    // answer. The equilibrium is not a function of the fictitious damping -
+    // only the path to it is - which is what makes this a numerical change
+    // rather than a tuning: two different paths land on 6289 to 0.005%.
+    //
+    // Retention below this is worse, and monotonically: 0.99 needs 12000 to
+    // reach the same place, 0.98 is 6.2% out there, 0.95 is 114% out. It is a
+    // damping optimum and it is not sharp on the low side of 0.999 only.
+    // `cableDampingRatio` barely matters at all - 0.06 to 0.70 moves the
+    // answer by 0.2% - because it damps line-axial motion and what rings here
+    // is the network's shape.
+    //
+    // A warm-started in-flight solve still cannot answer this question, which
+    // is why it is asked once, here. Warm-starting the probes themselves was
+    // tried first and does NOT help: the held solve imposes an attitude 0.02
+    // rad away from the free pose, so what a warm start supplies is the answer
+    // to a different question, and it converged no faster and less accurately
+    // (0.37 N of node residual against 0.011).
+    settings.iterations = ConstructionProbeSettings.freeIterations;
+    settings.velocityRetention = ConstructionProbeSettings.freeRetention;
+    // The held probes get their own, faster settings - see `ConstructionProbe`.
+    SuspensionSolverSettings heldSettings = settings;
+    heldSettings.iterations = ConstructionProbeSettings.heldIterations;
+    heldSettings.velocityRetention = ConstructionProbeSettings.heldRetention;
 
     constexpr double ProbeAngleRad = 0.02;
     const double weightN = SystemMassKg * GravityMps2;
@@ -215,7 +250,8 @@ void CoupledParagliderSolver::MeasureLineStiffness()
             held.holdCanopyAttitude = true;
             held.imposedCanopyAttitude =
                 NoseUpAttitude(free.canopyPitchRad + offset);
-            return SolveSuspension(Lines, held, settings).canopyMomentBodyNm.y;
+            return SolveSuspension(Lines, held, heldSettings)
+                .canopyMomentBodyNm.y;
         };
         // Sign: a positive right-hand rotation about +Y tips the nose DOWN
         // (SuspensionGraph.h says so, and it is the trap that convention has
@@ -242,7 +278,8 @@ void CoupledParagliderSolver::MeasureLineStiffness()
             held.holdCanopyAttitude = true;
             held.imposedCanopyAttitude =
                 NoseUpAttitude(free.canopyPitchRad + offset);
-            const SuspensionSolution s = SolveSuspension(Lines, held, settings);
+            const SuspensionSolution s =
+                SolveSuspension(Lines, held, heldSettings);
             return Length(s.canopyOriginM - free.canopyOriginM)
                 / std::fabs(offset);
         };
@@ -267,7 +304,7 @@ void CoupledParagliderSolver::MeasureLineStiffness()
                 std::cos(0.5 * offset), std::sin(0.5 * offset), 0.0, 0.0};
             held.imposedCanopyAttitude =
                 (NoseUpAttitude(free.canopyPitchRad) * roll).Normalized();
-            return SolveSuspension(Lines, held, settings);
+            return SolveSuspension(Lines, held, heldSettings);
         };
         const SuspensionSolution rolledUp = rollSolve(ProbeAngleRad);
         const SuspensionSolution rolledDown = rollSolve(-ProbeAngleRad);

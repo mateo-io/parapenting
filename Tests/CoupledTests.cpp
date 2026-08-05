@@ -984,6 +984,22 @@ int main()
         // the bound below allows 15% - because neither half is stalling at
         // its nose any more. The rotation through the event is louder still,
         // 2.06 rad/s, which is item 0b rather than anything here.
+        // A FOURTH measurement exists and is NOT applied here, because it is
+        // about this check rather than about the wing. Rebuilt with the
+        // suspension construction probes converged (48000 iterations instead
+        // of 12000 of an under-damped relaxation), the same frontal turns
+        // 3.61 rad/s and would fail this bound - and across four construction
+        // settings whose static outputs agree to within 1.7% it takes 2.06,
+        // 3.61, 3.90 and 71.0 rad/s. The peak rotation through this event is
+        // not a property of the aircraft at any of them.
+        //
+        // That is consistent with what this comment already says - a partly
+        // separated solve with no steady state, whose path turns rounding into
+        // a real difference - and it is why the bound stays where it was
+        // measured rather than being widened to fit a better-converged model.
+        // What it costs is recorded rather than paid quietly: the construction
+        // probes cannot be improved without deciding what this bound means.
+        // `PHYSICS_LEARNINGS` §52, `PHYSICS_TODO` item 14.
         Check(frontal.worstTurnRateRadps < 2.4
               && frontal.worstFoldAsymmetry < 0.45,
               "KNOWN LIMITATION: a deep symmetric frontal does not stay "

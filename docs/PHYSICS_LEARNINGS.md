@@ -1850,6 +1850,71 @@ says. The two were written a level apart and the comment was never brought back
 when the change was reverted. Corrected rather than deleted: the argument in it
 is the real case against the world frame, and §41 is what answers it.
 
+## 52. The construction probes were ringing, and the gates were written against the ring
+
+Item 14 wanted the 336 ms the suspension network spends solving itself at
+construction. The stated idea was warm-starting: eleven 12000-iteration
+relaxations of the *same* network at neighbouring loads, each started cold,
+against a `solver_lod` measurement showing a warm-started in-flight network
+converging in 40 iterations rather than 12000.
+
+**The stated idea does not work, for a reason worth keeping.** The 24 expensive
+solves are the stiffness probes, which *impose* a canopy attitude 0.02 rad from
+the hang pose and read the moment. Warm-starting one from the free solve hands
+it the answer to a different question — the displacement being measured is
+exactly what the warm start does not have — and it converged no faster and less
+accurately (0.37 N of node residual against 0.011). Warm-starting the *free*
+brake sequence does help, 1.44° → 0.16° of pose error at 4000 iterations, but
+not enough to cut the iteration count: matching the shipped accuracy still needs
+12000, and this aircraft has already shown a hundredth of a degree of incidence
+moving a held collapse from 0.83 to 0.30 of fold.
+
+**What is actually wrong is the damping, and the probe says so in one column.**
+Held at 0.02 rad the pitch probe reports +177%, −176%, +27% and −13% of its
+converged value at 500, 1000, 2000 and 4000 iterations. That is not a solve
+creeping up on an answer; it is one ringing about it, and 12000 iterations stops
+it somewhere on the way down. Damping the ring — fewer iterations at lower
+velocity retention — is both faster and closer:
+
+| setting | pitch k / roll k at 1 g | worst error, 0.5–4 g | ms |
+|---|---|---|---|
+| reference, 48000 | 5749.8 / 8253.6 | — | 1385 |
+| shipped, 12000 at 0.999 | 5739.3 / 8116.4 | 1.58% | 336 |
+| held 6000 at 0.995 | 5750.4 / 8242.1 | 1.40% | 221 |
+| held 8000 at 0.997 | 5750.4 / 8261.8 | 0.24% | 260 |
+
+**The control that makes this a numerical fact rather than a tuning:** the
+equilibrium cannot depend on the fictitious damping, and it does not — 48000
+iterations at 0.999 and at 0.995 agree to 0.16% across every load, by two very
+different paths. It is now gated in `suspension_tests`, along with the shipped
+error, bounded where it is so it cannot grow.
+
+**And none of it ships, which is the actual finding.** Rebuilt on the
+better-converged probes, two known-limitation gates change their verdict — and
+so does the *reference itself*, which is what settles it:
+
+- the deep frontal's peak rotation is bounded at 2.4 rad/s. Shipped it is 2.06.
+  Converged (48000) it is **3.61**. At held 6000/0.995, **3.90**. At held
+  8000/0.997, **71.0**. Four settings whose static outputs agree within 1.7%,
+  spanning a factor of thirty-four on this number.
+- 40% brake departs nose-*up* at +91° shipped, at +91° converged, and nose-*down*
+  at −90° at held 6000/0.995. The direction of a departure past loop-gain-one is
+  decided below the accuracy of any of these numbers.
+
+So the shipped settings are green partly because their mis-convergence damps an
+event that the converged model does not damp. **A gate calibrated on a
+mis-converged model does not become wrong when the model improves; it becomes a
+decision nobody has taken.** Both defaults were left where they were, both
+measurements were written into the code beside them, and the hook that produced
+them (`ConstructionProbe`) ships with defaults identical to the old behaviour.
+
+**The general lesson.** A fixed iteration count is a claim about convergence
+that nothing checks. This one had a comment justifying it — "19849 at 120, 9228
+at 2000, 6371 at 48000, converged to within 0.3% by 12000" — and the numbers in
+that comment are the ring, read as a curve creeping up on a limit. Three
+readings of a decaying oscillation look exactly like convergence if you never
+ask what is between them.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1904,6 +1969,10 @@ is the real case against the world frame, and §41 is what answers it.
 | the same, ratio 0.10 to 0.90 | +0.136 rising to +0.194 | MORE damping is more unstable; no value works - §51 |
 | its fast mode | -0.68 /s, still 1.89 s | the dragged-pendulum story named the wrong mode - §51 |
 | canopy-damped cold start, ratio 0.90 / 0.35 | departs at 17 s / 27 s | the solver's remembered "twenty seconds" - §51 |
+| construction cost, suspension probes | 336 ms of 355 | 35 relaxations, 12000 iterations each - item 14 |
+| roll spring at 1 g, shipped vs converged | 8116 vs 8254 Nm/rad | the probes stop mid-ring, 1.7% out - §52 |
+| the same, held 8000 at 0.997 retention | 8262, worst 0.24% over 0.5-4 g | faster AND closer, and not shipped - §52 |
+| deep frontal peak rotation, four settings | 2.06 / 3.61 / 3.90 / 71.0 rad/s | static outputs agree to 1.7%; this does not - §52 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |

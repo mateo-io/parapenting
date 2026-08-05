@@ -382,6 +382,59 @@ struct CoupledStepProfile
     }
 };
 
+// How hard the CONSTRUCTION-time probes relax the suspension network.
+// Not a flight setting: these are the once-per-wing measurements of the
+// line stiffness curve, the hang pose, the accelerated pose and the brake
+// swing curve, and they are the whole of what makes building a solver
+// cost more than a millisecond.
+//
+// Exposed because the shipped values had to be justified against a
+// reference rather than chosen, and a number that cannot be varied cannot
+// be justified. `suspension_tests` sweeps it; nothing in flight sets it.
+// See the comment on `MeasureLineStiffness` for why 4000 at 0.995 beats
+// 12000 at 0.999 on accuracy as well as on time.
+struct ConstructionProbe
+{
+    // TWO settings, because the construction sequence asks the network two
+    // different questions and they converge at different speeds.
+    //
+    // SHIPPED VALUES ARE THE OLD ONES, DELIBERATELY, and the reason is the
+    // whole of what this hook was added to find out.
+    //
+    // HELD solves impose the canopy's attitude and read the moment the lines
+    // exert - the stiffness probes, 24 of the 35 solves. Only the network's
+    // SHAPE has to settle, and it is not settling: it is RINGING. Held at
+    // 0.02 rad the pitch probe passes +177%, -176%, +27% and -13% of its
+    // converged value at 500, 1000, 2000 and 4000 iterations. Damping that
+    // ring - fewer iterations at lower velocity retention - lands every static
+    // output closer to a 48000-iteration reference than the shipped settings
+    // do, and costs a quarter to a third less time:
+    //
+    //                       pitch k / roll k at 1 g      worst over 0.5-4 g
+    //   reference 48000      5749.8 / 8253.6                    -
+    //   shipped 12000/.999   5739.3 / 8116.4              1.66% (roll, 1 g)
+    //   held 6000/.995       5750.4 / 8242.1              1.40% (pitch, 0.5 g)
+    //   held 8000/.997       5750.4 / 8261.8              0.24%
+    //
+    // AND IT IS NOT SHIPPED, because two flight gates say the converged model
+    // is not the one the gates were written against - including the reference
+    // itself, which fails them too. See `PHYSICS_LEARNINGS` §52 and
+    // `PHYSICS_TODO` item 14. Changing these defaults is a modelling decision
+    // about two known-limitation events, not a performance tuning, and it is
+    // left to whoever takes that decision.
+    //
+    // FREE solves let the canopy rotate to where the lines balance - the hang
+    // pose, the accelerated pose, the brake swing curve. They carry a slow
+    // ROTATIONAL mode that the same change makes converge more SLOWLY: at
+    // 4000/0.995 the trim incidence lands 0.198 degrees high, and on this
+    // aircraft a hundredth of a degree moved a held collapse from 0.83 to 0.30
+    // of fold.
+    int heldIterations = 12000;
+    double heldRetention = 0.999;
+    int freeIterations = 12000;
+    double freeRetention = 0.999;
+};
+
 class CoupledParagliderSolver
 {
 public:
@@ -396,7 +449,8 @@ public:
     CoupledParagliderSolver(
         const CanopyGeometry& geometry, const LinePlanSpec& linePlan,
         const CoupledSchedule& schedule = {},
-        const PayloadMassProperties& payload = {});
+        const PayloadMassProperties& payload = {},
+        const ConstructionProbe& probe = {});
 
     void Step(CoupledState& state, const CoupledControls& controls,
               const CoupledAtmosphere& atmosphere);
@@ -519,6 +573,7 @@ private:
         double travel = 0.0;
         double offsetRad = 0.0;
     };
+    ConstructionProbe ConstructionProbeSettings;
     double SwingDampingRatioValue = 0.35;
     LinkDampingReference LinkDampingReferenceValue =
         LinkDampingReference::World;

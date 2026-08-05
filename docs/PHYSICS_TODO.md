@@ -1054,12 +1054,49 @@ of one core, against a second of stall to swap a wing.
   brake swing curve, about eleven 12000-iteration relaxations. It is not a
   table and cannot be cached the same way, because it depends on the line plan
   and the payload rather than on the section alone.
-- Next, and untried: warm-start each of those relaxations from the previous
+- ~~Next, and untried: warm-start each of those relaxations from the previous
   one. They are solves of the SAME network at neighbouring loads, and they are
-  currently each started cold. Note `solver_lod` measured that the warm-started
-  in-flight network converges in 40 iterations against a cold 12000, which is
-  where the suspicion comes from.
-- Done when: construction is under 100 ms.
+  currently each started cold.~~ **Tried, and it is not the lever (§52).** The
+  24 expensive solves are the stiffness probes, which IMPOSE an attitude
+  0.02 rad from the hang pose — a warm start hands them the answer to a
+  different question, and they converged no faster and less accurately. Warm
+  starting the FREE brake sequence does help (1.44° → 0.16° of pose error at
+  4000 iterations) but not enough to cut the count: matching the shipped
+  accuracy still needs 12000, and a hundredth of a degree of incidence is worth
+  0.83 against 0.30 of fold on this aircraft.
+- **The lever is the damping, and the probe says so: the relaxation is RINGING,
+  not converging.** Held at 0.02 rad the pitch probe passes +177%, −176%, +27%
+  and −13% of its converged value at 500, 1000, 2000 and 4000 iterations. Fewer
+  iterations at lower velocity retention is both faster and closer: held 8000 at
+  0.997 retention lands every static output within **0.24%** of a
+  48000-iteration reference where the shipped settings are **1.58%** out
+  (roll spring, 8116 against 8254 Nm/rad), and costs 260 ms against 336.
+- **It is measured, gated and NOT shipped, which is the finding.** Rebuilt on
+  better-converged probes, two known-limitation gates change their verdict — and
+  so does the 48000-iteration reference, which is what settles it:
+  - the deep frontal's peak rotation, bounded at 2.4 rad/s: 2.06 shipped,
+    **3.61 converged**, 3.90 and 71.0 at the two candidate settings. A factor
+    of thirty-four across settings whose static outputs agree within 1.7%.
+  - 40% brake departs nose-up at +91° shipped and converged, nose-DOWN at −90°
+    at held 6000/0.995.
+  So the suite is green partly because the mis-convergence damps an event the
+  converged model does not damp. **A gate calibrated on a mis-converged model
+  does not become wrong when the model improves; it becomes a decision nobody
+  has taken** — and that decision is about two known-limitation events, not
+  about load time, so it is not this item's to take.
+- **What shipped:** the `ConstructionProbe` hook with defaults identical to the
+  old behaviour, so the measurement is reproducible; a `suspension_tests` gate
+  asserting the control (two relaxation paths converge on the same spring to
+  0.16%, so the reference is a reference) and bounding the shipped error where
+  it is so it cannot grow; and the numbers above written beside the constants.
+- **Blocked, and precisely:** on deciding what the deep frontal's rotation bound
+  means when the quantity it bounds is amplified numerical noise. `PHYSICS_TODO`
+  item 6 and Level 11's unsteady wake are the real fix for that event.
+- Done when: construction is under 100 ms. **Not met — it is 355 ms and the
+  measured route to ~260 ms is the one above.** Note also that the free solves
+  (the hang pose, the bar pose, the six brake stations) are bounded by an
+  accuracy requirement rather than by effort: their iteration count buys
+  hundredths of a degree of incidence, and this project has paid for those.
 
 **15. The reduced tier converges a disturbance more slowly than the settled
 numbers show.** Worst network residual over a run including the cold start is

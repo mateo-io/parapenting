@@ -132,6 +132,17 @@ target_compile_options(parapenting_geometry_tests PRIVATE
 
 add_executable(parapenting_suspension_tests
     SuspensionTests.cpp
+    ../Source/Parapenting/Physics/CoupledParagliderSolver.cpp
+    ../Source/Parapenting/Physics/VortexStepMethodSolver.cpp
+    ../Source/Parapenting/Physics/SectionPolarTable.cpp
+    ../Source/Parapenting/Physics/SectionPolarCache.cpp
+    ../Source/Parapenting/Physics/SectionViscousSolver.cpp
+    ../Source/Parapenting/Physics/ApparentMassTensor.cpp
+    ../Source/Parapenting/Physics/CanopyPressureSolver.cpp
+    ../Source/Parapenting/Physics/CanopyMembraneSolver.cpp
+    ../Source/Parapenting/Physics/CanopyCollapseSolver.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
     ../Source/Parapenting/Physics/CanopyGeometry.cpp
     ../Source/Parapenting/Physics/SectionProfile.cpp
     ../Source/Parapenting/Physics/BillowRelaxation.cpp

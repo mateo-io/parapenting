@@ -6,6 +6,7 @@
 // the brake cascade, and full bar changes incidence through riser geometry
 // alone.
 #include "CanopyGeometry.h"
+#include "CoupledParagliderSolver.h"
 #include "SuspensionGraph.h"
 #include "TensionCableSolver.h"
 
@@ -425,6 +426,77 @@ int main(int argc, char** argv)
         Check(BrakeStationReach({}) > 0.0, "an empty fan still has a reach");
         Check(BrakeStationReach({-0.5, 0.5}) > 0.0,
               "a centreline-only gap does not collapse the reach");
+    }
+
+    // -- the construction probes converge on an answer, and it is not the one
+    //    they ship ------------------------------------------------------
+    //
+    // The stiffness curve is measured by relaxing this network 24 times with
+    // the canopy held either side of its hang pose. That relaxation is
+    // UNDER-DAMPED at the shipped settings: it rings past its answer rather
+    // than creeping up on it, and 12000 iterations stops it somewhere on the
+    // way.
+    //
+    // Two things are asserted, and only the first is a property of the model:
+    //
+    //   1. THE CONTROL. Equilibrium cannot depend on the fictitious damping -
+    //      it is a numerical device with no physics in it - so two very
+    //      different relaxation paths, run long enough, must land on the same
+    //      spring. That is what makes the reference below a reference rather
+    //      than just another setting.
+    //   2. THE SHIPPED ERROR, bounded where it is rather than where anyone
+    //      would like it, so it cannot quietly grow. It is roughly 1.7% on the
+    //      roll spring at one g. Closing it is `PHYSICS_TODO` item 14 and is
+    //      blocked on a modelling decision, not on this measurement:
+    //      `PHYSICS_LEARNINGS` §52.
+    {
+        std::printf("\nConstruction probes: shipped against converged\n");
+        const CanopyGeometry canopy;
+        const LinePlanSpec linePlan = Epic2MlLinePlan();
+        const auto build = [&](int held, double retention)
+        {
+            ConstructionProbe probe;
+            probe.heldIterations = held;
+            probe.heldRetention = retention;
+            return CoupledParagliderSolver(canopy, linePlan, CoupledSchedule{},
+                                           PayloadMassProperties{}, probe);
+        };
+        const CoupledParagliderSolver shipped = build(12000, 0.999);
+        const CoupledParagliderSolver reference = build(48000, 0.999);
+        const CoupledParagliderSolver otherPath = build(48000, 0.995);
+        const double weightN = shipped.AllUpMassKg() * 9.80665;
+        const auto at = [&](const CoupledParagliderSolver& solver, double g)
+            { return solver.LineStiffnessAt(g * weightN); };
+
+        double worstPathGap = 0.0;
+        double worstShippedGap = 0.0;
+        for (const double g : {0.5, 1.0, 2.0, 4.0})
+        {
+            const auto r = at(reference, g);
+            const auto o = at(otherPath, g);
+            const auto s = at(shipped, g);
+            const auto gap = [](double a, double b)
+                { return std::fabs(a - b) / std::max(1.0, std::fabs(b)); };
+            worstPathGap = std::max({worstPathGap,
+                gap(o.pitchNmPerRad, r.pitchNmPerRad),
+                gap(o.rollNmPerRad, r.rollNmPerRad)});
+            worstShippedGap = std::max({worstShippedGap,
+                gap(s.pitchNmPerRad, r.pitchNmPerRad),
+                gap(s.rollNmPerRad, r.rollNmPerRad)});
+            std::printf("  %.1f g: reference %.0f/%.0f, shipped %.0f/%.0f\n",
+                        g, r.pitchNmPerRad, r.rollNmPerRad,
+                        s.pitchNmPerRad, s.rollNmPerRad);
+        }
+        std::printf("  worst gap: converged paths %.3f%%, shipped %.3f%%\n",
+                    100.0 * worstPathGap, 100.0 * worstShippedGap);
+        Check(worstPathGap < 0.005,
+              "two relaxation paths converge on the same spring - the "
+              "equilibrium does not depend on the fictitious damping, which "
+              "is what makes the reference a reference");
+        Check(worstShippedGap < 0.025,
+              "KNOWN: the shipped construction probes stop while the "
+              "relaxation is still ringing, about 1.7% out on the roll spring "
+              "at one g. Bounded so it cannot grow; item 14");
     }
 
     if (Failures == 0) std::printf("All suspension checks passed.\n");

@@ -38,6 +38,21 @@ is measured.
 | unaccounted | 6.6 | 1.2% |
 | **total** | **540.0** | |
 
+## Construction, and a number that is not what it looks like
+
+Construction is 355 ms on this machine, of which 349 is the suspension network
+solving itself: 35 relaxations of 12000 iterations, 24 of them stiffness probes
+with the canopy's attitude held.
+
+That relaxation is **under-damped**. The pitch probe passes +177%, −176%, +27%
+and −13% of its converged value at 500, 1000, 2000 and 4000 iterations, so the
+iteration count is stopping a ring rather than ending a convergence, and the
+shipped roll spring lands 1.58% from a 48000-iteration reference. Better-damped
+probes are both faster and closer — held 8000 at 0.997 retention is 0.24% out at
+260 ms — and they are **not shipped**, because the better-converged model fails
+two known-limitation gates that the shipped one passes, as does the reference
+itself. `PHYSICS_LEARNINGS` §52 and `PHYSICS_TODO` item 14 carry the decision.
+
 ## Four things this says
 
 **1. It is already real time, with 15× to spare.** 540 µs against a 8333 µs

@@ -88,6 +88,25 @@ struct SuspensionSolverSettings
     double canopySolverMassKg = 25.0;
     double canopySolverInertiaKgM2 = 45.0;
     double cableDampingRatio = 0.06;
+
+    // Stop early when the network has stopped moving. OFF by default - a zero
+    // tolerance can never be met, so every existing caller runs exactly the
+    // iteration count it asked for and gets bit-identical answers.
+    //
+    // Two conditions, both required, because either alone is a way to stop at
+    // the wrong place: nothing has MOVED more than `convergenceMoveM` over the
+    // last `convergenceCheckInterval` iterations, and no free node still has
+    // more than `convergenceForceN` of force on it. Motion alone would stop at
+    // the top of a slow swing, where the network is momentarily still and not
+    // in equilibrium at all; force alone would stop where the forces cancel
+    // while the nodes are travelling through.
+    //
+    // This is what makes a warm start worth anything. Warm-starting a fixed
+    // 12000-iteration solve saves nothing - it does the same work from a
+    // better place. The saving is in noticing it has arrived.
+    double convergenceMoveM = 0.0;
+    double convergenceForceN = 0.0;
+    int convergenceCheckInterval = 100;
 };
 
 struct CableState
@@ -148,6 +167,10 @@ struct SuspensionSolution
     // what equilibrium means. Solved with the attitude held it is the real
     // answer, and the derivative of it is the wing's pitch stiffness.
     Vec3 canopyMomentBodyNm{};
+
+    // How many relaxation iterations were actually run. Equal to
+    // `settings.iterations` unless the early-exit tolerances were set and met.
+    int iterationsRun = 0;
 
     // Equilibrium residuals from the final iteration.
     double canopyForceResidualN = 0.0;

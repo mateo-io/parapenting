@@ -191,6 +191,15 @@ SuspensionSolution SolveSuspension(
     const double canopyInertia = std::max(1e-3, settings.canopySolverInertiaKgM2);
 
     Vec3 lastCanopyMoment{};
+    // The early-exit bookkeeping. `checkpoint` is where every free node was at
+    // the last check; the exit wants both the motion since then and the force
+    // still on them to be small. Both tolerances default to zero, which no
+    // magnitude can be below, so the default path runs every iteration.
+    const bool earlyExitEnabled = settings.convergenceMoveM > 0.0
+        && settings.convergenceForceN > 0.0;
+    const int checkInterval = std::max(1, settings.convergenceCheckInterval);
+    std::vector<Vec3> checkpoint = position;
+    int iterationsRun = settings.iterations;
     for (int iteration = 0; iteration < settings.iterations; ++iteration)
     {
         // Canopy attachments follow the canopy pose exactly. There is one
@@ -292,6 +301,25 @@ SuspensionSolution SolveSuspension(
         }
         lastCanopyMoment = canopyMoment;
 
+        if (earlyExitEnabled && (iteration + 1) % checkInterval == 0)
+        {
+            double largestMove = 0.0;
+            double largestForce = Length(canopyForce);
+            for (std::size_t i = 0; i < nodeCount; ++i)
+            {
+                if (!isFree[i]) continue;
+                largestMove = std::max(largestMove,
+                                       Length(position[i] - checkpoint[i]));
+                largestForce = std::max(largestForce, Length(force[i]));
+            }
+            if (largestMove < settings.convergenceMoveM
+                && largestForce < settings.convergenceForceN)
+            {
+                iterationsRun = iteration + 1;
+                break;
+            }
+            checkpoint = position;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -304,6 +332,7 @@ SuspensionSolution SolveSuspension(
             position[i] =
                 canopyOrigin + canopyAttitude.Rotate(node.canopyLocalM);
     }
+    solution.iterationsRun = iterationsRun;
     if (warmStart)
     {
         warmStart->junctionPositionM = position;

@@ -1725,6 +1725,69 @@ and §49 finds it behind the last unexplained result on this axis. **When a
 period lands between two known modes and moves with the conditions, suspect the
 identifier before the aircraft.**
 
+## 50. The flown departure is in the span of the two modes, and the counter mis-reads that too
+
+§49 left the third mode "retired as an artefact, available but not proven": the
+peak counter had been shown to manufacture 3.6–5.7 s out of a *synthetic*
+two-mode signal, where the modes went in by hand. The test it named was the
+projection — take the real trace, resolve it on the eigenvectors, and see what
+is left over. `pitch_eigenmodes --project` is that merge.
+
+**The construction is the part that decides whether it means anything.** Φ was
+built by differencing a perturbed run against an unperturbed one, so it is the
+Jacobian about a *trajectory*, not about a fixed point. The trace has to be
+built the same way or the projection is of the wrong object: two runs at the
+same ratio from the same settled state, one kicked by 2° of pitch, differenced
+sample by sample at 10 Hz. §35's own trace cannot be used — it is a single
+cold-start run whose deviation is measured from nothing in particular. What is
+shared with §35 is the identifier and the modes, which is what is on trial.
+
+**Result: the residual is a few per cent.** After removing the two conjugate
+pairs — 1.86 s and 15.4 s — what the flown deviation carries outside their span
+is 0.4–5% of its norm through the small-motion part of the run, at both T = 0.25
+and T = 0.10. A six-state linear system has nowhere else to put a third mode, so
+if one were driving this it would appear here. It does not.
+
+**And §35's counter mis-reads the rebuild exactly as it mis-reads the trace.**
+Run on the flown signal it returns 6.34 s; run on that same signal *rebuilt from
+the two modes alone* — 1.86 s and 15.4 s by construction, nothing else — it
+returns 7.80 s (6.90 s at T = 0.10). Both land in the gap, neither is a mode.
+This is the step §49 could not take: the gap period now comes out of flown data
+and out of a two-mode reconstruction of that same flown data, alike. The band is
+what this identifier does to these two modes.
+
+**Two honest limits, both structural rather than tidyable.**
+
+*The residual climbs late — 13–29% past about 3° of deviation.* That is where a
+linearisation stops claiming anything, so it is not evidence of a missing mode;
+it is also not evidence of anything else, and the window is printed rather than
+trimmed to flatter the number. The t = 0 row is near 1.00 for a bookkeeping
+reason worth stating: the kick lands mostly on the two fast *real* roots (−0.97
+and −5.97 /s), which are not "the two modes" and are gone within seconds. The
+residual statistic starts at 25 s for that reason and the table still prints
+from zero.
+
+*The rate is not tested by this, and the first version of it pretended
+otherwise.* Linearising about 0.35's shared trim — as every other check here
+does, for free — gave a flown +0.0017 /s at ratio 0.30 against an eigenvalue of
+−0.0084: a sign disagreement bought entirely by the reference run drifting
+toward its own trim. Re-run about each ratio's own trim it becomes −0.0007
+against −0.0084, the right sign at a tenth of the size, on a deviation of
+0.05–0.13° that is near the floor of differencing two nonlinear runs. **And at
+0.25 there is no own trim to use** — the aircraft leaves through 20° at 348 s of
+its own settle, which is what being past the stability boundary means. So the
+departing case necessarily keeps the drifting reference. What `--project`
+supports is the **span**; the rate belongs to `--phugoid` and `--sweep`, which
+measure it without this construction.
+
+**The item this closes and the one it does not.** §35's growing 3.6–5.7 s mode
+is now accounted for end to end: the identifier manufactures the band from these
+two modes (§49), and the flown trace contains nothing but these two modes (§50).
+Item 11's pitch axis has no unexplained observations left. What remains is an
+absence rather than a mystery — there is still no *mechanism* for why 0.35 is
+needed, only a measured sensitivity (`d(surge)/d(surge)`, +1.63 per unit) and a
+list of eliminated candidates.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1772,6 +1835,9 @@ identifier before the aircraft.**
 | slow mode, by eigenvalue | 16.40 s, zeta 0.033 | against 16.39 / 0.031 off a trace |
 | mode that diverges at low swing damping | 3.6-5.7 s | RETIRED: a peak-counter artefact - §49 |
 | two-mode mixture under §35's peak counter | 2.46 to 9.87 s apparent | includes 3.64-5.17 and 2.91 - §49 |
+| residual of the flown trace off the two modes | 0.4-5% while the motion is small | no third direction carries it - §50 |
+| §35's counter on the flown trace | 6.34 s | neither 1.86 nor 15.4 - §50 |
+| the same counter on a two-mode REBUILD of it | 7.80 s (6.90 at T=0.10) | the gap period out of a signal with no gap mode - §50 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |

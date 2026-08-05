@@ -754,10 +754,43 @@ stands in for, and it is checkable against a real wing in a way "the period is
   the number §48 retired from the calibration gate. Across the sweep the
   apparent period runs 2.46 to 9.87 s: it settles nowhere, which is what §35's
   *range across ratios* actually was.
-- Status is "available and strongly supported", not proven — the test shows the
-  identifier *can* manufacture the band, not that it did. **To close it
+- ~~Status is "available and strongly supported", not proven — the test shows
+  the identifier *can* manufacture the band, not that it did. **To close it
   properly:** project the real departure trace onto the two known eigenvectors
-  and measure the residual. A merge of two test binaries, not new physics.
+  and measure the residual. A merge of two test binaries, not new physics.~~
+  **DONE (§50), and it closed in the direction §49 expected.**
+- **The projection ran (`pitch_eigenmodes --project`) and the residual is a few
+  per cent.** Two runs at the same ratio from the same settled state, one kicked
+  by 2° of pitch, differenced — the same construction Φ itself was built from —
+  then resolved on the eigenvectors. What the flown deviation carries outside
+  the span of 1.86 s and 15.4 s is **0.4–5%** of its norm while the motion is
+  small, at T = 0.25 and T = 0.10 alike. A six-state linear system has nowhere
+  else to put a third mode.
+- **And the counter mis-reads the two-mode rebuild exactly as it mis-reads the
+  trace:** 6.34 s on the flown signal, 7.80 s on that same signal rebuilt from
+  the two modes alone. Both in the gap, neither a mode. §49 showed the band was
+  *reachable* from two modes; this shows it comes out of the real trace and out
+  of a two-mode reconstruction of the real trace, alike. **§35's mode is closed,
+  not merely retired.**
+- **What `--project` does NOT support, stated because the first version of it
+  overclaimed:** the growth *rate*. About 0.35's shared trim the reference run
+  drifts and ratio 0.30 came back +0.0017 /s against an eigenvalue of −0.0084 —
+  a sign disagreement bought entirely by the reference not being stationary.
+  About each ratio's own trim it is −0.0007 against −0.0084, right sign, tenth
+  of the size, on 0.05–0.13° of deviation near the differencing floor. At 0.25
+  there is **no own trim at all** — it departs through 20° at 348 s of its own
+  settle — so the departing case must keep the drifting reference. The rate
+  belongs to `--phugoid` and `--sweep`; the span is what this measures.
+- The residual climbing to 13–29% past ~3° of deviation is the linearisation
+  running out, not a missing mode, and the window is printed rather than
+  trimmed. The t = 0 row near 1.00 is the kick sitting on the two fast *real*
+  roots (−0.97, −5.97 /s), which die within seconds; the statistic starts at
+  25 s for that reason and the table still prints from zero.
+- **The pitch axis now has no unexplained observations.** What is left is an
+  absence rather than a mystery: no *mechanism* for why 0.35 is needed, only a
+  measured sensitivity (`d(surge)/d(surge)`, +1.63 per unit) and a list of
+  eliminated candidates. That is a different kind of open than the one just
+  closed.
 - **Method lesson, paid for three times now (§36, §48, §49):** a crossing- or
   peak-counting identifier on a signal holding two modes an order of magnitude
   apart reports neither, and does not fail — it returns a confident intermediate
@@ -776,9 +809,11 @@ stands in for, and it is checkable against a real wing in a way "the period is
   (1e-16 to 1e-12: eigenvectors exact) and a scaling-free articulation ratio
   (fast 1.07, slow 0.29: control passes), not by reinterpreting the number after
   seeing it.
-- **Also open:** §35 measured the growing mode at 3.6–5.7 s on a departing wing,
-  and no such mode is in this spectrum at any ratio. Large amplitude, outside
-  what a linearisation claims — not a contradiction, not reconciled either.
+- ~~**Also open:** §35 measured the growing mode at 3.6–5.7 s on a departing
+  wing, and no such mode is in this spectrum at any ratio. Large amplitude,
+  outside what a linearisation claims — not a contradiction, not reconciled
+  either.~~ **Closed by §49 and §50:** it was the peak counter, and the flown
+  trace is in the span of the two known modes to a few per cent.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

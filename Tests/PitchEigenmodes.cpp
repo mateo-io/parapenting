@@ -2273,6 +2273,368 @@ void MysteryCheck()
         "'available'.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The merge section 49 asked for: the real departure trace and the
+// eigenvectors in one program.
+//
+// `MysteryCheck` above showed that section 35's peak counter CAN manufacture a
+// 3.6-5.7 s period out of the two known modes. It could not show that is what
+// happened, because it ran on a synthetic signal - the modes went in by hand.
+// This runs the same question on flown states.
+//
+// THE CONSTRUCTION, and it is the part that decides whether any of it means
+// anything. Phi was built by differencing a perturbed run against an
+// unperturbed one, so it is the Jacobian about a TRAJECTORY, not about a fixed
+// point. The trace projected here has to be built the same way or the
+// projection is of the wrong thing: two runs at the same ratio from the same
+// settled state, one kicked, differenced sample by sample. That difference is
+// what departs, and it is what the eigenvectors describe.
+//
+// Section 35's own trace cannot be used directly for this reason - it was a
+// single cold-start run whose deviation is measured from nothing in
+// particular. What is shared with section 35 is the identifier and the modes,
+// which is what is on trial.
+//
+// THE PREDICTION, and it can fail cleanly:
+//
+//   * the residual after removing the two known modes is small while the
+//     motion is small - if a third mode is present it has to show up here,
+//     because a six-state linear system has nowhere else to put it;
+//   * the two-mode reconstruction, fed to section 35's peak counter, returns
+//     the same apparent period as the full flown signal. If the reconstruction
+//     is smooth 16 s and only the real trace shows 3.6-5.7 s, the artefact
+//     story is wrong and something outside the span is doing it.
+//
+// The residual is expected to grow late in the run and that is not a failure:
+// past about 15 degrees of incidence the wing is separated and a linearisation
+// has no claim there. The window in which the claim is made is printed.
+struct Projection
+{
+    double residualFraction = 0.0;  // ||x - two-mode part|| / ||x||
+    double fastShare = 0.0;
+    double slowShare = 0.0;
+    bool valid = false;
+};
+
+void ProjectionCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                     const CoupledParagliderSolver& sharedSolver,
+                     const CoupledState& sharedSettled, double ratio,
+                     double transitionTimeS, int settleSeconds, bool ownTrim)
+{
+    std::printf("PROJECTION: is the real departure trace the two known modes?"
+                "  ratio %.2f, T %.2f\n\n", ratio, transitionTimeS);
+
+    // At the ratio's OWN trim, not at 0.35's. The first run of this used the
+    // shared 0.35 trim - free, and every other check here does it - and the
+    // rates came back wrong in a way that says why it cannot be done for THIS
+    // question: the reference run was itself drifting towards its own trim, so
+    // the difference grew for a reason that is not a mode. At 0.30 that gave a
+    // flown +0.0017 /s against an eigenvalue of -0.0078, a sign disagreement
+    // bought entirely by the reference not being stationary. A projection onto
+    // eigenvectors is a statement about deviations from an equilibrium, and it
+    // needs one.
+    //
+    // AND IT IS NOT ALWAYS AVAILABLE, which is the honest shape of this test.
+    // At 0.25 - the ratio that departs, the one section 35 actually read -
+    // there IS no own trim: the aircraft leaves through 20 degrees at 348 s
+    // while still looking for one. A ratio past the stability boundary has no
+    // equilibrium to linearise about, by definition. So that case falls back
+    // to 0.35's trim with the drifting reference, and what it can support is
+    // the SHAPE question (is the trace in the span of the two modes) and not
+    // the RATE question (does it grow at the eigenvalue's rate). Both are
+    // printed either way; which of them is load-bearing is stated here.
+    OwnTrim own = SettleAt(canopy, linePlan, ratio,
+                           ownTrim ? settleSeconds : 0);
+    const bool haveOwnTrim = ownTrim && !own.departed;
+    if (ownTrim)
+        std::printf("  own trim: %s after %d s, incidence %.2f deg%s\n",
+                    own.settled ? "settled" : "NOT settled", own.settleSeconds,
+                    own.incidenceRad * 180.0 / Pi,
+                    own.departed ? ", departed - falling back to 0.35's trim,"
+                                   " so the RATE below is not a test" : "");
+    std::printf("  linearised about %s\n\n",
+                haveOwnTrim ? "this ratio's own trim"
+                            : "0.35's trim, with a drifting reference");
+    CoupledParagliderSolver variant = haveOwnTrim ? own.solver : sharedSolver;
+    if (!haveOwnTrim) variant.SetSwingDampingRatio(ratio);
+    const CoupledState settled = haveOwnTrim ? own.state : sharedSettled;
+    const Spectrum spectrum = Analyse(variant, settled, transitionTimeS, 1.0,
+                                      false);
+
+    // The eigenbasis of Phi, all six of it. The two known modes are two
+    // conjugate PAIRS - four of the six directions - and the residual is what
+    // is left after removing them, so the other two columns are needed to say
+    // anything about it at all.
+    const std::vector<Complex> discrete =
+        Roots(CharacteristicPolynomial(spectrum.phi));
+    if (static_cast<int>(discrete.size()) < N)
+    {
+        std::printf("  fewer than %d eigenvalues; nothing to project onto.\n\n",
+                    N);
+        return;
+    }
+    Complex basis[N][N];         // columns are eigenvectors
+    Complex inverse[N][N];
+    bool known[N] = {false, false, false, false, false, false};
+    double periodOf[N] = {0, 0, 0, 0, 0, 0};
+    double growthOf[N] = {0, 0, 0, 0, 0, 0};
+    bool isFast[N] = {false, false, false, false, false, false};
+    for (int k = 0; k < N; ++k)
+    {
+        const Complex mu = discrete[k];
+        const std::vector<Complex> v = Eigenvector(spectrum.phi, mu);
+        for (int i = 0; i < N; ++i) basis[i][k] = v[i];
+        if (std::abs(mu) < 1.0e-12) continue;
+        const Complex lambda = std::log(mu) / transitionTimeS;
+        growthOf[k] = lambda.real();
+        if (std::fabs(lambda.imag()) < 1.0e-6) continue;
+        periodOf[k] = 2.0 * Pi / std::fabs(lambda.imag());
+        // The two bands this project has named: 1.86 s and 14-24 s. Both
+        // members of each pair count - the pair spans a real plane, and
+        // dropping the conjugate would leave a residual that is an artefact of
+        // the bookkeeping rather than of the aircraft.
+        if (periodOf[k] > 1.0 && periodOf[k] < 3.0) { known[k] = true;
+                                                      isFast[k] = true; }
+        if (periodOf[k] > 10.0 && periodOf[k] < 40.0) known[k] = true;
+    }
+    int knownCount = 0;
+    for (int k = 0; k < N; ++k) if (known[k]) ++knownCount;
+    std::printf("%8s %12s %12s %10s\n", "root", "period", "sigma 1/s", "kept");
+    for (int k = 0; k < N; ++k)
+    {
+        char period[16];
+        if (periodOf[k] > 0.0) std::snprintf(period, sizeof period, "%.2fs",
+                                             periodOf[k]);
+        else std::snprintf(period, sizeof period, "%s", "-");
+        std::printf("%8d %12s %+12.4f %10s\n", k, period, growthOf[k],
+                    known[k] ? "yes" : "no");
+    }
+    if (knownCount != 4)
+    {
+        std::printf("\n  expected two conjugate pairs and found %d columns; "
+                    "the projection below\n  would not be the test it "
+                    "claims.\n\n", knownCount);
+        return;
+    }
+    {
+        Complex copy[N][N];
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j) copy[i][j] = basis[i][j];
+        if (!ComplexInverse(copy, inverse))
+        {
+            std::printf("\n  the eigenvector basis is singular - the "
+                        "projection is not defined.\n\n");
+            return;
+        }
+    }
+
+    // Two runs at the same ratio from the same state: one untouched, one
+    // kicked by 2 degrees of pitch. The difference is the trace.
+    CoupledParagliderSolver reference = variant;
+    CoupledParagliderSolver kicked = variant;
+    CoupledState referenceState = settled;
+    CoupledState kickedState = settled;
+    Perturb(kickedState, 2, 0.035);
+
+    const Vec3 v0 = settled.velocityWorldMps;
+    const double trimSpeed = std::sqrt(v0.x * v0.x + v0.z * v0.z);
+    // Incidence as a linear observable of the six states, so the SAME quantity
+    // can be read off the flown trace and off the two-mode reconstruction.
+    // alpha = pitch - flight path angle, and d(gamma) = (Vx dVz - Vz dVx)/V^2.
+    double alphaRow[N] = {0, 0, 1.0, 0, 0, 0};
+    if (trimSpeed > 1.0e-6)
+    {
+        alphaRow[0] = v0.z / (trimSpeed * trimSpeed);
+        alphaRow[1] = -v0.x / (trimSpeed * trimSpeed);
+    }
+
+    constexpr int Seconds = 300;
+    std::vector<double> flownAlpha, rebuiltAlpha, residualHistory, timeHistory;
+    std::vector<double> slowMagnitude;
+    double worstResidualInWindow = 0.0;
+    double lastLinearTime = 0.0;
+    std::size_t linearBegin = 0, linearEnd = 0;
+    bool leftLinearWindow = false;
+    bool referenceDeparted = false;
+    for (int sample = 0; sample < Seconds * 10; ++sample)
+    {
+        for (int step = 0; step < 12; ++step)
+        {
+            reference.Step(referenceState, CoupledControls{},
+                           CoupledAtmosphere{});
+            kicked.Step(kickedState, CoupledControls{}, CoupledAtmosphere{});
+        }
+        if (reference.Diagnostics().angleOfAttackRad > 0.35
+            || kicked.Diagnostics().angleOfAttackRad > 0.35)
+        {
+            referenceDeparted = true;
+            break;
+        }
+        const Reduced a = Read(kickedState);
+        const Reduced b = Read(referenceState);
+        double x[N];
+        double norm = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            x[i] = a.value[i] - b.value[i];
+            norm += x[i] * x[i];
+        }
+        norm = std::sqrt(norm);
+        if (norm < 1.0e-12) continue;
+
+        Complex c[N];
+        for (int k = 0; k < N; ++k)
+        {
+            Complex sum(0.0, 0.0);
+            for (int j = 0; j < N; ++j) sum += inverse[k][j] * x[j];
+            c[k] = sum;
+        }
+        double rebuilt[N] = {0, 0, 0, 0, 0, 0};
+        double slowSquare = 0.0;
+        for (int k = 0; k < N; ++k)
+        {
+            if (!known[k]) continue;
+            if (!isFast[k]) slowSquare += std::norm(c[k]);
+            for (int i = 0; i < N; ++i)
+                rebuilt[i] += (c[k] * basis[i][k]).real();
+        }
+        double residual = 0.0, flown = 0.0, made = 0.0;
+        for (int i = 0; i < N; ++i)
+        {
+            const double d = x[i] - rebuilt[i];
+            residual += d * d;
+            flown += alphaRow[i] * x[i];
+            made += alphaRow[i] * rebuilt[i];
+        }
+        residual = std::sqrt(residual) / norm;
+
+        const double t = static_cast<double>(sample) / 10.0;
+        timeHistory.push_back(t);
+        residualHistory.push_back(residual);
+        flownAlpha.push_back(flown);
+        rebuiltAlpha.push_back(made);
+        slowMagnitude.push_back(std::sqrt(slowSquare));
+        // The window in which a linearisation has any claim: the incidence
+        // DEVIATION under 15 degrees. Past that the wing is separated and a
+        // residual there measures the separation, not a missing mode.
+        // The window in which a linearisation has any claim, and it has TWO
+        // ends. The late end is separation, above. The early end is the two
+        // fast REAL roots, -0.97 and -5.97 /s: a pitch kick excites them, they
+        // are not part of "the two modes", and they are gone by 25 s (down by
+        // e^-24 and e^-149). Counting them as residual would report a
+        // one-hundred-per-cent miss at t = 0 that is nothing but the kick's
+        // own transient - so the residual statistic starts where they end, and
+        // the table above prints from t = 0 so that transient is visible
+        // rather than quietly excluded.
+        // Once it is out of the window it stays out: a departure that swings
+        // back under 15 degrees for one sample has not become linear again.
+        if (std::fabs(flown) >= 0.26) leftLinearWindow = true;
+        if (!leftLinearWindow && t >= 25.0)
+        {
+            worstResidualInWindow = std::max(worstResidualInWindow, residual);
+            if (linearBegin == 0) linearBegin = timeHistory.size() - 1;
+            linearEnd = timeHistory.size();
+            lastLinearTime = t;
+        }
+    }
+    if (timeHistory.size() < 100)
+    {
+        std::printf("\n  too short a trace to project (%zu samples%s).\n\n",
+                    timeHistory.size(),
+                    referenceDeparted ? ", reference departed" : "");
+        return;
+    }
+
+    std::printf("\n%8s %12s %14s %14s\n", "t", "residual", "flown d-alpha",
+                "two-mode");
+    for (std::size_t i = 0; i < timeHistory.size();
+         i += timeHistory.size() / 12 + 1)
+        std::printf("%7.1fs %11.2e %13.3f %14.3f\n", timeHistory[i],
+                    residualHistory[i], flownAlpha[i] * 180.0 / Pi,
+                    rebuiltAlpha[i] * 180.0 / Pi);
+
+    // Section 35's identifier, on both signals. This is the whole point: if
+    // the two-mode reconstruction returns the same apparent period as the
+    // flown trace, the band is made of these two modes and nothing else.
+    const ApparentMode flownMode = CountPeaks(flownAlpha);
+    const ApparentMode rebuiltMode = CountPeaks(rebuiltAlpha);
+    std::printf("\n%22s %12s %8s\n", "section 35's counter on", "apparent",
+                "peaks");
+    std::printf("%22s %11.2fs %8d\n", "the flown trace",
+                flownMode.valid ? flownMode.periodS : 0.0, flownMode.cycles);
+    std::printf("%22s %11.2fs %8d\n", "the two-mode rebuild",
+                rebuiltMode.valid ? rebuiltMode.periodS : 0.0,
+                rebuiltMode.cycles);
+
+    // The growing component's own rate, read off the modal coordinate rather
+    // than off any waveform - no peaks, no window, no superposition
+    // assumption. It should be the slow mode's sigma.
+    double fittedRate = 0.0;
+    {
+        // The SAME window the residual is quoted over, and for the same two
+        // reasons: before 25 s the fast real roots are still in the signal,
+        // and past 15 degrees the aircraft is no longer the linear system this
+        // rate belongs to. Fitting the whole run returned +0.0143 against an
+        // eigenvalue of +0.0073 - a factor of two, bought entirely from the
+        // separated tail.
+        const std::size_t begin = linearBegin;
+        const std::size_t end = linearEnd;
+        double sumT = 0, sumL = 0, sumTT = 0, sumTL = 0;
+        int count = 0;
+        for (std::size_t i = begin; i < end; ++i)
+        {
+            if (slowMagnitude[i] < 1.0e-14) continue;
+            const double lt = std::log(slowMagnitude[i]);
+            sumT += timeHistory[i]; sumL += lt;
+            sumTT += timeHistory[i] * timeHistory[i];
+            sumTL += timeHistory[i] * lt;
+            ++count;
+        }
+        if (count > 10)
+        {
+            const double denominator = count * sumTT - sumT * sumT;
+            if (std::fabs(denominator) > 1.0e-12)
+                fittedRate = (count * sumTL - sumT * sumL) / denominator;
+        }
+    }
+    double slowSigma = 0.0, slowPeriod = 0.0;
+    for (int k = 0; k < N; ++k)
+        if (known[k] && !isFast[k]) { slowSigma = growthOf[k];
+                                      slowPeriod = periodOf[k]; break; }
+    std::printf("\n  slow modal coordinate grows at %+.4f /s against the "
+                "eigenvalue's %+.4f /s\n  (period %.2f s). The rate is read "
+                "off the modal amplitude, so no peak\n  counting enters it.\n",
+                fittedRate, slowSigma, slowPeriod);
+    std::printf("\n  worst residual in the linear window: %.2e, over "
+                "25 to %.1f s%s.\n\n", worstResidualInWindow, lastLinearTime,
+                referenceDeparted ? " (a run departed)" : "");
+
+    std::printf(
+        "  READING IT. The residual is what the two known modes CANNOT "
+        "account for, as a\n  fraction of the flown deviation. It is around a "
+        "per cent to a few per cent\n  through the small-motion part of the "
+        "run and climbs into the tens of per cent\n  only once the deviation "
+        "passes a few degrees - which is where a linearisation\n  stops "
+        "claiming anything, so that end of the table is not evidence of a "
+        "missing\n  mode. The t = 0 row is near 1.00 by construction: the kick "
+        "is mostly on the two\n  fast REAL roots, which are not 'the two "
+        "modes' and are gone within seconds.\n\n"
+        "  THE LINE THAT CLOSES SECTION 35. Section 35's counter is run twice "
+        "above - on\n  the flown trace, and on that same trace rebuilt from "
+        "the two modes ALONE. The\n  rebuild contains 1.86 s and 15.4 s and "
+        "nothing else, by construction, and the\n  counter still reports a "
+        "period in the 6-8 s gap. So the gap period is what this\n  "
+        "identifier does to these two modes; it is not a reading of a third "
+        "one.\n\n"
+        "  WHAT THIS DOES NOT SETTLE: the RATE. Where the ratio departs there "
+        "is no trim\n  to linearise about, so the growth of the modal "
+        "coordinate is contaminated by\n  a reference that is itself moving; "
+        "and where there IS a trim the deviation is\n  a tenth of a degree, "
+        "near the floor of differencing two nonlinear runs. The\n  rate "
+        "belongs to `--phugoid` and `--sweep`, which measure it without this\n"
+        "  construction. What is claimed here is the SPAN, and only that.\n\n");
+}
+
 void SurgeCheck(const CoupledParagliderSolver& solver,
                 const CoupledState& settled, double ratio)
 {
@@ -2838,6 +3200,7 @@ int main(int argc, char** argv)
     bool sweep = false;
     bool phugoid = false;
     bool shape = false;
+    bool project = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -2846,6 +3209,7 @@ int main(int argc, char** argv)
         if (argument == "--sweep") sweep = true;
         if (argument == "--phugoid") phugoid = true;
         if (argument == "--shape") shape = true;
+        if (argument == "--project") project = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -2949,6 +3313,23 @@ int main(int argc, char** argv)
         LogarithmCheck(solver, settled, 0.35);
         // Costs no flying at all: it runs on synthetic signals.
         MysteryCheck();
+    }
+
+    if (project)
+    {
+        // 0.25 is a ratio that departs, which is the case section 35 read;
+        // 0.30 is the last one that does not, and it is the control - a mode
+        // that only shows up on the departing run would be a different claim.
+        ProjectionCheck(canopy, linePlan, solver, settled, 0.25, 0.25,
+                        settleSeconds, true);
+        ProjectionCheck(canopy, linePlan, solver, settled, 0.30, 0.25,
+                        settleSeconds, true);
+        // A residual that is a property of the aircraft does not care what T
+        // the eigenvectors were taken at; one that moves with T is the
+        // discretisation, which section 47 showed the ENTRIES of Phi are full
+        // of.
+        ProjectionCheck(canopy, linePlan, solver, settled, 0.25, 0.10,
+                        settleSeconds, true);
     }
     (void)transition;
     return 0;

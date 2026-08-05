@@ -94,7 +94,7 @@ AParagliderPawn::AParagliderPawn()
     PilotCharacter = CreateDefaultSubobject<UPoseableMeshComponent>(
         TEXT("PilotCharacter"));
     PilotCharacter->SetupAttachment(PilotRig);
-    PilotCharacter->SetSkeletalMesh(PilotMesh);
+    PilotCharacter->SetSkinnedAssetAndUpdate(PilotMesh);
     PilotCharacter->SetRelativeLocation(FVector::ZeroVector);
     PilotCharacter->SetRelativeScale3D(FVector(0.88f));
     PilotCharacter->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -226,7 +226,7 @@ void AParagliderPawn::BeginPlay()
     if (PilotCharacter && !PilotMeshOverride.IsNull())
     {
         if (USkeletalMesh* const Assigned = PilotMeshOverride.LoadSynchronous())
-            PilotCharacter->SetSkeletalMesh(Assigned);
+            PilotCharacter->SetSkinnedAssetAndUpdate(Assigned);
     }
     if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {

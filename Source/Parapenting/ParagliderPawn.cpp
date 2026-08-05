@@ -1668,10 +1668,29 @@ void AParagliderPawn::UpdatePilotSkeleton(
     const Parapenting::Physics::PilotPose& Pose)
 {
     if (!PilotCharacter || !PilotCharacter->GetSkinnedAsset()) return;
-    const auto SetBone = [this](const TCHAR* Bone,
+    // Whatever this function actually asks for is what gets checked, on the
+    // first pose after a mesh is assigned. A hand-maintained list of expected
+    // bones beside the code that drives them would drift; this cannot.
+    // SetBoneLocationByName does nothing at all for a name the skeleton does
+    // not have, so without this a wrong mesh is a silently half-posed pilot
+    // rather than an error anyone can act on.
+    const FReferenceSkeleton& RefSkeleton =
+        PilotCharacter->GetSkinnedAsset()->GetRefSkeleton();
+    TArray<FName> MissingBones;
+    const bool bValidating = !bPilotSkeletonValidated;
+    const auto Known = [&RefSkeleton, &MissingBones, bValidating](
+        const FName& Bone)
+    {
+        const bool bFound = RefSkeleton.FindBoneIndex(Bone) != INDEX_NONE;
+        if (!bFound && bValidating) MissingBones.AddUnique(Bone);
+        return bFound;
+    };
+    const auto SetBone = [this, &Known](const TCHAR* Bone,
         const Parapenting::Physics::Vec3& Target)
     {
-        PilotCharacter->SetBoneLocationByName(FName(Bone),
+        const FName BoneName(Bone);
+        if (!Known(BoneName)) return;
+        PilotCharacter->SetBoneLocationByName(BoneName,
             FVector(Target.x, Target.y, Target.z), EBoneSpaces::ComponentSpace);
     };
     // These are component-space joint targets from the fixed-step rig
@@ -1714,15 +1733,13 @@ void AParagliderPawn::UpdatePilotSkeleton(
     // The roll about each limb's own length is still unconstrained here - that
     // is wrist orientation, and it belongs to Stage 3 with the grips, where
     // there is a handle to orient against. AimRotationWithRoll is ready for it.
-    const FReferenceSkeleton& RefSkeleton =
-        PilotCharacter->GetSkinnedAsset()->GetRefSkeleton();
-    const auto AimBone = [this, &RefSkeleton](const TCHAR* Bone,
+    const auto AimBone = [this, &RefSkeleton, &Known](const TCHAR* Bone,
         const Parapenting::Physics::Vec3& From,
         const Parapenting::Physics::Vec3& To)
     {
         const FName BoneName(Bone);
+        if (!Known(BoneName)) return;
         const int32 Index = RefSkeleton.FindBoneIndex(BoneName);
-        if (Index == INDEX_NONE) return;
         // Which way this bone points before anything rotates it. Taken from
         // the reference skeleton rather than assumed to be any world axis:
         // the mannequin and a MetaHuman do not agree on bone axes, and
@@ -1747,6 +1764,37 @@ void AParagliderPawn::UpdatePilotSkeleton(
     AimBone(TEXT("calf_r"), Pose.rightKneeCm, Pose.rightAnkleCm);
     AimBone(TEXT("spine_03"), Pose.chestCm, Pose.headCm);
     PilotCharacter->RefreshBoneTransforms();
+
+    if (bValidating)
+    {
+        bPilotSkeletonValidated = true;
+        if (MissingBones.IsEmpty())
+        {
+            UE_LOG(LogTemp, Log,
+                TEXT("Pilot skeleton '%s' drives every rig bone."),
+                *GetNameSafe(PilotCharacter->GetSkinnedAsset()));
+        }
+        else
+        {
+            // Named individually, because which bones are missing says what
+            // went wrong: a MetaHuman face mesh assigned instead of the body
+            // is missing the limbs, while a non-Mannequin skeleton usually
+            // has everything under different names.
+            FString Names;
+            for (const FName& Bone : MissingBones)
+            {
+                if (!Names.IsEmpty()) Names += TEXT(", ");
+                Names += Bone.ToString();
+            }
+            UE_LOG(LogTemp, Warning,
+                TEXT("Pilot skeleton '%s' is missing %d rig bone(s): %s. Those "
+                     "joints are not posed. Assign a Mannequin-compatible body "
+                     "mesh to PilotMeshOverride - see "
+                     "docs/PILOT_CHARACTER_ASSET_GUIDE.md"),
+                *GetNameSafe(PilotCharacter->GetSkinnedAsset()),
+                MissingBones.Num(), *Names);
+        }
+    }
 }
 
 void AParagliderPawn::BuildHarnessMesh()

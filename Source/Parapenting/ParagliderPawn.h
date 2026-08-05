@@ -358,6 +358,10 @@ private:
     UPROPERTY(EditAnywhere, Category = "Pilot")
     TSoftObjectPtr<USkeletalMesh> PilotMeshOverride;
 
+    // Whether the assigned mesh has been checked against the bones the rig
+    // actually drives. Checked once, on the first pose, and reported.
+    bool bPilotSkeletonValidated = false;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> PilotRig;
 

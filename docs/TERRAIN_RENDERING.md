@@ -91,7 +91,9 @@ the established -6.8 m local datum. It replaces the former rectangular Engine
 plane, whose straight boundary read as a false horizon and occluded terrain far
 beyond the intended shoreline. This polygon is render-only and has no collision;
 flight and clearance continue to query `TerrainModel`. Its dedicated
-`M_WaterSurface` material uses a Fresnel-weighted deep/grazing colour response;
+`M_WaterSurface` material uses a Fresnel-weighted deep/grazing colour response
+with restrained world-space broad and fine breakup; weather changes its
+roughness and specular response through a dynamic material instance;
 the Aare reuses it through a darker, rougher dynamic instance on a continuous
 terrain-following ribbon. Lake Thun's water edge is softened by an 18 m
 render-only wet-bank strip: its inner edge follows the water datum and its outer

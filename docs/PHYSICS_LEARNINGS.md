@@ -1971,6 +1971,91 @@ through a channel that is getting weaker, and no measurement of coupling
 strength will find it.** That is a constraint on where to look next, arrived at
 by three failed predictions rather than by one successful one.
 
+## 54. The basin does not shrink, it grows — and 0.30 has no trim to have a basin around
+
+§53 closed the last *linear* escape route for §39's recorded anomaly: the flown
+boundary sits at ratio 0.35–0.30 and every eigenvalue instrument puts it at
+0.28–0.25, the linear picture optimistic against the wing. Transient growth is
+real and tenfold and moves the wrong way with the ratio, so it is not the
+explanation.
+
+That left exactly one hypothesis, and it was written down in `SettleAt`'s own
+comment several levels ago as fork (b) and never followed up: **the trim is
+stable to small disturbances and the aircraft leaves when something large enough
+happens.** A basin that shrinks as the ratio falls would produce precisely the
+observed bias, because every instrument on this axis is local and a local
+instrument cannot see the size of a basin.
+
+`--amplitude` tests it twice, and the two share no arithmetic.
+
+**1. σ at amplitude.** Linearise not about the trim but about states displaced
+along the phugoid's own eigendirection, at growing size. The prediction: if the
+mechanism is nonlinear, the phugoid's real part climbs toward zero with
+amplitude. **It falls, monotonically, at every ratio.**
+
+| displacement | σ at 0.90 | σ at 0.35 |
+|---|---|---|
+| 0 (the trim) | −0.0752 | −0.0201 |
+| 0.5 m/s of surge | −0.0691 | −0.0242 |
+| 1 m/s | −0.0618 | −0.0308 |
+| 2 m/s | (drift-void) | −0.0508 |
+
+At 0.35 the damping ratio climbs 0.053 → 0.25 across that span. A displaced
+wing is *more* damped, not less. Note the 0.90 column moves the other way and
+still never approaches zero — the effect is small there and large at 0.35, which
+is the opposite of a basin closing in.
+
+**2. The basin itself, with no linearisation in the answer at all.** Kick each
+own trim along the phugoid direction and fly it out; the smallest kick that
+departs is the basin radius, bisected three times.
+
+| ratio | survived | departed | departure alpha |
+|---|---|---|---|
+| 0.90 | 4.0 m/s | 4.5 m/s | −2.6° |
+| 0.50 | 4.0 m/s | 4.5 m/s | −2.5° |
+| 0.35 | **6.0 m/s** | **6.5 m/s** | −5.8° |
+| 0.30 | no trim in 3600 s | — | — |
+
+**The basin grows as the aircraft destabilises**, and it is enormous throughout:
+4.5–6.5 m/s of surge on a 10.5 m/s trim is a disturbance of 40–60% of flight
+speed. The wing nearest the boundary tolerates the largest one. Two instruments,
+one direction, and it is the wrong direction for the hypothesis — so the
+finite-amplitude story is **eliminated** rather than left open, which is the
+same kind of result as §51 and worth as much.
+
+**Two things fell out that nobody went looking for.**
+
+**The basin edge is nose-down.** The incidence one step after the departing
+kick is −2.6°, −2.5° and −5.8° against a 5.1° trim. The large-disturbance limit
+is the low-CL loop-gain path — the same one item 11 already blames for full bar
+and for 40% brake — and not a stall. The brake limit and the disturbance limit
+may be one boundary, which would mean the three symptoms item 11 tracks have two
+causes rather than three.
+
+**A guess about the flown boundary, made here and refuted here.** §39 read
+"0.30 does not settle in 420 s" as the wing approaching its boundary. At the
+eigenvalue's own −0.008/s the approach to trim has a 125 s time constant, so a
+genuinely stable wing would *also* miss that budget — which would have made part
+of §39's boundary a settling-time artefact and explained the bias with no new
+physics. The budget was raised to 900 s, then to 3600 s. **0.30 still does not
+settle, and it does not depart either, and the excursion is BIGGER at the longer
+budget:** the unperturbed drift in surge is 0.148 m/s per second at 900 s and
+0.681 at 3600 s. Reading those as phugoid amplitude gives roughly 0.4 m/s
+growing to 1.7 over 2700 s, σ ≈ +0.0005/s — marginal, phase-noisy, and positive.
+0.30 is not settling slowly; it is slowly not settling. The artefact explanation
+is dead, and §39's anomaly survives its fourth attempt.
+
+**Method note, because it is what made the 0.30 rows honest.** The instrument
+prints the drift of the *unperturbed* run beside every σ. A state displaced from
+trim is not a trim, so a Jacobian there is a frozen local one, and past the
+point where the drift over the transition time is comparable to the perturbation
+sizes the row describes the trajectory rather than the aircraft. At 0.30 the
+drift is 0.68 m/s per second against a 0.05 m/s perturbation, so **that whole
+column is void by the instrument's own criterion** and is not quoted above. The
+same measurement returned a 20.8 s mode at the 900 s budget and a 15.3 s mode at
+3600 s, which is the corroboration: there is no trim there, so there is no
+spectrum there either.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

@@ -504,9 +504,19 @@ The v1–v4 goal is not complete until these are addressed:
    leaves a map: the mode to stabilise is the 16 s phugoid, the coefficient
    reaches it through the link's rows by non-normality, and the eliminated
    candidates are §34's damping formula, the tracking lag, a strengthening
-   coupling, and the link's formulation being the fragile part. The largest
+   coupling, the link's formulation being the fragile part, link–canopy
+   friction (§51), transient growth (§53) and — since `--amplitude` — finite
+   amplitude in either form: the phugoid is *more* damped when displaced and
+   the basin *grows* from 4.5 to 6.5 m/s of surge as the ratio falls (§54).
+   Every local and every non-local instrument now agrees the trim is robust,
+   so what remains is not a bigger disturbance or a subtler mode. The largest
    sensitivity in the matrix is `d(surge)/d(surge)` — speed stability, a wing
-   term — which is where an unprejudiced next look should start.
+   term — which is where an unprejudiced next look should start. §54 points the
+   same way from the other end: the basin edge is **nose-down**, −2.6 to −5.8°
+   against a 5.1° trim, so the large-disturbance limit is the low-CL loop-gain
+   path that already owns full bar and 40% brake. The brake travel and turn
+   rate held back for item 11 may share one cause with it, and a wing term is
+   what a low-CL loop gain is made of.
 3. Run `docs/PILOT_REVIEW_PROTOCOL.md` with experienced pilots. It is the half
    of Level 9's exit gate that cannot be closed from a keyboard, and the surge
    timing question is the only external reference available for item 11.

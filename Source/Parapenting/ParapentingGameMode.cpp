@@ -504,7 +504,10 @@ void AParapentingGameMode::BeginPlay()
         // the Amisbuehl corridor. Coordinates remain in the same surveyed
         // route frame and the water elevation remains -6.8 m in the Lehn
         // datum (558 m MSL).
-        constexpr float LakeHeightCm = -700.0f;
+        // swissALTI3D samples the lake at about -7.34 m in the Lehn datum.
+        // Keep a 4 cm render-only lift to avoid z fighting without making the
+        // lake look like a cyan slab floating above the surveyed shore.
+        constexpr float LakeHeightCm = -730.0f;
         const TArray<FVector2D> ShoreM = {
             // Derived from the contiguous -7 m water footprint in the
             // surveyed Interlaken heightfield, simplified only enough to keep
@@ -532,31 +535,46 @@ void AParapentingGameMode::BeginPlay()
         TArray<FVector2D> LakeUVs;
         TArray<FColor> LakeColors;
         TArray<FProcMeshTangent> LakeTangents;
-        LakeVertices.Add(FVector(340000.0f, 240000.0f, LakeHeightCm));
-        LakeNormals.Add(FVector::UpVector);
-        LakeUVs.Add(FVector2D(0.5f, 0.5f));
-        LakeColors.Add(FColor::White);
-        LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
-        for (const FVector2D& PointM : ShoreM)
+        // The source heightfield already contains Lake Thun at its surveyed
+        // datum. Build only cells which remain at that datum, avoiding the
+        // broad polygon that visibly poured cyan water over adjacent fields.
+        constexpr float WaterThresholdM = -6.5f;
+        constexpr float CellSizeM = 20.0f;
+        for (float Y = -1900.0f; Y < 4500.0f; Y += CellSizeM)
         {
-            LakeVertices.Add(FVector(
-                PointM.X * 100.0f, PointM.Y * 100.0f, LakeHeightCm));
-            LakeNormals.Add(FVector::UpVector);
-            LakeUVs.Add(FVector2D(
-                (PointM.X - 1800.0f) / 3300.0f,
-                (PointM.Y + 1900.0f) / 6400.0f));
-            LakeColors.Add(FColor::White);
-            LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
-        }
-        for (int32 Edge = 0; Edge < ShoreM.Num(); ++Edge)
-        {
-            const int32 A = Edge + 1;
-            const int32 B = ((Edge + 1) % ShoreM.Num()) + 1;
-            // Procedural terrain uses clockwise front faces in Unreal's
-            // coordinate convention. The old (0,B,A) order pointed this
-            // single-sided opaque surface down, so Lake Thun was culled when
-            // viewed from the air despite having valid vertices/material.
-            LakeTriangles.Append({0, A, B});
+            for (float X = 1740.0f; X < 5040.0f; X += CellSizeM)
+            {
+                const float H00 = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(X, Y));
+                const float H10 = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(X + CellSizeM, Y));
+                const float H11 = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(
+                        X + CellSizeM, Y + CellSizeM));
+                const float H01 = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(X, Y + CellSizeM));
+                if (FMath::Max(FMath::Max(H00, H10), FMath::Max(H11, H01))
+                    > WaterThresholdM) continue;
+
+                const int32 Base = LakeVertices.Num();
+                for (const FVector2D PointM : {
+                         FVector2D(X, Y), FVector2D(X + CellSizeM, Y),
+                         FVector2D(X + CellSizeM, Y + CellSizeM),
+                         FVector2D(X, Y + CellSizeM)})
+                {
+                    LakeVertices.Add(FVector(
+                        PointM.X * 100.0f, PointM.Y * 100.0f, LakeHeightCm));
+                    LakeNormals.Add(FVector::UpVector);
+                    LakeUVs.Add(FVector2D(
+                        (PointM.X - 1740.0f) / 3300.0f,
+                        (PointM.Y + 1900.0f) / 6400.0f));
+                    LakeColors.Add(FColor::White);
+                    LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
+                }
+                // Clockwise front faces, matching the terrain mesh.
+                LakeTriangles.Append({Base, Base + 2, Base + 1,
+                    Base, Base + 3, Base + 2});
+            }
         }
         LakeSurface->CreateMeshSection(
             0, LakeVertices, LakeTriangles, LakeNormals, LakeUVs,
@@ -567,9 +585,9 @@ void AParapentingGameMode::BeginPlay()
             UMaterialInstanceDynamic* LakeMaterial =
                 UMaterialInstanceDynamic::Create(AuthoredWater, Lake);
             LakeMaterial->SetVectorParameterValue(
-                TEXT("DeepWaterColor"), FLinearColor(0.004f, 0.070f, 0.105f));
+                TEXT("DeepWaterColor"), FLinearColor(0.003f, 0.035f, 0.055f));
             LakeMaterial->SetVectorParameterValue(
-                TEXT("GrazingWaterColor"), FLinearColor(0.035f, 0.30f, 0.38f));
+                TEXT("GrazingWaterColor"), FLinearColor(0.012f, 0.115f, 0.155f));
             LakeSurface->SetMaterial(0, LakeMaterial);
             WaterMaterialInstances.Add(LakeMaterial);
         }
@@ -591,6 +609,10 @@ void AParapentingGameMode::BeginPlay()
         Shoreline->SetupAttachment(LakeSurface);
         Shoreline->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Shoreline->SetCastShadow(false);
+        // The shoreline's previous broad approximation is kept only as an
+        // implementation reference. The surveyed cell mesh supplies the
+        // accurate terrain-water edge, so do not draw an offset second shore.
+        Shoreline->SetVisibility(false);
         Shoreline->RegisterComponent();
         TArray<FVector> ShoreVertices;
         TArray<int32> ShoreTriangles;

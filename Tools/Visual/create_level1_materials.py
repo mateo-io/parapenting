@@ -155,7 +155,13 @@ def make_canopy_fabric():
 
 
 def make_water_surface():
-    """Opaque alpine-water baseline with a readable grazing-angle response."""
+    """Opaque alpine water with stable, low-contrast world-space breakup.
+
+    The water meshes do not carry authored UVs.  Absolute world position keeps
+    the variation continuous across the surveyed lake cells and the Aare
+    ribbon, while the dynamic instance still supplies the weather-driven
+    roughness and specular response at runtime.
+    """
     material, created = load_or_create(
         "M_WaterSurface", unreal.Material, unreal.MaterialFactoryNew()
     )
@@ -186,10 +192,67 @@ def make_water_surface():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         fresnel, "", water_color, "Alpha"
     )
-    roughness = scalar(material, "WaterRoughness", 0.14, -40, 140)
-    specular = scalar(material, "WaterSpecular", 0.65, -40, 220)
-    connect(water_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
-    connect(roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
+    world_position = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionWorldPosition, -520, 180
+    )
+    broad_breakup = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -290, 180
+    )
+    # Position is centimetres: this is a subtle 30-180 m tonal variation, not
+    # a visible procedural pattern from the cockpit.
+    broad_breakup.set_editor_property("scale", 0.00045)
+    broad_breakup.set_editor_property("quality", 1)
+    broad_breakup.set_editor_property("levels", 2)
+    broad_breakup.set_editor_property("output_min", 0.82)
+    broad_breakup.set_editor_property("output_max", 1.04)
+    broad_breakup.set_editor_property("level_scale", 2.3)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        world_position, "", broad_breakup, "Position"
+    )
+    fine_breakup = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -290, 290
+    )
+    # Five-to-twenty metre breakup gives a water surface some body without
+    # pretending the source heightfield contains wave geometry.
+    fine_breakup.set_editor_property("scale", 0.003)
+    fine_breakup.set_editor_property("quality", 1)
+    fine_breakup.set_editor_property("levels", 1)
+    fine_breakup.set_editor_property("output_min", 0.90)
+    fine_breakup.set_editor_property("output_max", 1.07)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        world_position, "", fine_breakup, "Position"
+    )
+    breakup = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, -70, 220
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        broad_breakup, "", breakup, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fine_breakup, "", breakup, "B"
+    )
+    color_breakup = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 180, -40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        water_color, "", color_breakup, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        breakup, "", color_breakup, "B"
+    )
+    roughness = scalar(material, "WaterRoughness", 0.19, -40, 140)
+    roughness_breakup = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 180, 120
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        roughness, "", roughness_breakup, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        fine_breakup, "", roughness_breakup, "B"
+    )
+    specular = scalar(material, "WaterSpecular", 0.50, -40, 220)
+    connect(color_breakup, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(roughness_breakup, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
     connect(specular, "", material, unreal.MaterialProperty.MP_SPECULAR)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_loaded_asset(material, False)

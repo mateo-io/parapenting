@@ -873,8 +873,10 @@ sense item 11 asks for, and the two are worth keeping apart.
 state by state, differences against an unperturbed run, and takes the
 eigenvalues of the transition matrix — every longitudinal mode at once, no
 excitation, no window, no filter. Its sub-checks are `--sweep`, `--phugoid`,
-`--shape` and `--project`, and each is a question the time domain could not
-answer.
+`--shape`, `--project` and `--amplitude`, and each is a question the time
+domain could not answer. `--amplitude` is the exception that proves the shape
+of the level: it is the one sub-check that is *not* a linearisation about trim,
+which is why it could retire a hypothesis none of the others could reach.
 
 **Closed by it:**
 
@@ -926,6 +928,24 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
   (§53). Every measure of link–wing interaction falls as the aircraft
   destabilises. The mechanism is in the link's own dynamics through a weakening
   channel, and no measurement of coupling strength will find it.
+
+- **The basin does not shrink, it grows, and 0.30 has no trim at all (§54).**
+  The last non-linear explanation available for §39's flown-versus-eigenvalue
+  gap, and the one `SettleAt`'s own comment named as fork (b): the trim is
+  stable to small disturbances and the wing leaves when something large enough
+  happens. Tested twice, by instruments sharing no arithmetic, and both fail in
+  the same direction. The phugoid's real part **falls** with displacement
+  amplitude (−0.0201 to −0.0508 /s at ratio 0.35, ζ 0.053 to 0.25), and the
+  smallest kick that departs **rises** as the ratio falls — 4.5 m/s of surge at
+  0.90 and 0.50, 6.5 at 0.35, on a 10.5 m/s trim. Finite amplitude is
+  eliminated. Two by-products worth more than the null result: the basin edge
+  is **nose-down** (departure incidence −2.6, −2.5, −5.8° against a 5.1° trim),
+  so the disturbance limit is the same low-CL loop-gain path as full bar and
+  40% brake rather than a stall — the brake travel and turn rate listed below
+  may share one cause with it. And ratio 0.30 does not settle in **3600 s** and
+  does not depart, with its drift larger at 3600 s than at 900 (0.681 against
+  0.148 m/s per second), which retires a guess made in the same pass: §39's
+  flown boundary is not a settling-budget artefact.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

@@ -3563,6 +3563,330 @@ void OwnTrimSweep(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "what any\n  linearisation can reach.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The one hypothesis this axis wrote down and never tested: AMPLITUDE.
+//
+// The record, gathered over eleven levels, is a set of instruments that agree
+// with each other and disagree with the wing:
+//
+//   * the eigenvalues put the boundary at ratio 0.28-0.25 (`--sweep`);
+//   * the own trims put it at 0.30-0.25 - 0.30 settles with sigma -0.008/s,
+//     0.25 departs during its own settle (`--sweep`, own-trim table);
+//   * the FLOWN boundary is 0.35-0.30 (section 39), and 0.35 is the number the
+//     solver has to carry.
+//
+// Every one of those instruments is linear, and section 53 closed the last
+// linear escape route: transient growth is real, tenfold, and moves the WRONG
+// WAY as the ratio falls, so it is not what makes the flown wing leave earlier
+// than its eigenvalues say it should.
+//
+// The remaining possibility is the one `SettleAt`'s own comment named as fork
+// (b) and then nobody followed up: the trim is stable to SMALL disturbances and
+// the aircraft leaves when something LARGE ENOUGH happens. That is a statement
+// about the size of the basin, not about any eigenvalue, and it predicts
+// exactly the observed bias - a linear instrument is optimistic about a wing
+// whose trim is stable but whose basin has shrunk to nothing.
+//
+// Two measurements, and they fail cleanly and separately:
+//
+//   1. sigma AT AMPLITUDE. Linearise not about the trim but about states
+//      displaced along the phugoid's own eigendirection, at growing size. If
+//      the mechanism is nonlinear, the phugoid's real part climbs with
+//      amplitude and reaches zero at a displacement the settling transient
+//      actually visits. If sigma is flat in amplitude, the local picture is
+//      amplitude-independent and the flown/eigenvalue gap is NOT the basin -
+//      which retires this hypothesis rather than leaving it as a maybe.
+//
+//   2. THE BASIN ITSELF, which needs no linearisation at all. From each own
+//      trim, kick the aircraft along the phugoid direction and fly it out. The
+//      smallest kick that departs IS the basin radius in m/s of surge. The
+//      prediction that matters is not that a basin exists - a nonlinear system
+//      has one - but that it COLLAPSES between 0.90 and 0.30 and lands, at
+//      0.35, near the size of the disturbance a launch transient delivers.
+//
+// WHAT WOULD MAKE (1) VOID, stated before the numbers: a state displaced from
+// trim is not a trim, so the unperturbed run drifts, and a Jacobian taken there
+// is a frozen local one rather than a spectrum. `Analyse` already measures that
+// drift and subtracts it from every column, and the two drift columns are
+// printed beside sigma so the reader can see where the freezing stops being
+// honest. Past the point where the drift over T is comparable to the
+// perturbation, the row is a measurement of the trajectory rather than of the
+// aircraft.
+//
+// (2) has no such caveat and is the stronger of the two for it. It is also the
+// more expensive: every kick is its own several-hundred-second flight.
+//
+// WHAT IT CAME BACK WITH, so the next reader has the answer beside the code
+// that produced it. Both halves failed, in the same direction, which retires
+// the hypothesis rather than leaving it open (PHYSICS_LEARNINGS section 54):
+//
+//   * sigma FALLS with amplitude at every ratio - -0.0201 to -0.0508 /s at
+//     0.35 as the displacement grows to 2 m/s of surge, zeta 0.053 to 0.25. A
+//     displaced wing is MORE damped.
+//   * the basin GROWS as the aircraft destabilises: 4.5 m/s of surge at ratio
+//     0.90 and 0.50, 6.5 at 0.35. On a 10.5 m/s trim that is 40-60% of flight
+//     speed at every ratio tested.
+//   * the basin edge is NOSE-DOWN - departure incidence -2.6, -2.5, -5.8
+//     degrees against a 5.1 degree trim. That is the low-CL loop-gain path
+//     item 11 already blames for full bar and 40% brake, not a stall, so the
+//     disturbance limit and the brake limit may be one boundary.
+//   * 0.30 has no trim to have a basin around. It does not settle in 3600 s
+//     and does not depart, and its drift is LARGER at 3600 s than at 900 -
+//     0.681 against 0.148 m/s per second. It is not settling slowly, it is
+//     slowly not settling, which also kills the reading of section 39's flown
+//     boundary as a settling-BUDGET artefact.
+
+// The phugoid's eigendirection as a real displacement, scaled so one unit of it
+// is one m/s of surge. The mode is complex; its real part is the physical
+// displacement at one phase of the cycle, and surge is the phase reference for
+// the same reason `ShapeOf` uses it - it is the state the mode is largest in.
+struct Direction
+{
+    double value[N] = {0, 0, 0, 0, 0, 0};
+    double periodS = 0.0;
+    bool valid = false;
+};
+
+Direction PhugoidDirection(const double phi[N][N], double transitionTimeS)
+{
+    Direction out;
+    const std::vector<double> polynomial = CharacteristicPolynomial(phi);
+    const std::vector<std::complex<double>> discrete = Roots(polynomial);
+    for (const std::complex<double>& mu : discrete)
+    {
+        if (std::abs(mu) < 1.0e-12) continue;
+        const std::complex<double> lambda = std::log(mu) / transitionTimeS;
+        if (lambda.imag() <= 1.0e-6) continue;
+        const double period = 2.0 * Pi / lambda.imag();
+        if (period < 8.0 || period > 40.0) continue;
+        const std::vector<std::complex<double>> v = Eigenvector(phi, mu);
+        // Rotate the mode's phase so that surge is real and positive. Then the
+        // real part is the instant of the cycle at which the speed excursion is
+        // at its maximum, which is the one instant a kick can be described in
+        // one number.
+        if (std::abs(v[0]) < 1.0e-300) continue;
+        const std::complex<double> rotate =
+            std::conj(v[0]) / std::abs(v[0]);
+        for (int i = 0; i < N; ++i) out.value[i] = (v[i] * rotate).real();
+        const double surge = out.value[0];
+        if (std::fabs(surge) < 1.0e-12) continue;
+        for (int i = 0; i < N; ++i) out.value[i] /= surge;
+        out.periodS = period;
+        out.valid = true;
+        return out;
+    }
+    return out;
+}
+
+// Find the phugoid in a spectrum by its period band, the same band `ShapeOf`
+// uses. The band is wide because the period moves with the ratio - 23.9 s at
+// 0.90 down to 14.0 s at 0.25 - and narrow enough that the 1.86 s pendulum
+// cannot be mistaken for it.
+bool PhugoidOf(const Spectrum& spectrum, Mode& out)
+{
+    bool found = false;
+    for (const Mode& mode : spectrum.modes)
+    {
+        if (!mode.oscillatory) continue;
+        if (mode.periodS < 8.0 || mode.periodS > 40.0) continue;
+        if (!found || mode.growthPerS > out.growthPerS) { out = mode; found = true; }
+    }
+    return found;
+}
+
+void AmplitudeCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                    double ratio, double transitionTimeS, int maximumSeconds)
+{
+    std::printf("AMPLITUDE, ratio %.2f: the phugoid's real part linearised "
+                "about states displaced\nalong its OWN eigendirection, at "
+                "growing size. Flat in amplitude retires the\nnonlinear "
+                "hypothesis; climbing to zero is the mechanism.\n\n", ratio);
+
+    const OwnTrim trim = SettleAt(canopy, linePlan, ratio, maximumSeconds);
+    if (trim.departed)
+    {
+        std::printf("  ratio %.2f departed while settling - no trim to "
+                    "displace from.\n\n", ratio);
+        return;
+    }
+    const Spectrum atTrim = Analyse(trim.solver, trim.state, transitionTimeS,
+                                    1.0, false);
+    const Direction direction = PhugoidDirection(atTrim.phi, transitionTimeS);
+    if (!direction.valid)
+    {
+        std::printf("  no mode in the 8-40 s band at this ratio - nothing to "
+                    "displace along.\n\n");
+        return;
+    }
+    std::printf("  direction (per m/s of surge), period %.2f s:\n"
+                "   du %+.4f  dw %+.4f  dtheta %+.5f  dq %+.5f  dswing %+.5f  "
+                "dswingrate %+.5f\n\n",
+                direction.periodS, direction.value[0], direction.value[1],
+                direction.value[2], direction.value[3], direction.value[4],
+                direction.value[5]);
+
+    std::printf("%10s %10s %10s %11s %12s %12s\n", "amplitude", "period",
+                "zeta", "sigma 1/s", "drift u", "drift swing");
+    for (const double amplitude : {0.0, 0.10, 0.25, 0.50, 1.00, 2.00, 4.00})
+    {
+        CoupledState displaced = trim.state;
+        for (int i = 0; i < N; ++i)
+            Perturb(displaced, i, amplitude * direction.value[i]);
+        const Spectrum spectrum = Analyse(trim.solver, displaced,
+                                          transitionTimeS, 1.0, false);
+        Mode phugoid;
+        if (!PhugoidOf(spectrum, phugoid))
+        {
+            std::printf("%9.2fu %10s %10s %11s %12.4f %12.5f\n", amplitude,
+                        "-", "-", "no mode", spectrum.driftSpeedMpsPerS,
+                        spectrum.driftSwingRadPerS);
+            continue;
+        }
+        std::printf("%9.2fu %9.2fs %10.4f %+11.4f %12.4f %12.5f\n",
+                    amplitude, phugoid.periodS, phugoid.dampingRatio,
+                    phugoid.growthPerS, spectrum.driftSpeedMpsPerS,
+                    spectrum.driftSwingRadPerS);
+    }
+    std::printf("\n  Amplitude is in m/s of surge. The drift columns are how "
+                "far the UNPERTURBED\n  run moved per second from the displaced "
+                "state: once that is comparable to\n  the perturbation sizes "
+                "(0.05 m/s, 0.002 rad) the row describes the trajectory\n  "
+                "rather than the aircraft.\n\n");
+}
+
+// How big a disturbance this aircraft survives, measured by flying it.
+struct Basin
+{
+    double survived = 0.0;      // largest kick that came back
+    double departed = 0.0;      // smallest kick that did not
+    double departureTimeS = 0.0;
+    // The incidence the kick ITSELF produces, before any flying. A kick large
+    // enough to put the wing outside the envelope on the spot has not measured
+    // a basin, it has measured the size of the kick, and that is a different
+    // claim - so the number is carried out and printed rather than left to be
+    // assumed small.
+    double kickIncidenceDeg = 0.0;
+    bool bracketed = false;
+    bool noTrim = false;
+    // Why there was no trim, because "departed while settling" and "still
+    // moving when the settle budget ran out" are different facts about the
+    // aircraft and the table would otherwise print one symbol for both.
+    const char* reason = "";
+};
+
+Basin MeasureBasin(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                   double ratio, double transitionTimeS, int maximumSeconds,
+                   double flightSeconds)
+{
+    Basin out;
+    const OwnTrim trim = SettleAt(canopy, linePlan, ratio, maximumSeconds);
+    if (trim.departed || !trim.settled)
+    {
+        out.noTrim = true;
+        out.reason = trim.departed ? "DEPARTED settling" : "not settled";
+        return out;
+    }
+    const Spectrum atTrim = Analyse(trim.solver, trim.state, transitionTimeS,
+                                    1.0, false);
+    const Direction direction = PhugoidDirection(atTrim.phi, transitionTimeS);
+    if (!direction.valid)
+    {
+        out.noTrim = true;
+        out.reason = "no 8-40 s mode";
+        return out;
+    }
+
+    const int ticks = static_cast<int>(flightSeconds * 120.0);
+    // Returns the time it left, or a negative number if it came back.
+    const auto fly = [&](double kick)
+    {
+        CoupledState state = trim.state;
+        for (int i = 0; i < N; ++i)
+            Perturb(state, i, kick * direction.value[i]);
+        CoupledParagliderSolver local = trim.solver;
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            local.Step(state, CoupledControls{}, CoupledAtmosphere{});
+            const double alpha = local.Diagnostics().angleOfAttackRad;
+            // One step in, the incidence is still the kick's own: one solve is
+            // 1/120 s and nothing has had time to respond to it.
+            if (tick == 0) out.kickIncidenceDeg = alpha * 180.0 / Pi;
+            if (alpha > 0.35 || alpha < -0.20) return tick / 120.0;
+        }
+        return -1.0;
+    };
+
+    for (const double kick : {0.25, 0.5, 1.0, 2.0, 4.0, 8.0})
+    {
+        const double left = fly(kick);
+        if (left < 0.0) { out.survived = kick; continue; }
+        out.departed = kick;
+        out.departureTimeS = left;
+        out.bracketed = true;
+        break;
+    }
+    if (!out.bracketed) return out;
+
+    // Bisect the bracket. A factor-of-two answer cannot distinguish a basin
+    // that halves across the sweep from one that does not move, and that
+    // distinction is the whole point of the table.
+    for (int step = 0; step < 3; ++step)
+    {
+        const double middle = 0.5 * (out.survived + out.departed);
+        const double left = fly(middle);
+        if (left < 0.0) out.survived = middle;
+        else { out.departed = middle; out.departureTimeS = left; }
+    }
+    // Restore the incidence reading to the departing kick's, which is the one
+    // the caller is being asked to judge.
+    fly(out.departed);
+    return out;
+}
+
+void BasinCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                double transitionTimeS, int maximumSeconds,
+                double flightSeconds)
+{
+    std::printf("BASIN: from each own trim, kick along the phugoid direction "
+                "and fly it out. No\nlinearisation in the answer at all - the "
+                "smallest kick that departs IS the\nbasin radius, in m/s of "
+                "surge.\n\n");
+    std::printf("%8s %12s %12s %12s %13s %18s\n", "ratio", "survived",
+                "departed", "at", "kick alpha", "reading");
+    for (const double ratio : {0.90, 0.50, 0.35, 0.30})
+    {
+        const Basin basin = MeasureBasin(canopy, linePlan, ratio,
+                                         transitionTimeS, maximumSeconds,
+                                         flightSeconds);
+        if (basin.noTrim)
+        {
+            std::printf("%8.2f %12s %12s %12s %13s %18s\n", ratio, "-", "-",
+                        "-", "-", basin.reason);
+            continue;
+        }
+        if (!basin.bracketed)
+        {
+            std::printf("%8.2f %11.2fu %12s %12s %13s %18s\n", ratio,
+                        basin.survived, "-", "-", "-", "survived 8");
+            continue;
+        }
+        std::printf("%8.2f %11.2fu %11.2fu %11.1fs %12.1fd %18s\n", ratio,
+                    basin.survived, basin.departed, basin.departureTimeS,
+                    basin.kickIncidenceDeg, "bracketed");
+    }
+    std::printf("\n  The kick-alpha column is the incidence one step after the "
+                "departing kick, before\n  anything has responded to it. Trim "
+                "is near 5 degrees and the envelope ends at\n  20: a row whose "
+                "kick alpha is already out there measured the kick, not a "
+                "basin.\n");
+    std::printf("\n  A basin that does not shrink as the ratio falls says the "
+                "flown boundary is\n  not a basin-size effect, and the "
+                "disagreement between the flown 0.35-0.30 and\n  the "
+                "eigenvalue 0.28-0.25 stays open. One that collapses across "
+                "the same\n  interval is the mechanism item 11 has been "
+                "missing.\n\n");
+}
+
 // What the two tables came back with, written where the numbers are rather
 // than only in PHYSICS_LEARNINGS.
 void Verdict()
@@ -3646,6 +3970,7 @@ int main(int argc, char** argv)
     bool shape = false;
     bool project = false;
     bool damper = false;
+    bool amplitude = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -3656,6 +3981,7 @@ int main(int argc, char** argv)
         if (argument == "--shape") shape = true;
         if (argument == "--project") project = true;
         if (argument == "--damper") damper = true;
+        if (argument == "--amplitude") amplitude = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -3777,6 +4103,31 @@ int main(int argc, char** argv)
         // measured. Free of new physics: the same linearisation, pointed at a
         // one-line change in what the damper subtracts.
         DamperCheck(canopy, linePlan, solver, settled, 0.25, settleSeconds);
+    }
+
+    if (amplitude)
+    {
+        // 3600 s rather than the 420 the other tables use. Section 39 recorded
+        // 0.35 settling at 410 s and 0.30 not settling inside 420 at all, and
+        // the basin below refuses to run without a settled trim - so a 420 s
+        // budget would report "not settled" at exactly the two ratios this is
+        // about, which is a statement about the budget. 900 s was tried first
+        // and 0.30 still did not settle, which is why this is an hour: at the
+        // eigenvalue's own -0.008/s the approach to trim has a 125 s time
+        // constant and a settle criterion of 0.01 degrees over ten seconds is
+        // several of those. A budget this size makes "not settled" mean
+        // something about the aircraft.
+        const int maximum = settleSeconds < 420 ? 180 : 3600;
+        // 0.90 is the control: a ratio nothing has ever suggested is near a
+        // boundary. 0.35 is the flown number the solver carries, and 0.30 is
+        // the last ratio with a trim to displace from at all.
+        AmplitudeCheck(canopy, linePlan, 0.90, 0.25, maximum);
+        AmplitudeCheck(canopy, linePlan, 0.35, 0.25, maximum);
+        AmplitudeCheck(canopy, linePlan, 0.30, 0.25, maximum);
+        // 420 s of flight per kick: two and a half e-foldings of a mode
+        // growing at 0.008/s, and longer than the 348 s in which 0.25 left
+        // during its own settle.
+        BasinCheck(canopy, linePlan, 0.25, maximum, 420.0);
     }
 
     if (project)

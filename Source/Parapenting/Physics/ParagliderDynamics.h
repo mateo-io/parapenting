@@ -68,6 +68,62 @@ struct WingParameters
         0.0, 0.005, 0.070, 0.245, 0.60};
     double maxLiftCoefficient = 1.35;
     double stallAngleRad = 16.0 * 3.141592653589793 / 180.0;
+    // How much of the canopy's swing against the pilot reaches the incidence
+    // the wing flies at. 1.0 is the geometric answer - rotating the chord IS
+    // changing the incidence - and it is a parameter so that the claim can be
+    // swept rather than asserted. Zero reproduces the behaviour before the
+    // pendulum was connected to the aerodynamics, where the wing could swing
+    // 32 degrees behind the pilot without the incidence noticing.
+    // HALF the geometric value, and the reason is a measurement rather than a
+    // preference. Geometrically the gain is 1.0 - rotating the chord IS
+    // changing the incidence - but this lumped model already rotates the whole
+    // aircraft toward trim incidence through `pitchStiffness`, so the full
+    // swing on top of that counts part of the same restoring twice. Swept, 1.0
+    // is unstable at every damping tried including the old 0.72: the swing
+    // grows through the manoeuvre and peaks 8 to 12 seconds AFTER the brake is
+    // released, at 25 to 48 degrees, which is a divergence and not a pendulum.
+    // 0.35 is what survives the same zoom gate at the pendulum period above,
+    // and it is a stated limit of the legacy lumped path rather than a
+    // property of a wing; the coupled solver carries this angle as a real
+    // degree of freedom and needs no such factor.
+    double swingIncidenceGain = 0.35;
+    // THE WING'S PITCH PENDULUM, and it is not a bob on a string.
+    //
+    // This used to take its frequency from sqrt(g / lineLength), which is the
+    // period of a mass swinging under a pivot: 5.5 seconds on this aircraft,
+    // and that is what the game swung at. A canopy's pitch oscillation is
+    // nothing like that slow, because what restores it is not gravity on a
+    // hanging weight - it is the lift the wing makes when its incidence
+    // changes, on a line geometry that resists rotation. Measured on this
+    // wing's own geometry by linearising the coupled solver and taking the
+    // eigenvalues, the pitch mode is **1.86 s at damping ratio 0.09**
+    // (`pitch_eigenmodes`, cross-checked against a 1200 s trace and gated in
+    // `calibration_tests`). The PILOT's swing under the carabiners is a real
+    // gravity pendulum and still uses the line length; these are two different
+    // motions and the model now has both.
+    //
+    // 4.00 s, NOT the measured 1.86, and the gap is a limit of this model
+    // rather than a disagreement about the wing. Swept against the gate that
+    // holds this axis honest - a hard brake from 16 m/s must convert speed
+    // into more than a metre of climb - the shipped 5.70 s gives 1.11 m and
+    // 1.86 s gives 0.86 m and fails it: the faster pendulum swings the wing
+    // back into a stall before the zoom can happen. 4.00 s is the fastest
+    // swept value that keeps the climb (1.02 m) and it is 30% quicker than
+    // what the game had. Closing the gap properly is the coupled solver's job,
+    // not a constant's - `PHYSICS_TODO` items 7 and 17.
+    //
+    // The damping is 0.55, between the old near-critical 0.72 and the 0.20
+    // that `PHYSICS_TODO` item 11a derives from a wing settling in three
+    // swings. Below about 0.5 with the incidence loop closed the swing is
+    // still 6 degrees twelve seconds after a brake pulse, which is a wing that
+    // never settles.
+    double canopyPitchPeriodS = 4.00;
+    // 0.45 rather than the eigenvalue's 0.09 or the observed-settling 0.20,
+    // and the difference is this model's own: with the incidence loop closed
+    // at gain 0.5, damping below about 0.35 leaves the swing still 6 degrees
+    // 12 seconds after a brake pulse. 0.45 shows two to three diminishing
+    // swings, which is what a pilot sees, and settles.
+    double canopyPitchDampingRatio = 0.55;
     double rollInertiaKgM2 = 95.0;
     double pitchInertiaKgM2 = 120.0;
     double yawInertiaKgM2 = 150.0;
@@ -226,6 +282,9 @@ struct Telemetry
 {
     double airspeedMps = 0.0;
     double angleOfAttackRad = 0.0;
+    // The rigid body's own incidence, without the canopy's swing on it. The
+    // difference between the two is the pendulum's contribution.
+    double bodyAngleOfAttackRad = 0.0;
     double liftCoefficient = 0.0;
     double dragCoefficient = 0.0;
     double loadFactor = 0.0;

@@ -1890,6 +1890,77 @@ int main()
                 .canopyRelativeRollRad));
     }
     {
+        // THE PENDULUM, both ends of it, as a sequence rather than a state.
+        //
+        // A firm brake pulse and a release is the manoeuvre every pilot knows:
+        // the wing goes back, the incidence rises toward the stall, and on the
+        // release it surges ahead and its incidence falls toward a frontal.
+        // Before the swing was connected to the aerodynamics the first half of
+        // that was invisible to the model - the wing went 32 degrees behind
+        // the pilot while the incidence it flew on went DOWN. This asserts the
+        // couplings that make the two ends different things.
+        const auto& epic =
+            GetWingProfile(WingProfileId::Epic2MLResearch);
+        ParagliderDynamics pendulum(epic.parameters);
+        FlightState flight;
+        flight.velocityWorldMps = {10.8, 0.0, -1.1};
+        constexpr double dt = 1.0 / 120.0;
+        for (int frame = 0; frame < 120 * 30; ++frame)
+            pendulum.Step(flight, ControlInput{}, Atmosphere{}, dt);
+        const double trimSwing =
+            pendulum.LastTelemetry().canopyRelativePitchRad;
+        const double trimAlpha = pendulum.LastTelemetry().angleOfAttackRad;
+        // The wing hangs where it hangs, and it is not swinging.
+        assert(std::abs(trimSwing) < 0.02);
+
+        double deepestBack = 0.0, alphaAtBack = trimAlpha;
+        double furthestForward = 0.0, alphaAtForward = trimAlpha;
+        double swingReversals = 0.0;
+        double previousRate = 0.0;
+        for (int frame = 0; frame < 120 * 12; ++frame)
+        {
+            const double t = frame * dt;
+            ControlInput input{};
+            if (t >= 1.0 && t < 3.0)
+                input.leftBrake = input.rightBrake = 0.6;
+            pendulum.Step(flight, input, Atmosphere{}, dt);
+            const Telemetry& tel = pendulum.LastTelemetry();
+            if (tel.canopyRelativePitchRad > deepestBack)
+            {
+                deepestBack = tel.canopyRelativePitchRad;
+                alphaAtBack = tel.angleOfAttackRad;
+            }
+            if (t > 3.0 && tel.canopyRelativePitchRad < furthestForward)
+            {
+                furthestForward = tel.canopyRelativePitchRad;
+                alphaAtForward = tel.angleOfAttackRad;
+            }
+            if (previousRate != 0.0
+                && (tel.canopyRelativePitchRateRadps < 0.0)
+                    != (previousRate < 0.0))
+                swingReversals += 1.0;
+            previousRate = tel.canopyRelativePitchRateRadps;
+        }
+        // BACK: the wing ends up behind the pilot, and its incidence is UP -
+        // that is the half that stalls wings, and the half this model did not
+        // have. Past the stall angle it is a stall, which is what a firm
+        // two-second pull does.
+        assert(deepestBack > 0.15);
+        assert(alphaAtBack > trimAlpha);
+        assert(alphaAtBack - epic.parameters.trimAngleOfAttackRad
+            > epic.parameters.stallAngleRad * 0.5);
+        // FRONT: on the release it swings through and ahead, and there its
+        // incidence is DOWN - which is the half that collapses wings, and why
+        // a surge is checked with brake rather than watched.
+        assert(furthestForward < -0.05);
+        assert(alphaAtForward < trimAlpha);
+        // And it is a PENDULUM: it reverses several times rather than moving
+        // once and staying there. Two reversals would be one swing out and
+        // one back; a wing that only creeps to a new position and holds it is
+        // what the near-critical damping used to give.
+        assert(swingReversals >= 4.0);
+    }
+    {
         // A fast symmetric brake application converts airspeed to height
         // before drag and held brake take over.
         const auto& epic =
@@ -2596,6 +2667,44 @@ int main()
             < std::abs(fullResponse.positionOffsetCm.y) * 0.12);
         assert(std::abs(minimalResponse.rollDegrees)
             < std::abs(fullResponse.rollDegrees) * 0.12);
+
+        // The pendulum's two halves must move the camera in opposite
+        // directions and must not be the collapse cue wearing a different
+        // name. Back: the view lifts and pitches up. Front: it drops and
+        // pitches down. Anything that returns the same sign for both is
+        // reading the magnitude of a swing and not its direction, which is
+        // the bug this cue exists to avoid.
+        {
+            Telemetry wingBack;
+            wingBack.canopyRelativePitchRad = 0.30;
+            wingBack.canopyRelativePitchRateRadps = 0.6;
+            Telemetry wingFront;
+            wingFront.canopyRelativePitchRad = -0.30;
+            wingFront.canopyRelativePitchRateRadps = -0.6;
+            const CameraFeedback back =
+                EvaluateCameraFeedback(wingBack, {}, 1.0, full);
+            const CameraFeedback front =
+                EvaluateCameraFeedback(wingFront, {}, 1.0, full);
+            assert(back.pitchDegrees > 0.0);
+            assert(front.pitchDegrees < 0.0);
+            assert(back.positionOffsetCm.z > 0.0);
+            assert(front.positionOffsetCm.z < 0.0);
+            assert(back.positionOffsetCm.x < front.positionOffsetCm.x);
+            // Bounded, because this one happens all the time. A pendulum cue
+            // that shouts as loudly as a collapse is a cue nobody can read.
+            // Eight degrees at a swing well past what the model reaches under
+            // a hard brake; stated absolutely rather than against another
+            // case, because the incident case's own pitch is a sum of terms
+            // that partly cancel and would make this a comparison of
+            // coincidences.
+            assert(std::abs(back.pitchDegrees) < 8.0);
+            assert(std::abs(front.pitchDegrees) < 8.0);
+            // And the comfort profiles still govern it.
+            const CameraFeedback quiet =
+                EvaluateCameraFeedback(wingBack, {}, 1.0, minimal);
+            assert(std::abs(quiet.positionOffsetCm.z)
+                < std::abs(back.positionOffsetCm.z) * 0.12);
+        }
 
         Telemetry loadOnly;
         loadOnly.loadFactor = 4.7;

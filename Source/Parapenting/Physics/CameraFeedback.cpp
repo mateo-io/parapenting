@@ -36,23 +36,51 @@ CameraFeedback EvaluateCameraFeedback(
             + 0.8 * t.frontalReinflationRatePerS,
         0.0, 0.75);
 
+    // THE PENDULUM, which the camera could not see before this.
+    //
+    // `recoverySurge` above is a collapse-recovery signal: it only exists
+    // after the wing has folded. The ordinary pitch pendulum - the wing going
+    // back under brake or into a thermal, and surging ahead on the release -
+    // is the most common thing a pilot feels all flight and none of the cues
+    // read it. Split into its two halves because they do not feel alike and
+    // must not cancel:
+    //
+    //   * BACK. The wing is behind, its incidence is rising, and the pilot has
+    //     swung ahead of it and been pressed into the harness. The view lifts
+    //     and pitches up as the horizon drops away.
+    //   * FRONT. The wing is ahead and diving, the pilot is left behind and
+    //     light in the harness, and the view drops and pitches down.
+    //
+    // Normalised on 25 degrees, which is about where this model's swing
+    // saturates under a hard brake, and deliberately smaller in amplitude than
+    // the collapse cues: this happens constantly and a large cue would be
+    // exhausting rather than informative.
+    const double swingBack = std::clamp(
+        t.canopyRelativePitchRad / 0.44, -1.0, 1.0);
+    const double swingRate = std::clamp(
+        t.canopyRelativePitchRateRadps / 1.2, -1.0, 1.0);
+
     CameraFeedback result;
     result.positionOffsetCm = {
         std::clamp(acceleration.x * -9.0, -75.0, 75.0) * motion
-            - t.recoverySurge * 38.0 * motion,
+            - t.recoverySurge * 38.0 * motion
+            - swingBack * 11.0 * motion,
         std::clamp(acceleration.y * -13.0, -95.0, 95.0) * motion
             + buffet * 17.0
             + collapseAsymmetry * 48.0 * motion
             + unloadingPulse * 8.0 * motion,
         std::clamp(acceleration.z * -7.0, -60.0, 60.0) * motion
             - loadCompression * 9.0 * motion
+            + swingBack * 6.0 * motion
             - t.flareAuthority * 12.0 * motion
             - t.highLoadDeformation * 7.0 * motion
             - t.frontalCollapse * 22.0 * motion
             - reinflationKick * 18.0 * motion
     };
     result.pitchDegrees =
-        -t.harnessPitchRad * 18.0 * motion
+        swingBack * 5.0 * motion
+        + swingRate * 1.6 * motion
+        - t.harnessPitchRad * 18.0 * motion
         - t.flareAuthority * 4.5 * motion
         - t.recoverySurge * 14.0 * motion
         + t.frontalCollapse * 9.0 * motion

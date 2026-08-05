@@ -87,7 +87,43 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
         atmosphere.windWorldMps - state.velocityWorldMps;
     const Vec3 airflowBody = state.attitude.InverseRotate(relativeWindWorld);
     const double speed = std::max(Length(airflowBody), 0.01);
-    const double alpha = std::atan2(-airflowBody.z, -airflowBody.x);
+    const double bodyAlpha = std::atan2(-airflowBody.z, -airflowBody.x);
+    // THE INCIDENCE THE CANOPY SEES, WHICH IS NOT THE ONE THE BODY SEES.
+    //
+    // The wing hangs on lines and swings relative to the pilot - that angle is
+    // `canopyRelativePitchRad`, integrated below as a real pendulum. A canopy
+    // swung 30 degrees behind the pilot has its chord rotated 30 degrees
+    // nose-up against the same airflow, so its incidence is 30 degrees higher.
+    // Until this line existed the swing was carried in the pose and nowhere
+    // else: through a firm brake pulse the wing went 32 degrees back while the
+    // incidence the model flew on went DOWN, 6 degrees below trim to 17. The
+    // wing swung and the aircraft did not notice, which is why a pendulum
+    // could be seen and never felt.
+    //
+    // Closing it is what makes the two ends of the swing different things
+    // rather than one signal with two signs:
+    //
+    //   * BACK, incidence UP. The wing decelerates, the pilot keeps going, the
+    //     canopy pitches aft and its incidence rises toward the stall. This is
+    //     how a fast deep brake, a thermal entry or the recovery half of a
+    //     surge puts a wing into a stall, and it is why the recovery is to let
+    //     the brakes up rather than to hold them.
+    //   * FRONT, incidence DOWN. The wing accelerates ahead of the pilot on a
+     //    release or out of a thermal, its incidence falls, and at the bottom
+    //     of that swing it is closest to a frontal collapse - which is why a
+    //     surge is checked with brake and not with nothing.
+    //
+    // The previous step's swing is used deliberately: the pendulum is
+    // integrated after the aerodynamics, so reading this step's value would be
+    // an algebraic loop. At 120 Hz the lag is one step against a pendulum
+    // period of seconds.
+    //
+    // The gain is 1.0 because it is geometry, not a handling number - a
+    // rotation of the chord IS a change of incidence. It exists as a parameter
+    // so the claim can be swept rather than asserted.
+    const double canopySwingRad = state.canopyRelativePitchRad;
+    const double alpha = bodyAlpha
+        + Params.swingIncidenceGain * canopySwingRad;
     const double dynamicPressure =
         0.5 * Params.airDensityKgM3 * speed * speed;
     const double pressureDropRate = state.previousDynamicPressurePa > 1.0
@@ -171,8 +207,12 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // the natural pendulum frequency; brake/zoom displacement shifts its
     // equilibrium aft. This state can overshoot on release instead of
     // teleporting with the rigid system attitude.
-    const double pitchNaturalFrequency =
-        std::sqrt(9.80665 / SuspensionLengthM);
+    // Measured, not sqrt(g/L) - see `canopyPitchPeriodS`. A wing's pitch
+    // oscillation is aerodynamic; only the pilot's swing under the carabiners
+    // is a gravity pendulum, and that one is stepped separately below and
+    // still uses the line length.
+    const double pitchNaturalFrequency = 2.0 * 3.141592653589793
+        / std::max(0.2, Params.canopyPitchPeriodS);
     // Where the wing hangs relative to the pilot, and it is not a function of
     // the brake handle. The pilot is 95 kg of a 105 kg aircraft, so the pilot
     // is very nearly the centre of mass and the WING is what moves: the pair
@@ -204,7 +244,7 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     const double relativePitchAcceleration =
         pitchNaturalFrequency * pitchNaturalFrequency
             * (canopyPitchTarget - state.canopyRelativePitchRad)
-        - 0.72 * 2.0 * pitchNaturalFrequency
+        - Params.canopyPitchDampingRatio * 2.0 * pitchNaturalFrequency
             * state.canopyRelativePitchRateRadps;
     state.canopyRelativePitchRateRadps +=
         relativePitchAcceleration * dt;
@@ -841,7 +881,11 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
         state.canopyPressure - statePressureLoss * dt, 0.12, 1.08);
 
     TelemetryState.airspeedMps = speed;
+    // The canopy's incidence, which is what stalls. The body's own is
+    // reported beside it so the swing's contribution is visible rather than
+    // buried in one number.
     TelemetryState.angleOfAttackRad = alpha;
+    TelemetryState.bodyAngleOfAttackRad = bodyAlpha;
     TelemetryState.liftCoefficient = cl;
     TelemetryState.dragCoefficient = cd;
     TelemetryState.loadFactor = Length(aerodynamicForce)

@@ -19,6 +19,7 @@
 #include "AudioFeedback.h"
 #include "EquipmentSetup.h"
 #include "PilotPose.h"
+#include "PilotSkeletonAim.h"
 #include "GliderRigSnapshot.h"
 #include "CanopyLoadPose.h"
 #include "InputBindingProfile.h"
@@ -227,6 +228,69 @@ int main()
             assert(std::abs(std::sqrt(riser.x * riser.x + riser.y * riser.y
                 + riser.z * riser.z) - 45.0) < 1e-12);
         }
+    }
+    {
+        // Bone aiming. The rig solves joint positions; a skinned mesh also
+        // needs the rotations, or the skin shears at every joint.
+        const auto unitLength = [](const Quaternion& q)
+        {
+            return std::abs(std::sqrt(q.w * q.w + q.x * q.x + q.y * q.y
+                + q.z * q.z) - 1.0) < 1e-12;
+        };
+        const auto sameDirection = [](const Vec3& a, const Vec3& b)
+        {
+            const Vec3 d = Normalized(a) - Normalized(b);
+            return Length(d) < 1e-9;
+        };
+
+        // The defining property: the rotation carries rest onto target.
+        const Vec3 rest{0.0, 0.0, 1.0};
+        for (const Vec3& target : {Vec3{1.0, 0.0, 0.0}, Vec3{0.0, 1.0, 0.0},
+             Vec3{0.0, 0.0, 1.0}, Vec3{1.0, 2.0, -3.0}, Vec3{-4.0, 0.5, 0.0}})
+        {
+            const auto aim = AimRotation(rest, target);
+            assert(unitLength(aim));
+            assert(sameDirection(aim.Rotate(rest), target));
+        }
+
+        // Length must not matter: these are directions, not displacements.
+        assert(sameDirection(
+            AimRotation(rest, {0.0, 9.0, 0.0}).Rotate(rest),
+            AimRotation(rest, {0.0, 0.001, 0.0}).Rotate(rest)));
+
+        // A half turn has no shortest rotation. It must still be a real
+        // rotation that lands on the target, not a NaN.
+        const auto reversed = AimRotation(rest, {0.0, 0.0, -1.0});
+        assert(unitLength(reversed));
+        assert(sameDirection(reversed.Rotate(rest), {0.0, 0.0, -1.0}));
+
+        // A collapsed joint has no direction to point. Identity beats
+        // inventing one, which would spin the limb.
+        const auto degenerate = AimRotation(rest, {0.0, 0.0, 0.0});
+        assert(degenerate.w == 1.0 && degenerate.x == 0.0
+            && degenerate.y == 0.0 && degenerate.z == 0.0);
+
+        // Rolled aim: still hits the target, and now also carries the
+        // reference up onto the requested one. This is the twist a wrist
+        // needs and a forearm must not be free to invent.
+        const Vec3 restUp{0.0, 1.0, 0.0};
+        const Vec3 target{1.0, 0.0, 0.0};
+        const Vec3 wantUp{0.0, 0.0, 1.0};
+        const auto rolled = AimRotationWithRoll(rest, restUp, target, wantUp);
+        assert(unitLength(rolled));
+        assert(sameDirection(rolled.Rotate(rest), target));
+        assert(sameDirection(rolled.Rotate(restUp), wantUp));
+
+        // An up vector parallel to the aim carries no roll information, so the
+        // result falls back to the plain aim rather than producing garbage.
+        const auto noRoll = AimRotationWithRoll(rest, restUp, target, target);
+        assert(unitLength(noRoll));
+        assert(sameDirection(noRoll.Rotate(rest), target));
+
+        // Determinism: the same inputs give bit-identical rotations, or a
+        // replay would not reproduce the pilot.
+        assert(AimRotation(rest, {1.0, 2.0, -3.0}).x
+            == AimRotation(rest, {1.0, 2.0, -3.0}).x);
     }
     {
         // Torso lag. The chest and head must trail a surge and then settle on

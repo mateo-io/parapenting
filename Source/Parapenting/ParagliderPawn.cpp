@@ -25,6 +25,8 @@
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 #include "Engine/SkeletalMesh.h"
+#include "ReferenceSkeleton.h"
+#include "Physics/PilotSkeletonAim.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -1675,11 +1677,6 @@ void AParagliderPawn::UpdatePilotSkeleton(
     // These are component-space joint targets from the fixed-step rig
     // snapshot. The eventual IK Rig/Retargeter consumes the same set; keeping
     // names at this boundary is what makes the asset swap a data change.
-    //
-    // Blockout limitation: this drives translation only, so the skin follows
-    // the joints but limbs do not twist about their own axis and the mesh will
-    // shear at the shoulder and wrist. Bone rotation belongs to the IK Rig
-    // that replaces this function, not to the poseable blockout.
     SetBone(TEXT("pelvis"), Pose.pelvisCm);
     SetBone(TEXT("spine_01"), {
         Pose.chestCm.x * 0.45 + Pose.pelvisCm.x * 0.55,
@@ -1707,6 +1704,48 @@ void AParagliderPawn::UpdatePilotSkeleton(
     SetBone(TEXT("calf_r"), Pose.rightKneeCm);
     SetBone(TEXT("foot_l"), Pose.leftAnkleCm);
     SetBone(TEXT("foot_r"), Pose.rightAnkleCm);
+
+    // Positions alone leave every bone in its reference orientation, so the
+    // skin gets dragged along each segment without ever being turned: the mesh
+    // shears at the shoulder and the wrist and the limb reads as bent tubing.
+    // Aim each bone down its own segment, using the reference pose to say
+    // which way the bone points when unrotated.
+    //
+    // The roll about each limb's own length is still unconstrained here - that
+    // is wrist orientation, and it belongs to Stage 3 with the grips, where
+    // there is a handle to orient against. AimRotationWithRoll is ready for it.
+    const FReferenceSkeleton& RefSkeleton =
+        PilotCharacter->GetSkinnedAsset()->GetRefSkeleton();
+    const auto AimBone = [this, &RefSkeleton](const TCHAR* Bone,
+        const Parapenting::Physics::Vec3& From,
+        const Parapenting::Physics::Vec3& To)
+    {
+        const FName BoneName(Bone);
+        const int32 Index = RefSkeleton.FindBoneIndex(BoneName);
+        if (Index == INDEX_NONE) return;
+        // Which way this bone points before anything rotates it. Taken from
+        // the reference skeleton rather than assumed to be any world axis:
+        // the mannequin and a MetaHuman do not agree on bone axes, and
+        // hard-coding one would twist every limb on the other.
+        const FVector RestDirection =
+            RefSkeleton.GetRefBonePose()[Index].GetLocation().GetSafeNormal();
+        if (RestDirection.IsNearlyZero()) return;
+        const Parapenting::Physics::Vec3 Rest{
+            RestDirection.X, RestDirection.Y, RestDirection.Z};
+        const auto Aim = Parapenting::Physics::AimRotation(Rest, To - From);
+        PilotCharacter->SetBoneRotationByName(BoneName,
+            FQuat(Aim.x, Aim.y, Aim.z, Aim.w).Rotator(),
+            EBoneSpaces::ComponentSpace);
+    };
+    AimBone(TEXT("upperarm_l"), Pose.leftShoulderCm, Pose.leftElbowCm);
+    AimBone(TEXT("upperarm_r"), Pose.rightShoulderCm, Pose.rightElbowCm);
+    AimBone(TEXT("lowerarm_l"), Pose.leftElbowCm, Pose.leftHandCm);
+    AimBone(TEXT("lowerarm_r"), Pose.rightElbowCm, Pose.rightHandCm);
+    AimBone(TEXT("thigh_l"), Pose.leftHipCm, Pose.leftKneeCm);
+    AimBone(TEXT("thigh_r"), Pose.rightHipCm, Pose.rightKneeCm);
+    AimBone(TEXT("calf_l"), Pose.leftKneeCm, Pose.leftAnkleCm);
+    AimBone(TEXT("calf_r"), Pose.rightKneeCm, Pose.rightAnkleCm);
+    AimBone(TEXT("spine_03"), Pose.chestCm, Pose.headCm);
     PilotCharacter->RefreshBoneTransforms();
 }
 

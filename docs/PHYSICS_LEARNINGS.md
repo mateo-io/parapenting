@@ -1621,6 +1621,58 @@ least distorted. But that argument was available before the run and was not
 made, so it is a hypothesis about which T to trust, not a result. Picking the T
 whose answer one likes is how §46 nearly reported a factor of seven.
 
+## 48. The gate was measuring its own window, and the fix was to assert less
+
+`calibration_tests` published "Pitch: period 2.91 s, damping 0.28" as this
+wing's pitch mode, gated on `0.5 < period < simplePendulum` and
+`0.02 < ζ < 0.9`. §37's eigenvalues had said 1.86 s at ζ 0.09 for eight levels
+and the two were never reconciled, because reconciling them meant changing
+gated behaviour.
+
+**First correction, to my own description of it.** I had been calling this a
+conflict with consequences for the build. It is not: the bounds are wide enough
+that 1.86 s and ζ 0.09 both pass. The gate was never red and would not have gone
+red. What was wrong was narrower and worse — **a number produced by an arbitrary
+window was being published as physics**.
+
+**The evidence, which cost one run.** Exporting `IdentifyOscillation` so the test
+can vary the window it was previously handed:
+
+| window | period | damping | oscillations |
+|---|---|---|---|
+| 2.0–3.5 s | — | — | **0** |
+| 2.0–5.0 s | 1.42 | 0.39 | 1 |
+| 2.0–7.0 s | 1.51 | 0.23 | 1 |
+| **2.0–9.0 s** | **2.91** | **0.28** | 1 |
+| 2.0–12.0 s | — | — | **0** |
+| 2.0–20.0 s | — | — | **0** |
+
+Never more than one oscillation; nothing at all on either side; and the shipped
+9.0 s window is the **outlier** among the ends that find anything. The published
+number ranged over a factor of two and vanished twice, purely on where the
+window stopped.
+
+**The replacement I tried first also failed, and that is the useful part.** A
+decay check needs no period: peak-to-peak excursion early versus late. It gives
+0.948° over 2–5 s against 0.911° over 8–11 s — **ratio 0.96**, no decay at all —
+because by 8 s the swing signal *is* the 16 s mode and the fast one is long
+gone. That is §36's result arriving from a third direction: two modes an order
+of magnitude apart share this signal and no window separates them. The brake
+pulse cannot measure the fast mode, full stop.
+
+**So the gate now asserts less.** A released pulse leaves a measurable, bounded
+swing transient, and the identifier's period — whatever window produced it —
+still sits under the simple-pendulum bound, which is the one external reference
+here that does not require resolving the mode. The period and damping are
+printed, labelled as window identification, with the sensitivity table beside
+them and the modal answer named as the authority.
+
+**Weakening a gate to what its data supports is the point, not the cost.** The
+old bounds were wide enough to admit both the right answer and the wrong one —
+so they never distinguished them, and their passing was never evidence. A test
+that cannot fail differently for a wrong answer is decoration, and this one had
+been decorating a published number for eight levels.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1663,7 +1715,8 @@ whose answer one likes is how §46 nearly reported a factor of seven.
 | phugoid drag exponent, D ~ V^d | 0.313 | classical 2; this is the low damping |
 | incidence against speed, slow mode | -1.69 deg/(m/s) | the pendulum holds lift, not incidence |
 | lift swing over the slow mode | 0.97% of weight | what is left to restore with |
-| fast pitch mode, by eigenvalue | 1.86 s, zeta 0.09 | NOT the gated 2.91 s / 0.28 - §37 |
+| fast pitch mode, by eigenvalue | 1.86 s, zeta 0.09 | the authority; the gate no longer claims otherwise - §48 |
+| the old gated "2.91 s / 0.28" | a window artefact | 1.42 / 1.51 / 2.91 / nothing, by window end - §48 |
 | slow mode, by eigenvalue | 16.40 s, zeta 0.033 | against 16.39 / 0.031 off a trace |
 | mode that diverges at low swing damping | 3.6-5.7 s | the pendulum band, NOT the phugoid - §35 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |

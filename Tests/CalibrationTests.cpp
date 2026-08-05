@@ -242,23 +242,116 @@ int main()
         const SuspensionGraph graph = BuildSuspensionGraph(canopy, linePlan);
         const double lengthM = SuspensionPendulumLengthM(graph);
         const double simplePendulumS = 2.0 * Pi * std::sqrt(lengthM / 9.80665);
-        std::printf("Pitch: period %.2f s over %d oscillations, damping "
+        // Labelled as what it is. This is the identifier's output on one
+        // window, NOT this wing's pitch mode - see the block below.
+        std::printf("Pitch, by window identification (see caveat below): "
+                    "period %.2f s over %d\n  oscillations, damping "
                     "ratio %.2f\n",
                     pulse.pitchPeriodS, pulse.pitchOscillationsMeasured,
                     pulse.pitchDampingRatio);
         std::printf("  simple pendulum on %.2f m would be %.2f s; a stiffer "
                     "wing is faster\n", lengthM, simplePendulumS);
 
-        Check(pulse.pitchOscillationsMeasured >= 1,
-              "a released brake pulse leaves a measurable pitch oscillation - "
+        // WHAT THE WINDOW IS WORTH, printed before anything is asserted.
+        //
+        // The manoeuvre identifies over 2.0 to 9.0 s - the release to seven
+        // seconds after it - and reports "period 2.91 s, damping 0.28". The
+        // modal instrument (`parapenting_pitch_eigenmodes`, PHYSICS_LEARNINGS
+        // section 37) puts this mode at 1.86 s and zeta 0.09, off eigenvalues
+        // that need no window at all and that reproduce the slow mode's
+        // independently measured 16.39 s as their own check.
+        //
+        // Rather than assert either number, run the identifier across window
+        // ends and print what it does. A number that moves with an arbitrary
+        // choice is not a measurement of the aircraft, and this is the cheapest
+        // possible way to show whether it moves.
+        std::printf("  window sensitivity - the identifier over several "
+                    "window ends:\n");
+        std::printf("  %10s %10s %10s %14s\n", "window", "period", "damping",
+                    "oscillations");
+        for (const double windowEnd : {3.5, 5.0, 7.0, 9.0, 12.0, 20.0})
+        {
+            double period = 0.0, damping = 0.0;
+            int oscillations = 0;
+            IdentifyOscillation(pulse.samples, 2.0, windowEnd, period, damping,
+                                oscillations);
+            std::printf("  2.0-%5.1fs %10.2f %10.2f %14d\n", windowEnd,
+                        period, damping, oscillations);
+        }
+        std::printf("  the modal answer, which needs no window: 1.86 s, "
+                    "zeta 0.09\n\n");
+
+        // What IS robust: that the release leaves a transient and that the
+        // transient decays. Peak-to-peak excursion needs no zero line, no
+        // crossing count and no period, so it does not inherit the window
+        // problem above - it only needs the two windows to be far enough apart
+        // for a decaying signal to have decayed.
+        const auto excursion = [&](double fromS, double toS)
+        {
+            double low = 0.0, high = 0.0;
+            bool any = false;
+            for (const ManeuverSample& sample : pulse.samples)
+            {
+                if (sample.timeS < fromS || sample.timeS > toS) continue;
+                if (!any) { low = high = sample.payloadSwingRad; any = true; }
+                low = std::min(low, sample.payloadSwingRad);
+                high = std::max(high, sample.payloadSwingRad);
+            }
+            return any ? (high - low) : 0.0;
+        };
+        const double earlySwingRad = excursion(2.0, 5.0);
+        const double lateSwingRad = excursion(8.0, 11.0);
+        std::printf("  swing excursion %.3f deg over 2-5 s, %.3f deg over "
+                    "8-11 s, ratio %.2f\n\n",
+                    earlySwingRad * Degrees, lateSwingRad * Degrees,
+                    earlySwingRad > 0.0 ? lateSwingRad / earlySwingRad : 0.0);
+
+        // WHAT IS NO LONGER ASSERTED, AND WHY.
+        //
+        // This block used to gate `pitchPeriodS` against the simple-pendulum
+        // bound and `pitchDampingRatio` into 0.02-0.9, and it published
+        // "period 2.91 s, damping 0.28" as this wing's pitch mode. Both
+        // assertions passed. Both were assertions about the WINDOW.
+        //
+        // The table above is why. Across window ends the identifier returns
+        // nothing at 3.5 s, 1.42 s at 5.0, 1.51 s at 7.0, 2.91 s at 9.0, and
+        // nothing again at 12 and 20 - never more than ONE oscillation, and
+        // the shipped 9.0 s window is the outlier among the ends that find
+        // anything at all. A number that ranges over a factor of two and
+        // vanishes on either side of an arbitrary choice is not a property of
+        // the aircraft.
+        //
+        // The decay check that was tried instead did not survive either: the
+        // swing excursion is 0.948 deg over 2-5 s and 0.911 over 8-11 s, a
+        // ratio of 0.96, because by 8 s the signal IS the 16 s mode and the
+        // fast one is long gone. That is PHYSICS_LEARNINGS section 36's result
+        // arriving from a third direction - two modes an order of magnitude
+        // apart share this signal, and no window separates them.
+        //
+        // So this manoeuvre cannot measure the fast pitch mode, and the
+        // authority for it is `parapenting_pitch_eigenmodes`: 1.86 s at
+        // zeta 0.09, from eigenvalues that need no window and that reproduce
+        // the slow mode's independently measured 16.39 s as their own check
+        // (sections 37 and 39).
+        //
+        // What the manoeuvre CAN support is asserted below, and it is less: a
+        // released pulse leaves a bounded excursion and the aircraft is still
+        // flying afterwards. Weakening a gate to what its data supports is the
+        // point rather than a cost - the old bounds were wide enough to admit
+        // both the right answer and the wrong one, so they never distinguished
+        // them.
+        Check(earlySwingRad > 0.002,
+              "a released brake pulse leaves a measurable swing transient - "
               "which is the surge, and which did not exist at all until the "
               "wing and the pilot became two bodies");
-        Check(pulse.pitchPeriodS > 0.5 && pulse.pitchPeriodS < simplePendulumS,
-              "its period is faster than a simple pendulum on the same lines, "
-              "because the line geometry adds stiffness the bob does not have");
-        Check(pulse.pitchDampingRatio > 0.02 && pulse.pitchDampingRatio < 0.9,
-              "and it is damped rather than ringing or dead - a real wing "
-              "settles in a few swings");
+        Check(earlySwingRad * Degrees < 15.0 && lateSwingRad * Degrees < 15.0,
+              "and the swing stays bounded through it rather than diverging - "
+              "what this record can honestly say about stability, the rate "
+              "being the eigenmodes' business and not this window's");
+        Check(pulse.pitchPeriodS < simplePendulumS,
+              "the identifier's period, whatever window it came from, is still "
+              "faster than a simple pendulum on the same lines - the one "
+              "external bound here that does not depend on resolving the mode");
 
         // The surge itself, which is the pilot-facing half of the same event.
         std::printf("  canopy lead %.2f m at the back of the pulse, %.2f m at "

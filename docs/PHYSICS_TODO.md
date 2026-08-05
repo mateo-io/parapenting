@@ -736,11 +736,22 @@ stands in for, and it is checkable against a real wing in a way "the period is
   rates move ~20% with T, which is the band already documented; entries move by
   factors. §45's ranking is entry-based and was the one at risk — it holds, with
   the same top four at T = 0.10 and 0.25 and block ratios 1.87 vs 1.89.
-- **Next:** with the continuous route closed, the open questions are the ones
-  that never needed it — the 3.6–5.7 s mode of §35, still unreconciled with the
-  spectrum, and the `calibration_tests` gate on 2.91 s / 0.28 that §37
-  contradicted and that has been deliberately untouched for eight levels. The
-  gate is the one with consequences for the build.
+- **The gate is done (§48).** `calibration_tests` no longer publishes 2.91 s /
+  0.28 as the pitch mode. `IdentifyOscillation` is exported so the test can vary
+  the window, and the window sweep shows the number is an artefact of it: nothing
+  at 3.5 s, 1.42 at 5.0, 1.51 at 7.0, 2.91 at 9.0, nothing at 12 and 20, never
+  more than one oscillation. A decay check fails too (excursion ratio 0.96 from
+  2–5 s to 8–11 s) because by 8 s the signal is the 16 s mode. **The brake pulse
+  cannot measure the fast mode.**
+- The gate now asserts a bounded, measurable transient plus the simple-pendulum
+  bound, and names the eigenmodes as the authority. Note the old bounds passed
+  *both* 2.91/0.28 and 1.86/0.09 — they never distinguished them, so their
+  passing was never evidence. All twelve suites green with the change.
+- **Next:** the last open item on this axis is §35's **3.6–5.7 s mode**, seen on a
+  departing wing and matched by nothing in the spectrum at any ratio. It was
+  measured at large amplitude on a wing already leaving, where linearisation has
+  no claim — so it needs a large-amplitude method, and none of the machinery
+  built over the last ten levels applies to it.
 - **Still unclaimed either way:** the canopy-referenced link damper (the solver's
   own rejected alternative). Differencing its matrix would test whether the two
   failure modes are separable, but it needs a solver hook that does not exist and

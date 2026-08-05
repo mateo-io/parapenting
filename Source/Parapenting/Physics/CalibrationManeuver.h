@@ -207,4 +207,23 @@ bool WriteManeuverCsv(const ManeuverResult& result, const std::string& path);
 
 // A one-line summary per manoeuvre, for the calibration report.
 std::string ManeuverSummaryLine(const ManeuverResult& result);
+
+// Period and damping of a decaying oscillation over [fromTimeS, toTimeS], from
+// zero crossings and the log decrement of successive peaks of the swing angle.
+//
+// Exported so a test can run it over SEVERAL windows instead of only the one
+// the brake-pulse manoeuvre picks. The window is the whole question on this
+// aircraft - two pitch modes an order of magnitude apart share the signal - and
+// a window that the checking code cannot vary cannot be checked.
+//
+// NOTE what this can and cannot report. The log decrement accumulates only from
+// peak pairs where the second is smaller, so it CANNOT return a negative
+// damping ratio: a growing mode reports zero or reports whatever decaying pairs
+// noise supplied. That is the right choice for a health gate on a healthy
+// aircraft and the wrong one for measuring a mode near a stability boundary,
+// and it is why the authority for this wing's pitch modes is
+// `parapenting_pitch_eigenmodes` and not this function.
+void IdentifyOscillation(const std::vector<ManeuverSample>& samples,
+                         double fromTimeS, double toTimeS, double& periodS,
+                         double& dampingRatio, int& oscillations);
 }

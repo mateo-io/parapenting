@@ -273,8 +273,8 @@ instruments; the sweep is printed by `--fast-mode` and marked NOT REPORTABLE
 rather than tidied into agreement. It did establish one thing that needs acting
 on: **the fast mode is dead by about 2.5 s** (`--fast-mode-dump` shows the swing
 monotonic from 2.65 s onward), while `CalibrationManeuver` identifies its
-gated "period 2.91 s, damping 0.28" on a window starting at 2 s. That number is
-in doubt and was deliberately left alone. The fix for all of it is the same
+gated "period 2.91 s, damping 0.28" on a window running from the release to
+seven seconds after it. **That number is now retired — see §48 below.** The fix for all of it is the same
 build: linearise the coupled solver about trim and take the eigenvalues.
 `PHYSICS_LEARNINGS` §36.
 
@@ -285,8 +285,8 @@ excitation, no window, no filter. It reproduces the slow mode's independently
 measured 16.39 s and 0.031, which is the check it was built to pass, and it
 gives the fast mode that five time-domain instruments could not:
 **1.86 s at ζ ≈ 0.09**, agreeing with the control-run trace and disagreeing with
-the gated `calibration_tests` value of 2.91 s / 0.28. Re-deriving that gate is
-the next change and deliberately has not been made here.
+the gated `calibration_tests` value of 2.91 s / 0.28. **That gate has since been
+re-derived — see §48 below.**
 `PHYSICS_LEARNINGS` §37.
 
 **Then the modal instrument was pointed at the departure, and it moved the
@@ -334,9 +334,16 @@ runs. Note also that a recommendation to chase *speed stability* instead was
 made one level ago and **retracted** — it had been inferred from the half of
 §34 that this work showed is anti-correlated.
 
-What `calibration_tests` reports as "Pitch: period 2.91 s, damping 0.28" is the
-pendulum mode — the wing swinging against the pilot after a brake pulse — which
-is a different and healthy mode. Settled properly: hands-up **4.925°**, 25%
+**RESOLVED (§48).** `calibration_tests` no longer publishes "Pitch: period
+2.91 s, damping 0.28" as this wing's pitch mode. Varying the identification
+window shows that number is an artefact of it — nothing at 3.5 s, 1.42 s at 5.0,
+1.51 s at 7.0, 2.91 s at 9.0, nothing at 12 and 20, never more than one
+oscillation — and a decay check fails too, because by 8 s the swing signal is
+the 16 s mode. The brake pulse cannot measure the fast mode. The gate now
+asserts only what the record supports (a bounded, measurable transient under the
+simple-pendulum bound) and names `parapenting_pitch_eigenmodes` as the authority:
+**1.86 s at ζ 0.09**. The mode itself is still the pendulum — the wing swinging
+against the pilot — and still healthy. Settled properly: hands-up **4.925°**, 25%
 brake **5.724°**, so **brake raises incidence, which is the correct sign.**
 
 Every settle this project has used — 20, 40, 60 seconds — was far too short,

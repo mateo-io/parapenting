@@ -84,10 +84,17 @@ CoupledControls ControlsAt(CalibrationManeuver maneuver, double t)
     return controls;
 }
 
+}   // anonymous namespace
+
 // Period and damping of a decaying oscillation, from its zero crossings and
 // successive peaks. Measured rather than fitted: the period is twice the mean
 // interval between crossings of the settled value, and the damping ratio comes
 // from the logarithmic decrement of successive peaks on the same side.
+//
+// Exported so the calibration test can run it over SEVERAL windows rather than
+// only the one the manoeuvre picks. That is not a convenience: the window is
+// the whole question here - see the note at the call site - and a window choice
+// that cannot be varied by the thing checking it cannot be checked at all.
 void IdentifyOscillation(
     const std::vector<ManeuverSample>& samples, double fromTimeS,
     double toTimeS, double& periodS, double& dampingRatio, int& oscillations)
@@ -180,7 +187,6 @@ void IdentifyOscillation(
         dampingRatio = decrement
             / std::sqrt(4.0 * Pi * Pi + decrement * decrement);
     }
-}
 }
 
 const char* CalibrationManeuverName(CalibrationManeuver maneuver)

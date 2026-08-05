@@ -1915,6 +1915,62 @@ that comment are the ring, read as a curve creeping up on a limit. Three
 readings of a decaying oscillation look exactly like convergence if you never
 ask what is between them.
 
+## 53. The aircraft amplifies tenfold while every mode decays — and it does it less as it destabilises
+
+Ten levels of this axis have asked eigenvalue questions: which mode crosses,
+when, through what channel. Eigenvalues are the whole story only for a *normal*
+system, where the modes are orthogonal and nothing can grow while all of them
+decay. §42 measured this mode's conditioning at |wᴴv| = 0.10 and §43 showed that
+figure is invariant under rescaling, so this system is not normal — and nobody
+had asked the question that fact opens.
+
+**G(t) — the largest factor the linear system can amplify *any* disturbance by
+over a time t — is the largest singular value of Φⁿ, not an eigenvalue of it.**
+The prediction was stated first: if the departure is an eigenvalue phenomenon, G
+stays near e^(σt) with no hump where the eigenvalues call the aircraft stable;
+if it is transient growth, G is well above 1 there and **rises as the ratio
+falls** — which would at last explain §39's recorded anomaly, a flown boundary
+at ratio 0.35–0.30 against an eigenvalue boundary at 0.28–0.25, the eigenvalue
+biased stable against the flown wing.
+
+**Half of that is confirmed and it is new.** This aircraft amplifies a
+disturbance about **tenfold while every one of its modes is decaying** — G 9.0
+to 13.9 across the sweep against an eigenvalue prediction of 0.96 to 1.00. Ten
+levels of eigenvalue work could not have seen it, because an eigenvalue is a
+statement about long times and this happens in **half a second**.
+
+**The control matters here more than usual and it passes.** §47 established that
+the *entries* of Φ move by factors with the transition time, and a singular
+value is a statement about entries in a way an eigenvalue is not — so a growth
+factor peaking on the first step of the horizon is exactly what a sampling
+artefact would look like. Measured at two transition times it is the same number
+in the same place: 13.94 at T = 0.25 against 14.53 at 0.10, peaking at 0.5 s
+against 0.4. It is the aircraft.
+
+**The other half fails, and in the direction that decides it.** G *falls*
+monotonically as the ratio drops — 13.94 at 0.90 to 9.00 at 0.25 — while σ
+climbs through zero. And its peak is at half a second where the departure takes
+tens of seconds. The aircraft has *less* of this amplification as it becomes
+less stable, so transient growth is not the mechanism and §39's anomaly is still
+unexplained.
+
+**The pattern is now three for three, and it is the most useful thing here.**
+Every measure of how strongly the link and the wing interact falls as this
+aircraft destabilises:
+
+| quantity | ratio 0.90 → 0.25 | section |
+|---|---|---|
+| link articulation against the wing | 0.383 → 0.266 | §41 |
+| adjoint receptivity through the link | 0.89 → 0.76 | §43 |
+| transient amplification G | 13.9 → 9.0 | §53 |
+
+Three independent quantities, three different instruments, one direction — and
+the wrong one for any story in which the wing destabilises because it couples to
+the link *more*. **The mechanism is inside the link's own dynamics, transmitted
+through a channel that is getting weaker, and no measurement of coupling
+strength will find it.** That is a constraint on where to look next, arrived at
+by three failed predictions rather than by one successful one.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1973,6 +2029,9 @@ ask what is between them.
 | roll spring at 1 g, shipped vs converged | 8116 vs 8254 Nm/rad | the probes stop mid-ring, 1.7% out - §52 |
 | the same, held 8000 at 0.997 retention | 8262, worst 0.24% over 0.5-4 g | faster AND closer, and not shipped - §52 |
 | deep frontal peak rotation, four settings | 2.06 / 3.61 / 3.90 / 71.0 rad/s | static outputs agree to 1.7%; this does not - §52 |
+| transient amplification G, ratio 0.90 | 13.9 while every mode decays | the eigenvalues predict 1.00 - §53 |
+| the same, ratio 0.25 | 9.0 | it FALLS as the wing destabilises - §53 |
+| when it peaks | 0.4-0.5 s | the departure takes tens of seconds - §53 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |

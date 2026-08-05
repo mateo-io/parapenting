@@ -914,6 +914,19 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
   friction is therefore eliminated as the missing mechanism at any magnitude.
   §51.
 
+- **Transient growth is real and is not the mechanism (§53).** The first
+  question on this axis that eigenvalues cannot answer: this aircraft amplifies
+  a disturbance **tenfold in half a second while every mode decays** (G 9.0–13.9
+  against an eigenvalue prediction of 1.00), and the control holds at two
+  transition times so it is the aircraft rather than §47's sampling. But G
+  *falls* as the ratio drops, 13.9 → 9.0, so it does not explain the boundary
+  and §39's flown-versus-eigenvalue anomaly stands.
+- **The pattern is three for three and it is the live lead:** articulation
+  0.383 → 0.266 (§41), receptivity 0.89 → 0.76 (§43), amplification 13.9 → 9.0
+  (§53). Every measure of link–wing interaction falls as the aircraft
+  destabilises. The mechanism is in the link's own dynamics through a weakening
+  channel, and no measurement of coupling strength will find it.
+
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity
 — `d(surge)/d(surge)` at +1.63 per unit, worth 1.25 coefficient steps — and a

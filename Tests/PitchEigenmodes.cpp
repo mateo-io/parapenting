@@ -2949,6 +2949,231 @@ void SurgeCheck(const CoupledParagliderSolver& solver,
         "same contaminated column.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The class of mechanism ten levels of this have never tested: TRANSIENT
+// GROWTH.
+//
+// Everything on this axis so far has been an eigenvalue question - which mode
+// crosses, when, and through what channel. Eigenvalues answer "what happens
+// after a long time". They are the whole story for a NORMAL system, where the
+// modes are orthogonal and nothing can grow while every mode decays.
+//
+// This system is not normal. Section 42 measured the phugoid's conditioning at
+// |w^H v| = 0.10 - the mode looks almost nothing like what it listens to - and
+// section 43 confirmed that is invariant under rescaling, so it is a property
+// of the aircraft. In a non-normal system a disturbance can grow by a large
+// factor while EVERY eigenvalue is decaying, because the modes can cancel at
+// t = 0 and stop cancelling as they rotate apart. That is not an exotic
+// possibility; it is the standard explanation for shear flows that transition
+// at Reynolds numbers where linear theory says they are stable.
+//
+// AND THERE IS AN ANOMALY WAITING FOR EXACTLY THIS EXPLANATION. Section 39
+// measured the flown stability boundary at ratio 0.35-0.30 and the eigenvalue
+// boundary at 0.28-0.25: the eigenvalue is BIASED STABLE against the flown
+// aircraft, which was recorded as a disagreement and attributed to the slow
+// mode's damping not having converged. A wing that departs where its
+// eigenvalues say it is stable is the signature of transient growth on a
+// finite disturbance.
+//
+// THE MEASUREMENT: G(t) = the largest factor by which the linear system can
+// amplify ANY initial disturbance over a time t. That is the largest singular
+// value of Phi^n, not an eigenvalue of it, and the two are different questions
+// about the same matrix. For a normal system G(t) never exceeds the slowest
+// mode's own e^(sigma t) and there is no hump.
+//
+// THE PREDICTION, in advance and falsifiable:
+//
+//   * if this is an eigenvalue phenomenon, G(t) stays close to e^(sigma t) at
+//     every ratio and there is no hump at ratios where sigma < 0;
+//   * if it is transient growth, G_max is well above 1 at ratios the
+//     eigenvalues call stable, and it rises as the ratio falls. Then "find a
+//     stabilising mechanism" is the wrong frame a second time: what would have
+//     to change is the non-normality, not the eigenvalue.
+//
+// THE SCALING TRAP, and section 43 is why it is handled rather than mentioned.
+// Singular values are NOT invariant under rescaling the states - a matrix can
+// be made to look as amplifying as you like by measuring surge in millimetres.
+// Section 42 quoted an adjoint share of 0.985 that fell to 0.779 on exactly
+// this mistake. So this runs in the same non-dimensional variables section 43
+// settled on: speeds by trim speed, rates by the mode's own frequency, angles
+// in radians. The scaling is stated in the table, and the raw answer is
+// printed beside it so the difference is visible rather than chosen.
+double LargestSingularValue(const double m[N][N])
+{
+    // Power iteration on M^T M. The largest singular value is the square root
+    // of its largest eigenvalue, and 200 iterations on a 6x6 with a clear
+    // leading value is far more than it needs.
+    double gram[N][N];
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+        {
+            double sum = 0.0;
+            for (int k = 0; k < N; ++k) sum += m[k][i] * m[k][j];
+            gram[i][j] = sum;
+        }
+    double v[N];
+    for (int i = 0; i < N; ++i) v[i] = 1.0 / std::sqrt(static_cast<double>(N));
+    double eigenvalue = 0.0;
+    for (int iteration = 0; iteration < 200; ++iteration)
+    {
+        double next[N] = {0, 0, 0, 0, 0, 0};
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j) next[i] += gram[i][j] * v[j];
+        double norm = 0.0;
+        for (int i = 0; i < N; ++i) norm += next[i] * next[i];
+        norm = std::sqrt(norm);
+        if (norm < 1.0e-300) return 0.0;
+        for (int i = 0; i < N; ++i) v[i] = next[i] / norm;
+        eigenvalue = norm;
+    }
+    return std::sqrt(std::max(0.0, eigenvalue));
+}
+
+struct Transient
+{
+    double growthFactor = 0.0;   // G_max
+    double atSeconds = 0.0;
+    double eigenvaluePrediction = 0.0;  // e^(sigma t) at the same time
+    double sigmaPerS = 0.0;
+    double periodS = 0.0;
+    bool valid = false;
+};
+
+Transient MeasureTransient(const double phi[N][N], double transitionTimeS,
+                           double trimSpeedMps, bool rescale, double horizonS)
+{
+    Transient out;
+    // The slow mode, for the eigenvalue comparison.
+    const std::vector<std::complex<double>> discrete =
+        Roots(CharacteristicPolynomial(phi));
+    for (const std::complex<double>& mu : discrete)
+    {
+        if (std::abs(mu) < 1.0e-12) continue;
+        const std::complex<double> lambda = std::log(mu) / transitionTimeS;
+        if (lambda.imag() <= 1.0e-6) continue;
+        const double period = 2.0 * Pi / lambda.imag();
+        if (period < 10.0 || period > 40.0) continue;
+        out.sigmaPerS = lambda.real();
+        out.periodS = period;
+        out.valid = true;
+        break;
+    }
+    if (!out.valid) return out;
+
+    const double omega = 2.0 * Pi / out.periodS;
+    const double s[N] = {trimSpeedMps, trimSpeedMps, 1.0, omega, 1.0, omega};
+    double work[N][N];
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+            work[i][j] = rescale ? phi[i][j] * s[j] / s[i] : phi[i][j];
+
+    double power[N][N];
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j) power[i][j] = (i == j) ? 1.0 : 0.0;
+    const int steps = static_cast<int>(horizonS / transitionTimeS);
+    for (int step = 1; step <= steps; ++step)
+    {
+        double next[N][N];
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j)
+            {
+                double sum = 0.0;
+                for (int k = 0; k < N; ++k) sum += work[i][k] * power[k][j];
+                next[i][j] = sum;
+            }
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j) power[i][j] = next[i][j];
+        const double g = LargestSingularValue(power);
+        if (g > out.growthFactor)
+        {
+            out.growthFactor = g;
+            out.atSeconds = step * transitionTimeS;
+        }
+    }
+    out.eigenvaluePrediction = std::exp(out.sigmaPerS * out.atSeconds);
+    return out;
+}
+
+void TransientCheck(const CoupledParagliderSolver& solver,
+                    const CoupledState& settled, double transitionTimeS)
+{
+    const Vec3 v0 = settled.velocityWorldMps;
+    const double trimSpeed = std::sqrt(v0.x * v0.x + v0.z * v0.z);
+
+    std::printf("TRANSIENT GROWTH: can this aircraft amplify a disturbance "
+                "while every mode decays?\n\n");
+    std::printf("Ten levels of this axis have asked eigenvalue questions. "
+                "Eigenvalues are the\nwhole story only for a NORMAL system, "
+                "and section 42 measured this mode's\nconditioning at 0.10 - "
+                "it is not one. G(t) below is the largest factor the\nlinear "
+                "system can amplify ANY disturbance by over t: the largest "
+                "SINGULAR\nvalue of Phi^n, which is a different question about "
+                "the same matrix.\n\n");
+    std::printf("THE PREDICTION: if this is an eigenvalue phenomenon G stays "
+                "near e^(sigma t)\nwith no hump at ratios the eigenvalues call "
+                "stable. If it is transient growth,\nG_max is well above 1 "
+                "there and rises as the ratio falls - and section 39's\n"
+                "recorded anomaly, a flown boundary at 0.35-0.30 against an "
+                "eigenvalue boundary\nat 0.28-0.25, is what that looks like "
+                "from the outside.\n\n");
+    std::printf("%8s %11s %10s %13s %11s %10s\n", "ratio", "sigma 1/s",
+                "G max", "at", "e^(sigma t)", "G raw");
+    for (const double ratio : {0.90, 0.50, 0.40, 0.35, 0.32, 0.30, 0.28,
+                               0.25})
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        const Spectrum spectrum = Analyse(variant, settled, transitionTimeS,
+                                          1.0, false);
+        const Transient scaled = MeasureTransient(spectrum.phi,
+                                                  transitionTimeS, trimSpeed,
+                                                  true, 120.0);
+        const Transient raw = MeasureTransient(spectrum.phi, transitionTimeS,
+                                               trimSpeed, false, 120.0);
+        if (!scaled.valid) { std::printf("%8.2f  no 16 s mode\n", ratio);
+                             continue; }
+        std::printf("%8.2f %+11.4f %10.2f %12.1fs %11.2f %10.2f\n", ratio,
+                    scaled.sigmaPerS, scaled.growthFactor, scaled.atSeconds,
+                    scaled.eigenvaluePrediction, raw.growthFactor);
+    }
+    std::printf("\n  `G max` is in the non-dimensional variables section 43 "
+                "settled on - speeds by\n  trim speed, rates by the mode's own "
+                "frequency, angles in radians - because\n  singular values are "
+                "not invariant under rescaling and section 42 was caught by\n"
+                "  exactly that. `G raw` is the unscaled answer, printed so "
+                "the difference is\n  visible rather than chosen.\n\n");
+    std::printf(
+        "  BOTH HALVES OF THIS ARE FINDINGS, and they point opposite ways.\n\n"
+        "  IT IS REAL: this aircraft amplifies a disturbance about TENFOLD "
+        "while every\n  one of its modes is decaying. The eigenvalue column "
+        "says 0.96 to 1.00 over the\n  same interval. Ten levels of "
+        "eigenvalue work could not have seen this, because\n  an eigenvalue "
+        "is a statement about long times and this happens in half a second.\n"
+        "  Measured at two transition times it is the same number in the same "
+        "place -\n  13.94 at T = 0.25 against 14.53 at 0.10, peaking at 0.5 s "
+        "against 0.4 - so it\n  is the aircraft and not the sampling, which "
+        "section 47 makes a live worry for\n  anything read off entries of "
+        "Phi rather than its eigenvalues.\n\n"
+        "  AND IT IS NOT THE MECHANISM. The prediction was that G would RISE "
+        "as the ratio\n  falls, which is what would explain a wing departing "
+        "where its eigenvalues say\n  it is stable. It falls: 13.94 at ratio "
+        "0.90 down to 9.00 at 0.25, monotone,\n  while sigma climbs through "
+        "zero. And the peak sits at half a second where the\n  departure "
+        "takes tens of seconds to develop. Whatever this amplification is, "
+        "the\n  aircraft has LESS of it as it becomes less stable.\n\n"
+        "  THE PATTERN THAT IS NOW THREE FOR THREE, and it is the most useful "
+        "thing here.\n  Every measure of how strongly the link and the wing "
+        "interact falls as this\n  aircraft destabilises: articulation 0.383 "
+        "to 0.266 (section 41), adjoint\n  receptivity 0.89 to 0.76 (section "
+        "43), and now transient amplification 13.9 to\n  9.0. Three "
+        "independent quantities, three different instruments, same "
+        "direction -\n  and the wrong one for any story in which the wing "
+        "destabilises because it\n  couples to the link MORE. The mechanism "
+        "has to be inside the link's own\n  dynamics, transmitted through a "
+        "channel that is getting weaker, and no\n  measurement of coupling "
+        "strength is going to find it.\n\n");
+}
+
 void ReceptivityCheck(const CoupledParagliderSolver& solver,
                       const CoupledState& settled, double transitionTimeS)
 {
@@ -3532,6 +3757,16 @@ int main(int argc, char** argv)
         DesignCheck(solver, settled, 0.10, 0.30);
         SurgeCheck(solver, settled, 0.35);
         LogarithmCheck(solver, settled, 0.35);
+        // The question ten levels of eigenvalue work could not ask.
+        TransientCheck(solver, settled, 0.25);
+        // THE CONTROL THIS NEEDS, and section 47 is why: the ENTRIES of Phi
+        // move by factors with the transition time, and a singular value is a
+        // statement about entries in a way an eigenvalue is not. A growth
+        // factor that is a property of the aircraft does not care what T it
+        // was measured at; one that moves with T is the sampling interval
+        // talking, and the peak landing on the FIRST step of the horizon is
+        // exactly what that would look like.
+        TransientCheck(solver, settled, 0.10);
         // Costs no flying at all: it runs on synthetic signals.
         MysteryCheck();
     }

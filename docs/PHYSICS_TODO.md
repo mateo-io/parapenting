@@ -720,10 +720,27 @@ stands in for, and it is checkable against a real wing in a way "the period is
   several T. Comparing individual *entries* against continuous-time formulas is
   the fragile move and this is the only place it was made. §45's ranking compares
   entries of one matrix at one T and is unaffected.
-- **Next:** a real matrix logarithm of Φ, giving A with no small-T expansion, at
-  or above the aerodynamic interval. Then the drag-exponent comparison can be
-  made properly, and the same A would let every earlier sensitivity be quoted in
-  continuous time rather than per-step.
+- **The matrix logarithm ran** (`--shape`, `LogarithmCheck`), verified two ways:
+  imaginary residual ≤1e-10, and `exp(AT)` rebuilt by scaling-and-squaring
+  reproduces Φ to 1e-11.
+- **There is no continuous A.** A₀₀ = −0.035 at T = 0.10, −0.021 at 0.25, **+0.006
+  at 0.50** — it changes sign, spread 290% of its mean. Φ(T) is not an
+  exponential family; the 0.1 s aerodynamic hold is the culprit. §46's comparison
+  cannot be made this way, definitively. `PHYSICS_LEARNINGS` §47.
+- **This closes the oldest loose end here: the slow mode's damping was never
+  going to converge.** §37 flagged it as moving with T and step size, "the one
+  number still to be pinned", and three levels treated that as a measurement
+  needing improvement. A rate off Φ(T) has no T-independent value when Φ is not
+  an exponential family. **Quote it with its T; do not chase it.**
+- **Checked rather than assumed:** periods are T-stable (1.86 s everywhere);
+  rates move ~20% with T, which is the band already documented; entries move by
+  factors. §45's ranking is entry-based and was the one at risk — it holds, with
+  the same top four at T = 0.10 and 0.25 and block ratios 1.87 vs 1.89.
+- **Next:** with the continuous route closed, the open questions are the ones
+  that never needed it — the 3.6–5.7 s mode of §35, still unreconciled with the
+  spectrum, and the `calibration_tests` gate on 2.91 s / 0.28 that §37
+  contradicted and that has been deliberately untouched for eight levels. The
+  gate is the one with consequences for the build.
 - **Still unclaimed either way:** the canopy-referenced link damper (the solver's
   own rejected alternative). Differencing its matrix would test whether the two
   failure modes are separable, but it needs a solver hook that does not exist and

@@ -1569,6 +1569,58 @@ expansion, evaluated at or above the aerodynamic interval. Contained arithmetic,
 and the honest next step rather than another reading of the same contaminated
 column.
 
+## 47. There is no continuous A, and that is why one number never converged
+
+§46 could not read a continuous coefficient off `(Φ₀₀−1)/T` and named the fix: a
+real matrix logarithm, `A = log(Φ)/T` by eigendecomposition, no expansion in T.
+Built, with three checks — and it asks a bigger question on the way, because **A
+describes the solver only if one A reproduces Φ at every T**, which is not
+guaranteed when aerodynamic loads are held for 0.1 s between solves.
+
+**The arithmetic is sound.** Imaginary residual 1e-10 or better, so the
+conjugate pairs cancel as a real Φ demands; and `exp(AT)` rebuilt by
+scaling-and-squaring — independent of the eigendecomposition, not run backwards
+— reproduces Φ to 1e-11.
+
+**And there is no single A.** A₀₀ = −0.035 at T = 0.10, −0.021 at 0.25, **+0.006
+at 0.50**. It changes sign; the spread is 290% of its own mean. Φ(T) is not an
+exponential family, this solver is not a sampled continuous linear system at
+these scales, and §46's comparison cannot be made this way at all. The 0.1 s
+hold is the obvious culprit and the sizes fit: a 0.5 s step contains five holds
+and cannot look like a smooth flow.
+
+**This explains the oldest loose end in the file.** §37's linearity check
+separated the converged numbers from the one that wasn't, and the one that
+wasn't is the slow mode's damping — moving with T *and* with step size, written
+down as "the one number still to be pinned". **It was never going to be pinned.**
+A rate extracted from Φ(T) depends on T when Φ is not an exponential family, so
+that number has no T-independent value to converge to. Three levels treated it
+as a measurement needing improvement. It was a category error, and the fix is to
+quote it with its T rather than to chase it.
+
+**What survives, checked rather than asserted.** Three things were at risk and
+they fare differently:
+
+- **Periods** are T-stable — 1.86 s at every T tried, throughout.
+- **Rates** move ~20% with T. That is the uncertainty the docs already carry on
+  the slow mode's damping, now explained rather than outstanding.
+- **Entries** move by factors, as A₀₀'s sign change shows.
+
+§45's ranking is built on entries, so it was in real danger. **It holds:** at
+T = 0.10 the top four entries come back in the same order as at 0.25, the
+link/wing rms ratio is 1.87 against 1.89, the peak ratio 0.82 against 0.81. All
+magnitudes scale, because a per-step sensitivity carries a 1/T — but §45
+compared entries of *one* matrix against each other at *one* T, and that is
+exactly what a common scale factor leaves alone. The construction turned out to
+be robust for a reason that was not the reason it was chosen.
+
+**One observation, flagged as not predicted in advance.** A₀₀ at T = 0.10 is
+nearest the drag exponent's −0.028, and there is an a priori argument for
+preferring that T — 0.1 s is the model's own load interval, so sampling there is
+least distorted. But that argument was available before the run and was not
+made, so it is a hypothesis about which T to trust, not a result. Picking the T
+whose answer one likes is how §46 nearly reported a factor of seven.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1640,3 +1692,6 @@ column.
 | sensitivity rms, link rows vs wing rows | 0.822 vs 0.433 | link block more sensitive on average, peak is not |
 | (Phi00-1)/T, T = 0.10 to 0.50 | -0.082 to -0.19 | NOT a constant; there is no single A00 - §46 |
 | A00 extrapolated vs drag-exponent value | -0.052 vs -0.028 /s | same order, factor 1.84 - §46 |
+| A00 = log(Phi)/T at T = 0.10 / 0.25 / 0.50 | -0.035 / -0.021 / +0.006 | it CHANGES SIGN: no continuous A - §47 |
+| why the slow mode's damping never converged | Phi is not an exponential family | it has no T-independent value - §47 |
+| §45's ranking at T = 0.10 vs 0.25 | same top four; rms ratio 1.87 vs 1.89 | entry ranking survives; magnitudes scale |

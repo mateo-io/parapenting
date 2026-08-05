@@ -839,6 +839,67 @@ not a lever. It is registered *Validated*, measured off the built graph at four
 loads, and is not an input to the solver — `LineStiffnessAt` interpolates the
 measured curve and 6.13 is that curve's slope written down afterwards.
 
+### What Level 11 closed, and what it did not
+
+Level 11 was the pitch axis by linearisation. It is finished in the sense that
+every *observation* on this axis is now accounted for; it is not finished in the
+sense item 11 asks for, and the two are worth keeping apart.
+
+**Built:** `parapenting_pitch_eigenmodes`, which perturbs the settled aircraft
+state by state, differences against an unperturbed run, and takes the
+eigenvalues of the transition matrix — every longitudinal mode at once, no
+excitation, no window, no filter. Its sub-checks are `--sweep`, `--phugoid`,
+`--shape` and `--project`, and each is a question the time domain could not
+answer.
+
+**Closed by it:**
+
+- **The spectrum.** 1.86 s at ζ 0.09 (pendulum) and 16.4 s at ζ 0.033
+  (phugoid), the latter checked against an independent 1200 s trace's 16.39 s
+  and 0.031. Nothing else in the longitudinal plane.
+- **Which mode departs.** Not the pendulum: its real part moves −0.357 to
+  −0.291 /s from ratio 0.90 to 0.10 and never crosses. The **phugoid** crosses,
+  by its damping, between 0.35 and 0.30 flown. §38–§39.
+- **What 0.35 is.** Approximately the smallest ratio at which this wing's
+  phugoid still damps — an explanation, not a margin above a departure. The
+  own-trim runs agree without fitting: 0.35 settles at 410 s, 0.30 does not
+  settle in 420 s, 0.25 departs during its own settle. §39.
+- **How a link coefficient reaches a speed mode.** The phugoid's adjoint is
+  0.78 on the link's two rows at conditioning 0.10 — it *looks* like a speed
+  oscillation and *listens* through the link. Non-normality is the channel.
+  §42–§43.
+- **§35's 3.6–5.7 s third mode**, retired as a peak-counter artefact (§49) and
+  then closed outright: the flown departure trace lies in the span of the two
+  known modes to 0.4–5%, and §35's counter mis-reads a two-mode *rebuild* of
+  that same trace into the gap exactly as it mis-reads the trace. §50.
+- **The 2.91 s / 0.28 pitch mode the calibration gate published for eight
+  levels**, shown to be an artefact of the identification window and replaced
+  by a gate that asserts what the record supports. §48.
+
+**Four things it retracted, which is the other half of the level:** §34's
+damping formula as a mechanism (right at a point, anti-correlated as a function
+— §40); the tracking-lag version of the coupling (the phase holds within 1.9°
+while σ crosses zero — §41); the 0.985 adjoint share (unit-flattered, 0.78
+rescaled — §43); and the "fragility is a property of the link's formulation"
+reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
+
+**What it did not close, and this is the whole of what remains:** there is no
+*mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity
+— `d(surge)/d(surge)` at +1.63 per unit, worth 1.25 coefficient steps — and a
+list of eliminated candidates. That is an absence rather than a mystery, and it
+is a different kind of open than the ones above.
+
+**Therefore the four loosened gates stay loosened** and the table above stands
+as written: item 11 has not landed, and restoring the strict thresholds now
+would make the suite green about a disagreement rather than honest about one.
+The same applies to the brake-travel and turn-rate numbers listed with them.
+
+**One instrument limit worth carrying forward.** No rate measured through
+`--project` is trustworthy at a departing ratio, because a ratio past the
+stability boundary has no trim to linearise about — 0.25 leaves through 20° at
+348 s of its own settle. Rates come from `--phugoid` and `--sweep`; `--project`
+measures the span.
+
 **11a. The pendulum damping ratio, as originally written.** Kept because the
 reasoning below is still what has to be replaced, and only the diagnosis above
 it changed.

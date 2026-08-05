@@ -225,11 +225,18 @@ const CoefficientRecord Records[] = {
      "physically damps the swing, the pilot's own drag on an 8 m arm plus the "
      "lines sweeping, it should be nearer 0.06. So it is standing in for a "
      "stabilising mechanism the model does not have rather than for friction "
-     "it does: the pendulum has to TRACK apparent gravity through a phugoid "
-     "and a lightly damped one follows late, which matters because this "
-     "wing's pitch loop gain passes one below CL 0.35. Retire it by finding "
-     "the missing mechanism, not by measuring it better. PHYSICS_TODO item "
-     "11.", 11},
+     "it does. WHAT IT IS, measured: approximately the smallest value at which "
+     "this wing's 16 s PHUGOID still damps - not the pendulum, which stays at "
+     "1.86 s and zeta 0.09 at every ratio and never crosses. It reaches that "
+     "mode through the link: the phugoid's left eigenvector is 0.78 on the "
+     "link's two rows while its conditioning is 0.10, so the mode looks like a "
+     "speed oscillation and LISTENS through the link. The tracking-lag story "
+     "this note used to give is RETRACTED - the link-to-surge phase holds "
+     "within 1.9 deg while the damping crosses zero. No mechanism has been "
+     "found; the largest sensitivity in the matrix is d(surge)/d(surge) at "
+     "+1.63 per unit, a wing entry, worth 1.25 of the 0.35->0.30 step. Retire "
+     "it by finding the missing mechanism, not by measuring it better. "
+     "PHYSICS_TODO item 11, PHYSICS_LEARNINGS 38-50.", 11},
     {"linePitchStiffnessSpecificM", "m", 6.13, 3.0, 12.0, S::Physical,
      C::Validated,
      "Line pitch stiffness per newton of load, measured off the built "

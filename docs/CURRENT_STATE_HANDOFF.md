@@ -304,8 +304,12 @@ than the conclusions:
   reproduces the band — 3.64 to 5.17 s — and at one mixture returns 2.91 s, the
   number §48 retired from the calibration gate. Across the sweep the apparent
   period runs 2.46 to 9.87 s and settles nowhere, which is what §35's *range*
-  across ratios actually was. Strongly supported rather than proven; projecting
-  the real trace onto the two eigenvectors would close it.
+  across ratios actually was. **And it is now closed rather than strongly
+  supported (§50):** `--project` resolves the flown departure trace on the
+  eigenvectors and what falls outside the span of 1.86 s and 15.4 s is 0.4–5%
+  of it while the motion is small. §35's counter returns 6.34 s on that trace
+  and 7.80 s on the same trace *rebuilt from the two modes alone* — the gap
+  period out of a signal with no gap mode in it.
 - **§35's acquittal of the phugoid was sound arithmetic drawn too wide.** It
   tested whether the lift exponent n crosses zero — a claim about the mode's
   *frequency*. The phugoid arrives by its *damping*, which that says nothing
@@ -330,14 +334,39 @@ than the conclusions:
   operating point it was validated at and anti-correlated as a function of the
   parameter. `PHYSICS_LEARNINGS` §40.
 
-**What to pick up:** the ratio's effect on damping is essentially absent from
-the two-state phugoid theory, and the link is the state that theory does not
-have — so the target is the **pendulum–phugoid coupling**. The eigenvectors are
-the cheap next instrument: the transition matrix `--sweep` already builds
-contains them, so asking how much link motion the 16 s mode carries costs no new
-runs. Note also that a recommendation to chase *speed stability* instead was
-made one level ago and **retracted** — it had been inferred from the half of
-§34 that this work showed is anti-correlated.
+**That eigenvector programme has since run to the end, and Level 11 is wrapped
+up: the pitch axis has no unexplained observations left, and no mechanism
+either.** `PHYSICS_TODO` §"What Level 11 closed" is the summary; the short form:
+
+- **How the coefficient reaches the mode is answered.** The phugoid's left
+  eigenvector is 0.78 on the link's two rows at conditioning 0.10 — it looks
+  like a speed oscillation and listens through the link, and that non-normality
+  is the channel a link coefficient uses to move a speed mode's damping. §42–43.
+- **Two coupling stories were killed on the way, both by their own controls.**
+  The tracking *lag* — the solver's own suspect, damping the link against the
+  world — does not move: the link-to-surge phase holds within 1.9° while σ
+  crosses zero (§41). And the coupling does not strengthen as the wing
+  destabilises; receptivity *falls* 0.89 → 0.76 (§43).
+- **There is no continuous A.** Φ(T) is not an exponential family here — A₀₀
+  changes sign across T = 0.10 to 0.50 — so a rate read off Φ has no
+  T-independent value. **Quote the slow mode's damping with its T and do not
+  chase it**; three levels treated that number as a measurement needing
+  improvement. §47.
+- **What is left is an absence, not a mystery:** no mechanism for why 0.35 is
+  needed, only a measured sensitivity (`d(surge)/d(surge)`, +1.63 per unit,
+  worth 1.25 coefficient steps — and a *wing* entry, not a link one) and a list
+  of eliminated candidates. §45.
+
+**So do not restore the four loosened gates yet.** Item 11 has not landed; the
+table under it in `PHYSICS_TODO` carries each strict threshold, and restoring
+them now would make the suite green about a disagreement rather than honest
+about one.
+
+Note also that a recommendation to chase *speed stability* was made and
+**retracted** — it had been inferred from the half of §34 this work showed is
+anti-correlated — and that the claim itself has since been independently
+supported by §45's sensitivity ranking, which shares no arithmetic with §34. The
+argument stays retracted; the claim does not.
 
 **RESOLVED (§48).** `calibration_tests` no longer publishes "Pitch: period
 2.91 s, damping 0.28" as this wing's pitch mode. Varying the identification
@@ -463,6 +492,13 @@ The v1–v4 goal is not complete until these are addressed:
    measured; this is the one input that is not.
 2. Retire `swingDampingRatio` by finding the stabilising mechanism it stands in
    for, rather than by measuring it more precisely (`PHYSICS_TODO` item 11).
+   Level 11 leaves this as the *only* open thread on the pitch axis, and it
+   leaves a map: the mode to stabilise is the 16 s phugoid, the coefficient
+   reaches it through the link's rows by non-normality, and the eliminated
+   candidates are §34's damping formula, the tracking lag, a strengthening
+   coupling, and the link's formulation being the fragile part. The largest
+   sensitivity in the matrix is `d(surge)/d(surge)` — speed stability, a wing
+   term — which is where an unprejudiced next look should start.
 3. Run `docs/PILOT_REVIEW_PROTOCOL.md` with experienced pilots. It is the half
    of Level 9's exit gate that cannot be closed from a keyboard, and the surge
    timing question is the only external reference available for item 11.

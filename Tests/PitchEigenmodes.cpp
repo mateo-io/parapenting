@@ -681,11 +681,15 @@ struct OwnTrim
     bool departed = false;
 };
 
+using DamperReference = CoupledParagliderSolver::LinkDampingReference;
+
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
-                 double ratio, int maximumSeconds)
+                 double ratio, int maximumSeconds,
+                 DamperReference reference = DamperReference::World)
 {
     OwnTrim out{CoupledState{}, CoupledParagliderSolver(canopy, linePlan)};
     out.solver.SetSwingDampingRatio(ratio);
+    out.solver.SetLinkDampingReference(reference);
 
     // The same criterion as `pitch_axis_trace`: ten seconds whose incidence
     // spread is under 0.01 degrees. A fixed settle would be a guess, and the
@@ -2635,6 +2639,221 @@ void ProjectionCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
         "  construction. What is claimed here is the SPAN, and only that.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The rejection that was never differenced.
+//
+// The solver damps the link against the WORLD. Its own comment says the
+// friction physically sits between the link and the CANOPY, records that the
+// canopy-referenced version was tried, and rejects it in one clause: the
+// pendulum was left free to be dragged by the wing and the aircraft left the
+// envelope in twenty seconds. `PHYSICS_TODO` item 11 has carried it for four
+// levels as "still unclaimed either way" - because a wing that departs tells
+// you it departed and nothing about WHY, and the instrument that would say why
+// did not exist when the rejection was made. It exists now, and the hook to
+// point it at the alternative is three lines in the solver.
+//
+// THE QUESTION, which is not "which damper is better": are the two failure
+// modes THE SAME failure? The world-referenced solver departs by the 16 s
+// phugoid's damping crossing zero, and its pendulum stays at 1.86 s and firmly
+// damped at every ratio from 0.90 to 0.10 (§38). If the canopy-referenced
+// version departs the same way, then "the pendulum is dragged by the wing" was
+// a description of a phugoid divergence and the two are one problem. If it
+// departs by the FAST mode going unstable - something the world damper never
+// does at any ratio - they are two problems, and item 11's missing mechanism
+// has a second constraint to satisfy that nobody knew about.
+//
+// THE PREDICTION, made before the run: the fast mode goes unstable. The
+// rejection describes a dragged pendulum, which is a pendulum-mode statement,
+// and it happened in twenty seconds - eleven periods of the pendulum and about
+// one of the phugoid. A phugoid divergence at these growth rates cannot empty
+// the envelope that fast.
+// Defined below with the rest of the shape work; declared here because the
+// control this check needs is the same one `ShapeCheck` uses.
+Shape ShapeOf(const Spectrum& spectrum, const double phi[N][N],
+              double transitionTimeS, double trimSpeedMps,
+              double lowPeriodS, double highPeriodS);
+
+void DamperCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                 const CoupledParagliderSolver& solver,
+                 const CoupledState& settled, double transitionTimeS,
+                 int settleSeconds)
+{
+    std::printf("THE CANOPY-REFERENCED DAMPER: one failure or two?\n\n");
+
+    const auto spectrumAt = [&](double ratio, DamperReference reference)
+    {
+        CoupledParagliderSolver variant = solver;
+        variant.SetSwingDampingRatio(ratio);
+        variant.SetLinkDampingReference(reference);
+        return Analyse(variant, settled, transitionTimeS, 1.0, false);
+    };
+    const auto modeIn = [](const Spectrum& spectrum, double low, double high,
+                           Mode& out)
+    {
+        for (const Mode& mode : spectrum.modes)
+            if (mode.oscillatory && mode.periodS > low && mode.periodS < high)
+            { out = mode; return true; }
+        return false;
+    };
+
+    std::printf("%8s %10s %11s %11s %11s %11s\n", "ratio", "damper",
+                "fast period", "fast sigma", "slow period", "slow sigma");
+    for (const double ratio : {0.90, 0.50, 0.35, 0.30, 0.25, 0.10})
+    {
+        for (int which = 0; which < 2; ++which)
+        {
+            const DamperReference reference = which == 0
+                ? DamperReference::World : DamperReference::Canopy;
+            const Spectrum spectrum = spectrumAt(ratio, reference);
+            Mode fast, slow;
+            const bool haveFast = modeIn(spectrum, 1.0, 3.0, fast);
+            const bool haveSlow = modeIn(spectrum, 10.0, 40.0, slow);
+            char fastPeriod[16] = "-", fastSigma[16] = "-";
+            char slowPeriod[16] = "-", slowSigma[16] = "-";
+            if (haveFast)
+            {
+                std::snprintf(fastPeriod, sizeof fastPeriod, "%.2fs",
+                              fast.periodS);
+                std::snprintf(fastSigma, sizeof fastSigma, "%+.4f",
+                              fast.growthPerS);
+            }
+            if (haveSlow)
+            {
+                std::snprintf(slowPeriod, sizeof slowPeriod, "%.2fs",
+                              slow.periodS);
+                std::snprintf(slowSigma, sizeof slowSigma, "%+.4f",
+                              slow.growthPerS);
+            }
+            std::printf("%8.2f %10s %11s %11s %11s %11s\n", ratio,
+                        which == 0 ? "world" : "canopy", fastPeriod, fastSigma,
+                        slowPeriod, slowSigma);
+        }
+    }
+
+    // WHERE the matrix differs, which is the part that says the two are not
+    // the same system rather than merely differently tuned. Per-entry, at the
+    // operating point, as a fraction of the world matrix's own scale.
+    std::printf("\n  d(Phi) between the two dampers at ratio 0.35, by entry "
+                "(row = state\n  updated, column = state read):\n\n");
+    const Spectrum world = spectrumAt(0.35, DamperReference::World);
+    const Spectrum linkToCanopy = spectrumAt(0.35, DamperReference::Canopy);
+    double largest = 0.0;
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+            largest = std::max(largest,
+                               std::fabs(world.phi[i][j]));
+    std::printf("%8s %10s %10s %10s %10s %10s %10s\n", "", "surge", "heave",
+                "pitch", "q", "swing", "swingrate");
+    static const char* names[N] = {"surge", "heave", "pitch", "q", "swing",
+                                   "swingrate"};
+    for (int i = 0; i < N; ++i)
+    {
+        std::printf("%8s", names[i]);
+        for (int j = 0; j < N; ++j)
+            std::printf(" %10.5f",
+                        linkToCanopy.phi[i][j] - world.phi[i][j]);
+        std::printf("\n");
+    }
+    std::printf("  (largest entry of the world matrix: %.3f)\n", largest);
+
+    // THE CONTROL, and without it "the same mode fails" is just two numbers
+    // in the same column of a table. `articulation` is |swing - attitude| over
+    // |attitude| on the eigenvector, no scaling choice in it: the pendulum
+    // articulates against the wing (1.07 world) and the phugoid rides with it
+    // (0.29 world). If the canopy damper's unstable 15 s mode is the phugoid
+    // it must come back near 0.29 - a mode that has swapped shape is not the
+    // same mode however similar its period is.
+    {
+        const Vec3 v = settled.velocityWorldMps;
+        const double trimSpeed = std::sqrt(v.x * v.x + v.z * v.z);
+        std::printf("\n%10s %13s %13s %12s\n", "damper", "fast artic",
+                    "slow artic", "slow period");
+        for (int which = 0; which < 2; ++which)
+        {
+            const Spectrum& spectrum = which == 0 ? world : linkToCanopy;
+            const Shape fast = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                       trimSpeed, 1.0, 3.0);
+            const Shape slow = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                       trimSpeed, 10.0, 40.0);
+            std::printf("%10s %13.2f %13.2f %11.2fs\n",
+                        which == 0 ? "world" : "canopy",
+                        fast.valid ? fast.articulation : 0.0,
+                        slow.valid ? slow.articulation : 0.0,
+                        slow.valid ? slow.periodS : 0.0);
+        }
+    }
+
+    // And what it does when flown, which is the claim the rejection actually
+    // made. Twenty seconds is the number in the solver's comment.
+    std::printf("\n%10s %10s %14s %12s %s\n", "damper", "ratio", "settled at",
+                "incidence", "outcome");
+    for (const double ratio : {0.35, 0.90})
+    {
+        for (int which = 0; which < 2; ++which)
+        {
+            const DamperReference reference = which == 0
+                ? DamperReference::World : DamperReference::Canopy;
+            const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
+                                          settleSeconds, reference);
+            std::printf("%10s %10.2f %13ds %11.2f%s %s\n",
+                        which == 0 ? "world" : "canopy", ratio,
+                        trim.settleSeconds, trim.incidenceRad * 180.0 / Pi,
+                        "deg",
+                        trim.departed ? "DEPARTED"
+                                      : (trim.settled ? "settled"
+                                                      : "still moving"));
+        }
+    }
+
+    std::printf(
+        "\n  ONE FAILURE, NOT TWO - AND THE PREDICTION ABOVE IS WRONG. Both "
+        "halves matter.\n\n"
+        "  Wrong: the fast mode does not go unstable. It gets MORE damped, "
+        "-0.31 to -0.68\n  at ratio 0.35, and stays damped at every ratio. "
+        "The rejection's 'the pendulum\n  is left free to be dragged by the "
+        "wing' was a description of what a departure\n  looked like from the "
+        "outside, and this predicted the mode from that\n  description. Wrong "
+        "mode.\n\n"
+        "  What actually goes unstable is the 16 s mode - the SAME mode the "
+        "world-damped\n  solver departs by - at sigma +0.156 against the "
+        "world's -0.021 at ratio 0.35.\n  The control says it is the same "
+        "mode and not a relabelled one: articulation\n  0.22 canopy against "
+        "0.29 world for the slow mode, 1.08 against 1.07 for the\n  fast. "
+        "Same shapes, same roles. So item 11's question is answered in the "
+        "SAME\n  direction it was answered for the world damper: the pitch "
+        "axis has one\n  failure, and it is the phugoid.\n\n"
+        "  THE FINDING THAT WAS NOT BEING LOOKED FOR: with the canopy "
+        "reference the\n  coefficient's SIGN OF EFFECT REVERSES. sigma rises "
+        "with damping - +0.136 at\n  ratio 0.10 up to +0.194 at 0.90 - so "
+        "more link damping is more unstable, and\n  the mode is unstable at "
+        "EVERY ratio tried. There is no value of this\n  coefficient that "
+        "stabilises the aircraft in the canopy frame. The flown runs\n  agree "
+        "and in the same order: 0.90 departs in 17 s, 0.35 in 27 s, both from "
+        "a\n  cold start, against a world-damped 0.35 that settles at 410 s.\n"
+        "\n  WHAT THAT BUYS ITEM 11, and it is a constraint on the missing "
+        "mechanism rather\n  than a candidate for it: whatever stabilises "
+        "this wing cannot be link-canopy\n  friction, at any magnitude. The "
+        "friction is real and it is where the solver's\n  comment says it is; "
+        "it just does not do this job. What the world-referenced\n  damper "
+        "supplies is a rate measured against the INERTIAL frame, and the "
+        "phugoid\n  needs that.\n\n"
+        "  WHAT IS NOT ESTABLISHED. The canopy spectra are taken about the "
+        "WORLD solver's\n  0.35 trim, because the canopy solver has no trim to "
+        "take them about - it\n  departs from a cold start at every ratio "
+        "tried. So those eigenvalues describe\n  a linearisation at a point "
+        "the canopy aircraft does not fly through, the same\n  caveat "
+        "`--project` carries at a departing ratio. The flown column is the "
+        "part\n  that stands on its own, and the two agree in sign, in "
+        "ordering and in the\n  twenty seconds the solver's comment recorded "
+        "four levels ago.\n\n"
+        "  The d(Phi) table is near-tautological where it is largest - the "
+        "swing-rate row\n  is the only place the reference frame enters, and "
+        "-0.240 of it lands on the\n  swing column. It is printed for the "
+        "same reason section 42's split was: to\n  show the change is where "
+        "the edit was, so the eigenvalue move is not a\n  measurement of "
+        "something else.\n\n");
+}
+
 void SurgeCheck(const CoupledParagliderSolver& solver,
                 const CoupledState& settled, double ratio)
 {
@@ -3201,6 +3420,7 @@ int main(int argc, char** argv)
     bool phugoid = false;
     bool shape = false;
     bool project = false;
+    bool damper = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -3210,6 +3430,7 @@ int main(int argc, char** argv)
         if (argument == "--phugoid") phugoid = true;
         if (argument == "--shape") shape = true;
         if (argument == "--project") project = true;
+        if (argument == "--damper") damper = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -3313,6 +3534,14 @@ int main(int argc, char** argv)
         LogarithmCheck(solver, settled, 0.35);
         // Costs no flying at all: it runs on synthetic signals.
         MysteryCheck();
+    }
+
+    if (damper)
+    {
+        // The alternative the solver rejected on a departure and never
+        // measured. Free of new physics: the same linearisation, pointed at a
+        // one-line change in what the damper subtracts.
+        DamperCheck(canopy, linePlan, solver, settled, 0.25, settleSeconds);
     }
 
     if (project)

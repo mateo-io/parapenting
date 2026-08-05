@@ -415,6 +415,25 @@ public:
     void SetSwingDampingRatio(double ratio) { SwingDampingRatioValue = ratio; }
     double SwingDampingRatio() const { return SwingDampingRatioValue; }
 
+    // WHAT THE LINK'S DAMPER IS MEASURED AGAINST. `World` is what flies and is
+    // the default; `Canopy` is the alternative the solver's own comment
+    // describes as where the friction physically sits - lines, maillons and a
+    // harness resisting the wing and the pilot moving with respect to each
+    // other - and which was tried once, flown for twenty seconds, and rejected
+    // on the departure rather than on a measurement.
+    //
+    // This exists so that rejection can be DIFFERENCED instead of repeated.
+    // `PHYSICS_TODO` item 11 carried it for four levels as "still unclaimed
+    // either way: differencing its matrix would test whether the two failure
+    // modes are separable, but it needs a solver hook that does not exist".
+    // Nothing in flight sets this; `pitch_eigenmodes --damper` is its only
+    // caller, and the default is bit-identical to having no hook at all.
+    enum class LinkDampingReference { World, Canopy };
+    void SetLinkDampingReference(LinkDampingReference reference)
+        { LinkDampingReferenceValue = reference; }
+    LinkDampingReference DampingReference() const
+        { return LinkDampingReferenceValue; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
@@ -501,6 +520,8 @@ private:
         double offsetRad = 0.0;
     };
     double SwingDampingRatioValue = 0.35;
+    LinkDampingReference LinkDampingReferenceValue =
+        LinkDampingReference::World;
     bool Profiling = false;
     CoupledStepProfile ProfileValue{};
     std::vector<BrakeSwingSample> BrakeSwingCurve;

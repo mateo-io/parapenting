@@ -1230,27 +1230,58 @@ structureSolve:
     // Symplectic, and with the damping taken implicitly for the same reason
     // the canopy's is.
     //
-    // The damper acts on the link's rate RELATIVE TO THE CANOPY, not on its
-    // rate in the world. That is where the friction physically is - lines,
-    // maillons and a harness resisting the wing and the pilot moving with
-    // respect to each other - and the difference is not cosmetic. Damped
-    // against the world, the link cannot follow apparent gravity without a
-    // lag of its own damping time constant, and apparent gravity is exactly
-    // what it has to follow: in a pull-up the resultant swings round with the
-    // flight path, the pendulum swings with it, and that is what holds a
-    // paraglider's incidence steady through a phugoid.
+    // THE DAMPER IS AGAINST THE WORLD BY DEFAULT, and the paragraph that used
+    // to sit here said the opposite - it described the CANOPY-referenced
+    // version and the case for it, next to a line that has always damped the
+    // world rate. The two were written a level apart and the comment was never
+    // brought back when the change was reverted. It is corrected rather than
+    // deleted because the argument in it is real and is still the case against
+    // this line: damped against the world the link cannot follow apparent
+    // gravity without a lag of its own time constant, and following apparent
+    // gravity is exactly its job - in a pull-up the resultant swings round
+    // with the flight path, the pendulum swings with it, and that is what
+    // holds a paraglider's incidence steady through a phugoid. Measured, the
+    // link tracked 10.7 degrees of lean against the 14.6 the flight path
+    // turned through, and the missing 3.9 went into incidence.
     //
-    // With the world-frame damper the link tracked only 73% of the way - 10.7
-    // degrees of lean against the 14.6 the flight path had turned through -
-    // and the missing 3.9 degrees went straight into incidence. Below CL 0.35
-    // this wing's pitch feedback has a loop gain above one (measured: 1.07 at
-    // CL 0.34, 1.62 at CL 0.28), so an incidence error that size does not
-    // decay, and the wing left the envelope in under a minute.
+    // What answers that argument is no longer an opinion. The lag it predicts
+    // would show as a moving PHASE between the link and surge inside the 16 s
+    // mode; that phase holds within 1.9 degrees across the whole damping sweep
+    // while the mode's growth rate crosses zero. `PHYSICS_LEARNINGS` §41.
     //
-    // The pilot's own air damping is not lost by this: it is already in the
+    // The alternative is now reachable rather than remembered - see
+    // `SetLinkDampingReference`. Against the canopy the damper resists the
+    // link and the wing moving with respect to each other, which is where the
+    // friction physically is, and it leaves the pendulum free to be dragged
+    // bodily by the wing with nothing resisting.
+    //
+    // The pilot's own air damping is not lost either way: it is already in the
     // equation above, as the harness drag term, where it belongs.
     Vec3 linkRate = state.linkRateWorldRadps + linkAngularAccel * dt;
-    linkRate = linkRate / (1.0 + 2.0 * SwingDampingRatio * swingFrequency * dt);
+    // What the damper is measured against, kept for the energy accounting
+    // below: the rate it acts on is NOT the link's world rate when the
+    // reference is the canopy, and the dissipation would be wrong by exactly
+    // the shared rotation if it read the world rate in both cases. Zero in the
+    // world case, which leaves that arithmetic untouched.
+    Vec3 damperReferenceRate{};
+    const double dampingFactor =
+        1.0 + 2.0 * SwingDampingRatio * swingFrequency * dt;
+    if (LinkDampingReferenceValue == LinkDampingReference::Canopy)
+    {
+        // Damp only the part of the link's rate that the CANOPY does not
+        // already share. A wing and a pilot rotating together at the same rate
+        // have nothing sliding at the maillons, so that component is not
+        // damped at all.
+        const Vec3 canopyRateWorld =
+            state.attitude.Rotate(state.angularVelocityBodyRadps);
+        linkRate = canopyRateWorld + (linkRate - canopyRateWorld)
+            / dampingFactor;
+        damperReferenceRate = canopyRateWorld;
+    }
+    else
+    {
+        linkRate = linkRate / dampingFactor;
+    }
     // A rotation about the link's own axis is not a degree of freedom of a
     // line - it is a spin of a point mass - so it is projected out rather than
     // integrated into a direction it cannot move.
@@ -1416,7 +1447,8 @@ structureSolve:
         SystemMassKg * GravityMps2 * state.positionWorldM.z;
     const double swingDampingPowerW =
         2.0 * SwingDampingRatio * swingFrequency * payloadArmInertiaKgM2
-            * Dot(linkRate, linkRate);
+            * Dot(linkRate - damperReferenceRate,
+                  linkRate - damperReferenceRate);
     diagnostics.swingDampingPowerW = swingDampingPowerW;
     const double workDone = Dot(aeroWorld, state.velocityWorldMps * dt);
     diagnostics.kineticEnergyJ = kineticAfter;

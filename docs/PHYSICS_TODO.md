@@ -796,10 +796,34 @@ stands in for, and it is checkable against a real wing in a way "the period is
   apart reports neither, and does not fail — it returns a confident intermediate
   number that moves with the mixture and the window. When a period lands between
   two known modes and moves with conditions, suspect the identifier.
-- **Still unclaimed either way:** the canopy-referenced link damper (the solver's
-  own rejected alternative). Differencing its matrix would test whether the two
-  failure modes are separable, but it needs a solver hook that does not exist and
-  was not added for a test.
+- ~~**Still unclaimed either way:** the canopy-referenced link damper (the
+  solver's own rejected alternative). Differencing its matrix would test whether
+  the two failure modes are separable, but it needs a solver hook that does not
+  exist and was not added for a test.~~ **CLAIMED (§51).** The hook exists
+  (`SetLinkDampingReference`, default bit-identical to before) and
+  `pitch_eigenmodes --damper` is the measurement.
+- **The two failure modes are ONE failure, and it is the phugoid.** The canopy
+  damper's fast mode does not go unstable — it gets *more* damped, −0.31 → −0.68
+  at ratio 0.35 — and what diverges is the same 16 s mode, at σ **+0.156**
+  against the world damper's −0.021. Control: articulation 0.22 vs 0.29 slow,
+  1.08 vs 1.07 fast, so the shapes and roles are unchanged and this is not a
+  relabelled mode. The stated prediction — that the fast mode would go, since
+  "the pendulum is dragged by the wing" is a pendulum-mode claim — **failed**.
+- **And the coefficient's sign of effect reverses in that frame:** σ rises with
+  damping, +0.136 at ratio 0.10 to +0.194 at 0.90, unstable at every ratio.
+  **No value of this coefficient stabilises the aircraft in the canopy frame.**
+  Flown, cold: 0.90 departs at 17 s, 0.35 at 27 s, against a world-damped 0.35
+  settling at 410 s — more damping departing sooner, which no world-referenced
+  run does anywhere.
+- **What that buys is a constraint on the missing mechanism, not a candidate
+  for it:** whatever stabilises this wing cannot be link–canopy friction at any
+  magnitude. What the world damper supplies is a rate against the *inertial*
+  frame, and the phugoid needs that. The candidate the solver itself nominated
+  is eliminated.
+- Caveat, the same one §50 carries: the canopy spectra are linearised about the
+  *world* solver's 0.35 trim, because the canopy solver has no trim — it departs
+  cold at every ratio. The flown column is the part that stands alone, and the
+  two agree in sign and ordering.
 - **Open, recorded before it is explained:** as the ratio falls the link
   articulates *less* against the wing (0.383 → 0.266), not more. Less link
   damping does not mean a freer-swinging link inside this mode.
@@ -883,6 +907,13 @@ while σ crosses zero — §41); the 0.985 adjoint share (unit-flattered, 0.78
 rescaled — §43); and the "fragility is a property of the link's formulation"
 reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
 
+- **The canopy-referenced damper**, rejected four levels ago on a departure and
+  never measured. It fails through the *same* mode (the phugoid, σ +0.156), its
+  pendulum is *more* damped, and the coefficient's sign of effect reverses so
+  that no value of it stabilises the aircraft in that frame. Link–canopy
+  friction is therefore eliminated as the missing mechanism at any magnitude.
+  §51.
+
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity
 — `d(surge)/d(surge)` at +1.63 per unit, worth 1.25 coefficient steps — and a
@@ -893,6 +924,10 @@ is a different kind of open than the ones above.
 as written: item 11 has not landed, and restoring the strict thresholds now
 would make the suite green about a disagreement rather than honest about one.
 The same applies to the brake-travel and turn-rate numbers listed with them.
+
+**One candidate eliminated rather than left open,** which is the only change to
+the shape of item 11 this level made: the missing mechanism cannot be
+link–canopy friction. It has to act against the inertial frame. §51.
 
 **One instrument limit worth carrying forward.** No rate measured through
 `--project` is trustworthy at a departing ratio, because a ratio past the

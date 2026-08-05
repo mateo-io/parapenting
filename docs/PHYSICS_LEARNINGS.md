@@ -1788,6 +1788,68 @@ absence rather than a mystery — there is still no *mechanism* for why 0.35 is
 needed, only a measured sensitivity (`d(surge)/d(surge)`, +1.63 per unit) and a
 list of eliminated candidates.
 
+## 51. The rejected damper fails through the same mode, and reverses the sign of the coefficient
+
+The solver damps the link against the **world**. Its own comment says the
+friction physically sits between the link and the **canopy**, records that the
+canopy-referenced version was tried, and rejects it in one clause: the pendulum
+was left free to be dragged by the wing and the aircraft left the envelope in
+twenty seconds. Item 11 carried that for four levels as "still unclaimed either
+way" — because a wing that departs tells you it departed and nothing about
+*why*, and the instrument that would say why did not exist when the rejection
+was made. The hook to point it at the alternative is three lines in the solver;
+`--damper` is the measurement.
+
+**The question was not which damper is better.** It was whether the two failure
+modes are the *same* failure. The world-damped solver departs by the 16 s
+phugoid's damping crossing zero, and its pendulum stays at 1.86 s and firmly
+damped from ratio 0.90 to 0.10 (§38). If the canopy version departs by the fast
+mode instead, item 11's missing mechanism has a second constraint nobody knew
+about.
+
+**The prediction was stated first and it was wrong.** "The fast mode goes
+unstable" — a dragged pendulum is a pendulum-mode statement, and twenty seconds
+is eleven pendulum periods against about one phugoid period. The fast mode does
+not go unstable. It gets *more* damped, −0.31 → −0.68 /s at ratio 0.35, and
+stays damped at every ratio. The rejection's wording described what a departure
+looked like from outside, and the prediction inherited the description.
+
+**What goes unstable is the 16 s mode — the same one — at σ +0.156 against the
+world's −0.021** at ratio 0.35. The control makes that defensible rather than a
+coincidence of periods: articulation 0.22 canopy against 0.29 world for the slow
+mode, 1.08 against 1.07 for the fast. Same shapes, same roles. **The pitch axis
+has one failure, and it is the phugoid**, under either damper.
+
+**The finding nobody was looking for: the coefficient's sign of effect
+reverses.** In the canopy frame σ *rises* with damping — +0.136 at ratio 0.10 to
++0.194 at 0.90 — and the mode is unstable at every ratio tried. There is no
+value of this coefficient that stabilises the aircraft in the canopy frame. The
+flown runs agree, and in the same order: 0.90 departs in 17 s, 0.35 in 27 s,
+both cold, against a world-damped 0.35 that settles at 410 s. That ordering —
+more damping departing sooner — is something no world-referenced run does at any
+ratio.
+
+**What it buys item 11, as a constraint rather than a candidate:** whatever
+stabilises this wing **cannot be link–canopy friction, at any magnitude**. The
+friction is real and it is where the solver's comment says it is; it does not do
+this job. What the world-referenced damper supplies is a rate measured against
+the *inertial* frame, and the phugoid needs that. The candidate list shortens by
+one, and it is the one the solver itself had nominated.
+
+**What is not established.** The canopy spectra are linearised about the *world*
+solver's 0.35 trim, because the canopy solver has no trim to linearise about —
+it departs from a cold start at every ratio tried. Those eigenvalues therefore
+describe a point the canopy aircraft does not fly through, the same caveat §50
+carries at a departing ratio. The flown column stands on its own, and the two
+agree in sign, in ordering, and with the twenty seconds recorded four levels ago.
+
+**A stale comment found by doing this.** The lines that damp the link carried a
+paragraph asserting the damper acts on the rate *relative to the canopy* — the
+opposite of what the line does, and of what the paragraph eight lines above it
+says. The two were written a level apart and the comment was never brought back
+when the change was reverted. Corrected rather than deleted: the argument in it
+is the real case against the world frame, and §41 is what answers it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -1838,6 +1900,10 @@ list of eliminated candidates.
 | residual of the flown trace off the two modes | 0.4-5% while the motion is small | no third direction carries it - §50 |
 | §35's counter on the flown trace | 6.34 s | neither 1.86 nor 15.4 - §50 |
 | the same counter on a two-mode REBUILD of it | 7.80 s (6.90 at T=0.10) | the gap period out of a signal with no gap mode - §50 |
+| canopy-referenced damper, slow mode at 0.35 | sigma +0.156 | against the world damper's -0.021 - §51 |
+| the same, ratio 0.10 to 0.90 | +0.136 rising to +0.194 | MORE damping is more unstable; no value works - §51 |
+| its fast mode | -0.68 /s, still 1.89 s | the dragged-pendulum story named the wrong mode - §51 |
+| canopy-damped cold start, ratio 0.90 / 0.35 | departs at 17 s / 27 s | the solver's remembered "twenty seconds" - §51 |
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |

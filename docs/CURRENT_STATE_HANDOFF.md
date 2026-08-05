@@ -352,6 +352,14 @@ either.** `PHYSICS_TODO` §"What Level 11 closed" is the summary; the short form
   T-independent value. **Quote the slow mode's damping with its T and do not
   chase it**; three levels treated that number as a measurement needing
   improvement. §47.
+- **The solver's own rejected alternative is now measured, not remembered.**
+  Damping the link against the *canopy* — where the friction physically is —
+  fails through the **same** mode (the phugoid, σ +0.156 against −0.021), leaves
+  the pendulum *more* damped, and reverses the coefficient's sign of effect so
+  that no value of it stabilises the aircraft in that frame. So the pitch axis
+  has one failure, not two, and link–canopy friction is eliminated as the
+  missing mechanism at any magnitude: it has to act against the *inertial*
+  frame. §51.
 - **What is left is an absence, not a mystery:** no mechanism for why 0.35 is
   needed, only a measured sensitivity (`d(surge)/d(surge)`, +1.63 per unit,
   worth 1.25 coefficient steps — and a *wing* entry, not a link one) and a list

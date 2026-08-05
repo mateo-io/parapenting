@@ -87,16 +87,38 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
     pose.headCm = {-12.0 - torsoSurge * 5.0, shift * 2.0, 53.0};
     pose.leftShoulderCm = {-10.0, -19.0, 36.0};
     pose.rightShoulderCm = {-10.0, 19.0, 36.0};
-    pose.leftHandCm = {
-        -40.0 - leftForce * 8.0,
-        -32.0 - leftForce * 3.0,
-        48.0 - leftBrake * 78.0
+    // A brake handle travels along its own line, not straight down. The line
+    // comes off the trailing edge, through the pulley on the rearmost riser,
+    // and down to the hand, so pulling it takes the hand down, aft and
+    // outboard at once. Dropping the hand vertically instead - which is what
+    // this did - is the single thing that stopped the pull reading as a human
+    // one: the arm descended like a lever while the line it was supposedly
+    // holding ran somewhere else entirely.
+    //
+    // Force still adds its own lean, because a loaded brake pulls the whole
+    // arm aft and out beyond wherever the travel put it.
+    // Both the hands-up position and the pulled one hang off the pulley, so
+    // the handle is always somewhere on its own line. Keeping a rest position
+    // that was not derived from the pulley made the line direction nonsense:
+    // the pull then aimed a metre behind the pilot's back.
+    //
+    // Mostly down, around twenty degrees off vertical, leaning aft and
+    // outboard - which is where a handle hangs and where the arm goes when it
+    // pulls one.
+    constexpr double HangLengthCm = 41.5;
+    const auto BrakeHand = [](const Vec3& pulley, double outboardSign,
+        double travel, double force)
+    {
+        const Vec3 alongLine = Normalized(
+            {-0.30, outboardSign * 0.22, -1.0});
+        return pulley
+            + alongLine * (HangLengthCm + travel * PilotBrakeTravelCm)
+            + Vec3{-force * 8.0, outboardSign * force * 3.0, 0.0};
     };
-    pose.rightHandCm = {
-        -40.0 - rightForce * 8.0,
-        32.0 + rightForce * 3.0,
-        48.0 - rightBrake * 78.0
-    };
+    pose.leftHandCm =
+        BrakeHand(raw.leftBrakePulleyCm, -1.0, leftBrake, leftForce);
+    pose.rightHandCm =
+        BrakeHand(raw.rightBrakePulleyCm, 1.0, rightBrake, rightForce);
     pose.leftHandCm = ConstrainHandReach(pose.leftShoulderCm,
         pose.leftHandCm, PilotUpperArmLengthCm, PilotForearmLengthCm);
     pose.rightHandCm = ConstrainHandReach(pose.rightShoulderCm,

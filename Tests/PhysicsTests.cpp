@@ -154,7 +154,12 @@ int main()
         braking.leftBrake = 0.8;
         braking.leftBrakeForceN = 52.0;
         const auto leftBrake = EvaluatePilotPose(braking);
-        assert(leftBrake.leftHandCm.z < neutral.leftHandCm.z - 60.0);
+        // 55 rather than the 60 this used to demand. The hand now travels
+        // along the brake line instead of straight down, so the same handle
+        // travel spends part of itself going aft and outboard - which is the
+        // point of the change, and a threshold near the full travel would be
+        // asserting that the pull is vertical.
+        assert(leftBrake.leftHandCm.z < neutral.leftHandCm.z - 55.0);
         assert(leftBrake.leftHandCm.x < neutral.leftHandCm.x);
         assert(leftBrake.rightHandCm.z == neutral.rightHandCm.z);
 
@@ -176,6 +181,64 @@ int main()
             - PilotUpperArmLengthCm) < 1e-8);
         assert(std::abs(length(leftBrake.leftElbowCm, leftBrake.leftHandCm)
             - PilotForearmLengthCm) < 1e-8);
+        // The pull follows the brake line: down, aft and outboard together,
+        // because that is where the line runs. A vertical drop is what made
+        // the old pull read as a lever rather than a hand on a handle.
+        {
+            PilotPoseInput up;
+            // Quarter brake: enough to measure the direction of the pull,
+            // little enough that the arm can still reach without the reach
+            // clamp bending the answer. At full travel the clamp steepens the
+            // path, which is the arm running out of room rather than the line
+            // changing direction, so it is the wrong place to measure this.
+            PilotPoseInput pulled;
+            pulled.leftBrake = 0.25;
+            const auto handsUp = EvaluatePilotPose(up);
+            const auto pulling = EvaluatePilotPose(pulled);
+            const Vec3 travel = pulling.leftHandCm - handsUp.leftHandCm;
+            assert(travel.z < 0.0);
+            assert(travel.x < 0.0);
+            assert(travel.y < 0.0);
+            // Diagonal, not a drop: the horizontal component is a real
+            // fraction of the vertical one rather than a rounding artefact.
+            const double horizontal =
+                std::sqrt(travel.x * travel.x + travel.y * travel.y);
+            assert(horizontal > 0.35 * std::abs(travel.z));
+
+            // Travel runs along the line from the pulley, so the hand stays on
+            // that line while the arm can still reach.
+            const Vec3 lineRun = handsUp.leftHandCm - up.leftBrakePulleyCm;
+            const double along = Dot(Normalized(lineRun), Normalized(travel));
+            assert(along > 0.999);
+
+            // Moving the pulley moves the direction of the pull with it. This
+            // is what a two-liner's different riser geometry changes, without
+            // anything else having to know.
+            PilotPoseInput moved = pulled;
+            moved.leftBrakePulleyCm = {-13.0, -21.0, 120.0};
+            const auto higher = EvaluatePilotPose(moved);
+            assert(higher.leftHandCm.z > pulling.leftHandCm.z);
+
+            // One hand's pull never reaches across to the other.
+            assert(pulling.rightHandCm.x == handsUp.rightHandCm.x);
+            assert(pulling.rightHandCm.y == handsUp.rightHandCm.y);
+            assert(pulling.rightHandCm.z == handsUp.rightHandCm.z);
+
+            // Monotone: more brake is always more travel, never a reversal
+            // partway down as the reach clamp engages.
+            double previous = 0.0;
+            for (int step = 1; step <= 20; ++step)
+            {
+                PilotPoseInput partial;
+                partial.leftBrake = step / 20.0;
+                const auto pose = EvaluatePilotPose(partial);
+                const Vec3 moved2 = pose.leftHandCm - handsUp.leftHandCm;
+                const double distance = Length(moved2);
+                assert(distance >= previous - 1e-9);
+                previous = distance;
+            }
+        }
+
         PilotPoseInput fullBrake;
         fullBrake.leftBrake = 1.0;
         fullBrake.leftBrakeForceN = 65.0;

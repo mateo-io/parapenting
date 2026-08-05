@@ -91,12 +91,19 @@ GliderRigSnapshot BuildGliderRigSnapshot(const GliderRigSnapshotInput& input,
         // A repeated or rewound timestamp must not advance the filter.
         snapshot.torsoSurge = previous->torsoSurge;
     }
+    // Hardware first: the hands hang off the brake pulleys, so the risers have
+    // to exist before the pose that reaches for them. The pulley is the
+    // rearmost riser rather than a named one, which is what lets a two-liner
+    // route its brakes through the B riser with no change here.
+    PopulateHardwareAnchors(snapshot, input);
+    constexpr int RearRiser = GliderRigRiserCount - 1;
     snapshot.pilot = EvaluatePilotPose({input.harnessRollRad,
         input.harnessPitchRad, snapshot.weightShift, snapshot.brakeTravel[0],
         snapshot.brakeTravel[1], snapshot.brakeForceN[0],
         snapshot.brakeForceN[1], input.incidentSeverity, input.recoverySurge,
-        snapshot.torsoSurge});
-    PopulateHardwareAnchors(snapshot, input);
+        snapshot.torsoSurge,
+        snapshot.riserTopRigCm[0][RearRiser],
+        snapshot.riserTopRigCm[1][RearRiser]});
     if (previous && dt > 0.0)
     {
         for (int side = 0; side < 2; ++side)

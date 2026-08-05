@@ -230,8 +230,6 @@ void AParagliderPawn::BeginPlay()
     }
     if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {
-        // The poseable mannequin replaces only the body blockout. Hardware is
-        // deliberately retained for Stage 3, where it becomes real controls.
         for (UStaticMeshComponent* Part : {
             PilotTorso.Get(), PilotHead.Get(), HarnessVisual.Get(),
             LeftUpperArm.Get(), RightUpperArm.Get(),
@@ -938,29 +936,41 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     const FColor RiserColors[4] = {
         FColor(235, 45, 38), FColor(245, 205, 35),
         FColor(55, 105, 225), FColor(40, 190, 90)};
+    // Hardware is a closed loop of metal or webbing, not a wire square. A ring
+    // drawn as segments around an ellipse reads as a carabiner, a pulley or a
+    // brake handle at any distance; four straight sides read as a diagram.
+    const auto AddRing = [this](const FVector& Centre, const FVector& AxisA,
+        const FVector& AxisB, int32 Steps, const FColor& Colour, float Radius)
+    {
+        FVector Previous = Centre + AxisA;
+        for (int32 Step = 1; Step <= Steps; ++Step)
+        {
+            const float Angle = 2.0f * PI * Step / Steps;
+            const FVector Point = Centre + AxisA * FMath::Cos(Angle)
+                + AxisB * FMath::Sin(Angle);
+            AddSuspensionSegment(Previous, Point, Colour, Radius);
+            Previous = Point;
+        }
+    };
     for (int32 Side = -1; Side <= 1; Side += 2)
     {
         const bool bLeft = Side < 0;
         const FVector CarabinerLocal = CarabinerLocalCm(bLeft);
-        const FVector MaillonSide(0.0f, 3.2f, 0.0f);
-        const FVector MaillonUp(0.0f, 0.0f, 5.0f);
         const FColor MaillonColor(185, 190, 198);
+        const FVector RigFore =
+            PilotRigToActor().TransformVector(FVector(1.0f, 0.0f, 0.0f));
+        const FVector RigUp =
+            PilotRigToActor().TransformVector(FVector(0.0f, 0.0f, 1.0f));
+        // The carabiner the risers and the harness both hang on. Long axis
+        // vertical, because that is the direction it is loaded in.
+        AddRing(CarabinerLocal, RigFore * 3.0f, RigUp * 5.5f, 12,
+            MaillonColor, 0.55f);
+        // Its gate, on the forward side, so the piece reads as a carabiner
+        // rather than as a plain ring.
         AddSuspensionSegment(
-            CarabinerLocal - MaillonSide - MaillonUp,
-            CarabinerLocal + MaillonSide - MaillonUp,
-            MaillonColor, 0.9f);
-        AddSuspensionSegment(
-            CarabinerLocal + MaillonSide - MaillonUp,
-            CarabinerLocal + MaillonSide + MaillonUp,
-            MaillonColor, 0.9f);
-        AddSuspensionSegment(
-            CarabinerLocal + MaillonSide + MaillonUp,
-            CarabinerLocal - MaillonSide + MaillonUp,
-            MaillonColor, 0.9f);
-        AddSuspensionSegment(
-            CarabinerLocal - MaillonSide + MaillonUp,
-            CarabinerLocal - MaillonSide - MaillonUp,
-            MaillonColor, 0.9f);
+            CarabinerLocal + RigFore * 2.2f - RigUp * 4.6f,
+            CarabinerLocal + RigFore * 2.2f + RigUp * 4.6f,
+            FColor(150, 156, 166), 0.4f);
         // The maillon and the harness webbing the carabiner hangs on, so the
         // load path is visibly continuous from the pilot up rather than
         // starting in mid air beside them.
@@ -1004,6 +1014,22 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 RiserTop - Lateral, RiserTop + Lateral,
                 RiserColors[Group], Width * 0.5f);
         }
+        // The brake pulley, on the back of the riser set. The brake line runs
+        // down through this to the handle, which is why the handle can be
+        // pulled a long way while the trailing edge moves much less: the line
+        // turns here rather than running straight to the fist.
+        const FVector PulleyCentre =
+            RiserTopLocalCm(Parapenting::Physics::GliderRigRearRiserIndex,
+                bLeft)
+            - PilotRigToActor().TransformVector(FVector(0.0f, 0.0f, 7.0f));
+        AddRing(PulleyCentre, RigFore * 1.7f, RigUp * 1.7f, 10,
+            FColor(70, 74, 82), 0.35f);
+        // The short webbing tab that holds it onto the riser.
+        AddSuspensionSegment(
+            PulleyCentre + RigUp * 1.7f,
+            RiserTopLocalCm(Parapenting::Physics::GliderRigRearRiserIndex,
+                bLeft),
+            FColor(48, 52, 60), 0.5f);
     }
     for (const auto& Attachment : SuspensionGeometry.attachments)
     {
@@ -1156,6 +1182,20 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         // holding it were computed independently before, so pulling a brake
         // moved the arm down and left the line ending beside it.
         const FVector HandLocal = BrakeHandLocalCm(bLeft);
+        // The handle carries ONE brake line. It runs up to the pulley on the
+        // rearmost riser, continues as one line above it, and only splits into
+        // the fan near the trailing edge.
+        //
+        // This used to draw a separate line from the hand to every brake
+        // attachment, so the fist had the whole fan radiating out of it and
+        // there was no pulley anywhere. That is not how a riser is built: on
+        // the wing this models, the handle is on a single line through a
+        // pulley, and the cascade is up at the canopy where the load has to be
+        // spread across the trailing edge.
+        const FVector PulleyLocal =
+            RiserTopLocalCm(GliderRigRearRiserIndex, bLeft);
+        TArray<FVector> FanEnds;
+        FVector MeanEnd = FVector::ZeroVector;
         for (const auto& BrakeAttachment : LineGraph.nodes)
         {
             if (BrakeAttachment.kind
@@ -1163,66 +1203,56 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 || BrakeAttachment.row != Parapenting::Physics::LineRow::Brake
                 || (BrakeAttachment.side < 0.0) != bLeft)
                 continue;
-            const float Span01 = static_cast<float>(
-                BrakeAttachment.spanFraction);
-            const float AbsSpan = FMath::Abs(Span01);
-            const float TipBlend = FMath::SmoothStep(
-                0.42f, 1.0f, AbsSpan);
-            const float Collapse = static_cast<float>(
-                bGroundLaunching ? 0.0
-                : (bLeft ? Telemetry.leftCollapse
-                         : Telemetry.rightCollapse)) * TipBlend;
-            const float Cravat = static_cast<float>(
-                bGroundLaunching ? 0.0
-                : (bLeft ? Telemetry.leftCravat
-                         : Telemetry.rightCravat)) * TipBlend;
-            constexpr float MetresToCm = static_cast<float>(
-                Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
-            constexpr float SuspensionRiseCm = 730.0f;
-            const Parapenting::Physics::RibStation BrakeStation =
-                Canopy.StationAt(Span01);
-            const float LoadedChord =
-                static_cast<float>(BrakeStation.chordM) * MetresToCm
-                * static_cast<float>(SuspensionLoadPose.chordScale);
-            const float ContractedSpan =
-                static_cast<float>(BrakeStation.positionM.y) * MetresToCm
-                * (1.0f - 0.28f * Collapse - 0.38f * Cravat)
-                * static_cast<float>(SuspensionLoadPose.spanScale);
-            const float Arch = SuspensionRiseCm
-                + static_cast<float>(BrakeStation.positionM.z) * MetresToCm
-                - static_cast<float>(SuspensionLoadPose.extraArchDropCm)
-                    * FMath::Pow(AbsSpan, 1.65f)
-                + static_cast<float>(SuspensionLoadPose.lineStretchCm);
-            const float CollapseDrop =
-                255.0f * Collapse + 330.0f * Cravat;
-            const float RotorFlutter = static_cast<float>(
-                bGroundLaunching ? 0.0 : Telemetry.rotorStrength)
-                * TipBlend * 15.0f * FMath::Sin(static_cast<float>(
-                    RenderRigSnapshot.simulationTimeSeconds * 11.0
-                    + Span01 * 8.0));
-            FVector TrailingEdge = CanopyAttachmentLocalCm(
-                BrakeAttachment.spanFraction, BrakeAttachment.chordFraction);
-            TrailingEdge =
-                CanopyRelativeTransform.TransformPosition(TrailingEdge);
-            FVector SolvedOffset = LineShape[
-                static_cast<int32>(Parapenting::Physics::LineRow::Brake)]
-                .OffsetFromRunM * MetresToCm;
-            if (bLeft) SolvedOffset.Y = -SolvedOffset.Y;
-            const FVector Cascade = HandLocal
-                + (TrailingEdge - HandLocal) * LineShape[
-                    static_cast<int32>(Parapenting::Physics::LineRow::Brake)]
-                    .splitAlongRun
-                + SolvedOffset
-                + FVector(0.0f, 0.0f,
-                    -95.0f * FMath::Square(BrakeSlack));
-            const float BrakeRadius = FMath::Lerp(
-                0.28f, 0.68f, BrakeLoad01 * (1.0f - BrakeSlack));
-            AddSuspensionSegment(
-                HandLocal, Cascade, FColor(40, 190, 90), BrakeRadius);
-            AddSuspensionSegment(
-                Cascade, TrailingEdge, FColor(40, 190, 90),
-                BrakeRadius * 0.88f);
+            const FVector TrailingEdge =
+                CanopyRelativeTransform.TransformPosition(
+                    CanopyAttachmentLocalCm(BrakeAttachment.spanFraction,
+                        BrakeAttachment.chordFraction));
+            FanEnds.Add(TrailingEdge);
+            MeanEnd += TrailingEdge;
         }
+        if (FanEnds.IsEmpty()) continue;
+        MeanEnd /= static_cast<float>(FanEnds.Num());
+
+        constexpr float MetresToCm = static_cast<float>(
+            Parapenting::Physics::WorldAxes::MetresToUnrealUnits);
+        const auto& BrakeShape = LineShape[
+            static_cast<int32>(Parapenting::Physics::LineRow::Brake)];
+        FVector SolvedOffset = BrakeShape.OffsetFromRunM * MetresToCm;
+        if (bLeft) SolvedOffset.Y = -SolvedOffset.Y;
+        // Where the single line becomes the fan. Measured up the run from the
+        // pulley, not from the hand: the hand moves when the brake is pulled
+        // and the junction must not chase it, because on the wing that split
+        // is a knot in the line and it stays where it was sewn.
+        const FVector Junction = PulleyLocal
+            + (MeanEnd - PulleyLocal) * BrakeShape.splitAlongRun
+            + SolvedOffset
+            + FVector(0.0f, 0.0f, -95.0f * FMath::Square(BrakeSlack));
+
+        const float BrakeRadius = FMath::Lerp(
+            0.28f, 0.68f, BrakeLoad01 * (1.0f - BrakeSlack));
+        constexpr FColor BrakeColor(190, 225, 40);
+        // Below the pulley the line carries the pilot's whole pull, above it
+        // the same line carries it, and each fan branch takes a share. Drawn
+        // thicker to thinner in that order.
+        // The handle: a padded webbing loop hanging under the fist, which is
+        // what the hand is actually holding. It was a scaled sphere before.
+        const FVector HandFore =
+            PilotRigToActor().TransformVector(FVector(1.0f, 0.0f, 0.0f));
+        const FVector HandDown =
+            PilotRigToActor().TransformVector(FVector(0.0f, 0.0f, -1.0f));
+        AddRing(HandLocal + HandDown * 7.0f, HandFore * 4.2f,
+            HandDown * 7.0f, 12, FColor(46, 48, 54), 0.85f);
+        // The swivel between handle and line, the red fitting at the top of
+        // the loop on the real riser.
+        AddSuspensionSegment(HandLocal, HandLocal + HandDown * 2.4f,
+            FColor(190, 60, 40), 0.7f);
+        AddSuspensionSegment(
+            HandLocal, PulleyLocal, BrakeColor, BrakeRadius * 1.15f);
+        AddSuspensionSegment(
+            PulleyLocal, Junction, BrakeColor, BrakeRadius);
+        for (const FVector& End : FanEnds)
+            AddSuspensionSegment(Junction, End, BrakeColor,
+                BrakeRadius * 0.7f);
     }
     CommitSuspensionMesh();
     // The old always-on 5.2 m debug sphere made every landing field readable
@@ -1629,6 +1659,10 @@ void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)
     PosePilotSegment(RightUpperArm, RightShoulder, RightElbow, 0.075f);
     PosePilotSegment(LeftForearm, LeftElbow, LeftHand, 0.065f);
     PosePilotSegment(RightForearm, RightElbow, RightHand, 0.065f);
+    // The handles are drawn as real webbing loops in the suspension mesh now,
+    // so these scaled spheres would sit inside them.
+    LeftBrakeHandle->SetVisibility(false);
+    RightBrakeHandle->SetVisibility(false);
     LeftBrakeHandle->SetRelativeLocation(LeftHand);
     RightBrakeHandle->SetRelativeLocation(RightHand);
     LeftBrakeHandle->SetRelativeScale3D(FVector(0.075f, 0.055f, 0.11f));

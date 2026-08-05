@@ -96,7 +96,7 @@ GliderRigSnapshot BuildGliderRigSnapshot(const GliderRigSnapshotInput& input,
     // rearmost riser rather than a named one, which is what lets a two-liner
     // route its brakes through the B riser with no change here.
     PopulateHardwareAnchors(snapshot, input);
-    constexpr int RearRiser = GliderRigRiserCount - 1;
+    constexpr int RearRiser = GliderRigRearRiserIndex;
     snapshot.pilot = EvaluatePilotPose({input.harnessRollRad,
         input.harnessPitchRad, snapshot.weightShift, snapshot.brakeTravel[0],
         snapshot.brakeTravel[1], snapshot.brakeForceN[0],

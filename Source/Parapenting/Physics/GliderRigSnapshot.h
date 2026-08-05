@@ -9,6 +9,12 @@ namespace Parapenting::Physics
 constexpr int GliderRigSideCount = 2;
 constexpr int GliderRigRiserCount = 4;
 
+// The riser the brake pulley is mounted on: the rearmost one. Named rather
+// than written as a literal 3, because it is the C riser on this three-liner
+// and would be the B riser on a two-liner - the pulley follows the back of the
+// riser set, whatever that happens to be.
+constexpr int GliderRigRearRiserIndex = GliderRigRiserCount - 1;
+
 // Immutable presentation state published at a fixed simulation boundary.
 // It deliberately contains achieved controls only: command input remains an
 // implementation detail of the solver and must never animate the rig.

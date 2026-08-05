@@ -73,6 +73,22 @@ const LinePlanSpec& Epic2MlLinePlan()
     return Plan;
 }
 
+void MakeTwoLinerRiserSet(LinePlanSpec& spec)
+{
+    spec.riserCount = 2;
+    spec.riserRow[0] = LineRow::A;
+    spec.riserRow[1] = LineRow::B;
+    // Placeholders, flagged as such in the header: a two-liner's A takes most
+    // of the bar travel and the B is the reference the wing pitches about.
+    spec.trimRiserLengthM[0] = 0.50;
+    spec.trimRiserLengthM[1] = 0.50;
+    spec.acceleratedRiserLengthM[0] = 0.35;
+    spec.acceleratedRiserLengthM[1] = 0.50;
+    spec.riserForeAftM[0] = 0.035;
+    spec.riserForeAftM[1] = -0.035;
+    return;
+}
+
 bool LoadLinePlanSpec(const std::string& filePath, LinePlanSpec& spec)
 {
     std::ifstream file(filePath);

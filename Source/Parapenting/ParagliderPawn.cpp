@@ -986,7 +986,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             ShoulderWebbing, HarnessTop, FColor(38, 42, 50), 1.7f);
         AddSuspensionSegment(
             HarnessTop, SeatWebbing, FColor(38, 42, 50), 1.9f);
-        for (int32 Group = 0; Group < 4; ++Group)
+        for (int32 Group = 0; Group < RenderRigSnapshot.riserCount; ++Group)
         {
             const float TensionN = static_cast<float>(bLeft
                 ? Telemetry.leftLineTensionN[Group]
@@ -1019,16 +1019,16 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         // pulled a long way while the trailing edge moves much less: the line
         // turns here rather than running straight to the fist.
         const FVector PulleyCentre =
-            RiserTopLocalCm(Parapenting::Physics::GliderRigRearRiserIndex,
-                bLeft)
+            RiserTopLocalCm(Parapenting::Physics::RearRiserIndex(
+                RenderRigSnapshot.riserCount), bLeft)
             - PilotRigToActor().TransformVector(FVector(0.0f, 0.0f, 7.0f));
         AddRing(PulleyCentre, RigFore * 1.7f, RigUp * 1.7f, 10,
             FColor(70, 74, 82), 0.35f);
         // The short webbing tab that holds it onto the riser.
         AddSuspensionSegment(
             PulleyCentre + RigUp * 1.7f,
-            RiserTopLocalCm(Parapenting::Physics::GliderRigRearRiserIndex,
-                bLeft),
+            RiserTopLocalCm(Parapenting::Physics::RearRiserIndex(
+                RenderRigSnapshot.riserCount), bLeft),
             FColor(48, 52, 60), 0.5f);
     }
     for (const auto& Attachment : SuspensionGeometry.attachments)
@@ -1109,6 +1109,12 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             TensionGroup = 2;
             GroupColor = FColor(55, 105, 225);
         }
+        // On a two-liner there is no C riser to hang from: those lines cascade
+        // into the B, so the run starts at the rearmost riser the wing has.
+        // Clamping here rather than at the array bound is what stops a
+        // three-liner's group mapping drawing lines from a riser that is not
+        // on the aircraft.
+        RiserGroup = FMath::Min(RiserGroup, RenderRigSnapshot.riserCount - 1);
         const float LineSlack = static_cast<float>(bLeft
             ? Telemetry.leftLineSlack[TensionGroup]
             : Telemetry.rightLineSlack[TensionGroup]);
@@ -1193,7 +1199,9 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         // pulley, and the cascade is up at the canopy where the load has to be
         // spread across the trailing edge.
         const FVector PulleyLocal =
-            RiserTopLocalCm(GliderRigRearRiserIndex, bLeft);
+            RiserTopLocalCm(
+                Parapenting::Physics::RearRiserIndex(
+                    RenderRigSnapshot.riserCount), bLeft);
         TArray<FVector> FanEnds;
         FVector MeanEnd = FVector::ZeroVector;
         for (const auto& BrakeAttachment : LineGraph.nodes)
@@ -1415,10 +1423,15 @@ FVector AParagliderPawn::CarabinerLocalCm(bool bLeft) const
 
 FVector AParagliderPawn::RiserTopLocalCm(int32 Group, bool bLeft) const
 {
-    // A, A', B, C front to back. Real risers are about 45 cm of webbing with
-    // the groups separated by a few centimetres fore and aft; that separation
-    // is what makes the mains fan instead of running as one parallel sheet.
-    const int32 Index = FMath::Clamp(Group, 0, 3);
+    // Front to back: A, A', B, C on a three-liner, A and B on a two-liner.
+    // Real risers are about 45 cm of webbing with the groups separated by a
+    // few centimetres fore and aft; that separation is what makes the mains
+    // fan instead of running as one parallel sheet.
+    //
+    // Clamped to the risers this wing actually has, so asking for a C on a
+    // two-liner gives the B rather than a stale anchor left in the array.
+    const int32 Index = FMath::Clamp(Group, 0,
+        RenderRigSnapshot.riserCount - 1);
     const auto& InRig = RenderRigSnapshot.riserTopRigCm[bLeft ? 0 : 1][Index];
     return PilotRigToActor().TransformPosition(
         FVector(InRig.x, InRig.y, InRig.z));
@@ -1517,6 +1530,28 @@ void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
     const double HalfCarabinerSeparationCm = 0.5 * MetresToCm
         * Parapenting::Physics::HarnessGeometryFor(Equipment)
             .carabinerSeparationM;
+    // Where each riser sits fore/aft on the plate. The count comes from the
+    // wing's own line plan, and the spread is laid out across whatever that
+    // count is, so a two-liner puts its A forward and its B at the back rather
+    // than crowding both into the front two slots of a three-liner's layout.
+    //
+    // The extremes are the drawn spacing rather than the plan's physical
+    // maillon offsets, which are about a third as wide: the risers are spread
+    // for legibility, the same allowance the plan's LOD rules make for line
+    // thickness. Laying it out evenly moves the three-liner's A' by 0.7 cm
+    // from the hand-picked value it had; that is below anything visible and
+    // buys one rule instead of a table.
+    const int32 RiserCount = FMath::Clamp(LineGraph.plan.riserCount, 1,
+        Parapenting::Physics::GliderRigRiserCount);
+    constexpr double FrontRiserCm = 6.0;
+    constexpr double BackRiserCm = -11.0;
+    std::array<double, Parapenting::Physics::GliderRigRiserCount>
+        RiserForeAftCm{};
+    for (int32 Index = 0; Index < RiserCount; ++Index)
+        RiserForeAftCm[Index] = RiserCount == 1 ? FrontRiserCm
+            : FrontRiserCm + (BackRiserCm - FrontRiserCm)
+                * (static_cast<double>(Index) / (RiserCount - 1));
+
     PreviousRigSnapshot = CurrentRigSnapshot;
     CurrentRigSnapshot = Parapenting::Physics::BuildGliderRigSnapshot({
         TimestampSeconds,
@@ -1534,6 +1569,8 @@ void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
         T.recoverySurge,
         HalfCarabinerSeparationCm,
         45.0,
+        RiserCount,
+        RiserForeAftCm,
         T},
         CurrentRigSnapshot.simulationTimeSeconds > 0.0
             ? &CurrentRigSnapshot : nullptr);
@@ -3282,7 +3319,7 @@ void AParagliderPawn::DrawCanopyGeometryDebug()
         DrawRigNode(CarabinerLocalCm(bLeft),
             bLeft ? TEXT("LEFT CARABINER") : TEXT("RIGHT CARABINER"),
             FColor(205, 205, 210));
-        for (int32 Group = 0; Group < 4; ++Group)
+        for (int32 Group = 0; Group < RenderRigSnapshot.riserCount; ++Group)
         {
             static const TCHAR* GroupNames[] = {TEXT("A"), TEXT("A'"),
                 TEXT("B"), TEXT("C")};

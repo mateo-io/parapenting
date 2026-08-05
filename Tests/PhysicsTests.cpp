@@ -293,6 +293,58 @@ int main()
         }
     }
     {
+        // Riser count is data. A two-liner has to work without anything
+        // downstream counting risers for itself.
+        GliderRigSnapshotInput twoLiner{};
+        twoLiner.riserCount = 2;
+        twoLiner.riserForeAftCm = {4.0, -4.0, 0.0, 0.0};
+        const auto two = BuildGliderRigSnapshot(twoLiner);
+        assert(two.riserCount == 2);
+
+        // The rear riser is the last one present, so the brake pulley moves
+        // from the C to the B without anything being told about two-liners.
+        assert(RearRiserIndex(two.riserCount) == 1);
+        assert(RearRiserIndex(4) == 3);
+        for (int side = 0; side < GliderRigSideCount; ++side)
+        {
+            const Vec3 pulley = two.riserTopRigCm[side][
+                RearRiserIndex(two.riserCount)];
+            const Vec3 hand = side == 0 ? two.pilot.leftHandCm
+                                        : two.pilot.rightHandCm;
+            // The handle hangs below its own pulley on both sides.
+            assert(hand.z < pulley.z);
+        }
+
+        // Riser tops honour the fore/aft the wing was given, and the riser
+        // length is preserved as the distance from the carabiner.
+        for (int side = 0; side < GliderRigSideCount; ++side)
+            for (int riser = 0; riser < two.riserCount; ++riser)
+            {
+                const Vec3 run = two.riserTopRigCm[side][riser]
+                    - two.carabinerRigCm[side];
+                assert(std::abs(Length(run) - twoLiner.riserLengthCm) < 1e-9);
+            }
+        assert(two.riserTopRigCm[0][0].x > two.riserTopRigCm[0][1].x);
+
+        // A wing swap must not blend two riser sets into a half-existing
+        // third one, so the count is taken whole from the current boundary.
+        const auto three = BuildGliderRigSnapshot({});
+        assert(three.riserCount == GliderRigRiserCount);
+        const auto blended = InterpolateGliderRigSnapshot(three, two, 0.5);
+        assert(blended.riserCount == 2);
+
+        // Nonsense counts are clamped rather than indexing off the array.
+        GliderRigSnapshotInput silly{};
+        silly.riserCount = 99;
+        assert(BuildGliderRigSnapshot(silly).riserCount
+            == GliderRigRiserCount);
+        silly.riserCount = 0;
+        assert(BuildGliderRigSnapshot(silly).riserCount == 1);
+        // The line plan carries the same fact so a wing's riser set travels
+        // with it; that half is checked in the suspension suite, which is
+        // where the line plan is linked.
+    }
+    {
         // Bone aiming. The rig solves joint positions; a skinned mesh also
         // needs the rotations, or the skin shears at every joint.
         const auto unitLength = [](const Quaternion& q)

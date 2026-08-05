@@ -9,11 +9,14 @@ namespace Parapenting::Physics
 constexpr int GliderRigSideCount = 2;
 constexpr int GliderRigRiserCount = 4;
 
-// The riser the brake pulley is mounted on: the rearmost one. Named rather
-// than written as a literal 3, because it is the C riser on this three-liner
-// and would be the B riser on a two-liner - the pulley follows the back of the
-// riser set, whatever that happens to be.
-constexpr int GliderRigRearRiserIndex = GliderRigRiserCount - 1;
+// The riser the brake pulley is mounted on is always the rearmost one: the C
+// on this three-liner, the B on a two-liner. It follows the back of the riser
+// set rather than being a fixed index, which is the whole point of the count
+// being data.
+constexpr int RearRiserIndex(int riserCount)
+{
+    return riserCount > 0 ? riserCount - 1 : 0;
+}
 
 // Immutable presentation state published at a fixed simulation boundary.
 // It deliberately contains achieved controls only: command input remains an
@@ -23,6 +26,9 @@ struct GliderRigSnapshot
     double simulationTimeSeconds = 0.0;
     PilotPose pilot{};
     double weightShift = 0.0;
+    // Risers actually present on this wing. Anything reading riserTopRigCm
+    // must stop here rather than at the array's width.
+    int riserCount = GliderRigRiserCount;
     // Filtered torso lean. Published so the lag is part of the immutable
     // snapshot rather than render-side state that a pause or a frame-rate
     // change could desynchronise.
@@ -53,6 +59,12 @@ struct GliderRigSnapshotInput
     double recoverySurge = 0.0;
     double carabinerHalfSeparationCm = 21.0;
     double riserLengthCm = 45.0;
+    // How many risers this wing has, and where each sits fore/aft on the
+    // plate. Defaults are the three-liner's A, A', B, C. A two-liner passes 2
+    // and its own offsets; nothing downstream counts risers for itself.
+    int riserCount = GliderRigRiserCount;
+    std::array<double, GliderRigRiserCount> riserForeAftCm{
+        6.0, 1.0, -5.0, -11.0};
     Telemetry telemetry{};
 };
 

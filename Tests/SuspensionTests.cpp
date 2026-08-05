@@ -378,6 +378,34 @@ int main(int argc, char** argv)
               "a failed load leaves the spec untouched");
     }
 
+    // -- riser set -----------------------------------------------------------
+    {
+        LinePlanSpec plan = Epic2MlLinePlan();
+        Check(plan.riserCount == 4, "the Epic is a three-liner: four risers");
+        Check(plan.riserRow[0] == LineRow::A
+                  && plan.riserRow[1] == LineRow::ABaby
+                  && plan.riserRow[2] == LineRow::B
+                  && plan.riserRow[3] == LineRow::C,
+              "its risers are A, A', B, C front to back");
+
+        MakeTwoLinerRiserSet(plan);
+        Check(plan.riserCount == 2, "a two-liner has two risers");
+        Check(plan.riserRow[0] == LineRow::A && plan.riserRow[1] == LineRow::B,
+              "and they are the A and the B");
+        Check(plan.riserForeAftM[0] > plan.riserForeAftM[1],
+              "the A sits forward of the B on the plate");
+        Check(plan.acceleratedRiserLengthM[0] < plan.trimRiserLengthM[0],
+              "the bar shortens the A");
+        Check(plan.acceleratedRiserLengthM[1] == plan.trimRiserLengthM[1],
+              "and leaves the rear riser alone, which is what it pitches "
+              "about");
+        // The rest of the plan is untouched: this changes the riser set, not
+        // which rows exist above it.
+        Check(plan.halfWingMains.size()
+                  == Epic2MlLinePlan().halfWingMains.size(),
+              "reconfiguring risers does not rewrite the line plan");
+    }
+
     // -- brake station influence ------------------------------------------
     {
         const std::vector<double> stations = BrakeStationSpans(graph);

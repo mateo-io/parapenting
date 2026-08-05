@@ -39,17 +39,15 @@ PilotPose Lerp(const PilotPose& a, const PilotPose& b, double t)
 void PopulateHardwareAnchors(GliderRigSnapshot& snapshot,
     const GliderRigSnapshotInput& input)
 {
-    constexpr std::array<double, GliderRigRiserCount> ForeAftCm{
-        6.0, 1.0, -5.0, -11.0};
     const double halfSeparation = std::max(0.0, input.carabinerHalfSeparationCm);
     const double riserLength = std::max(0.0, input.riserLengthCm);
     for (int side = 0; side < GliderRigSideCount; ++side)
     {
         const double lateral = side == 0 ? -halfSeparation : halfSeparation;
         snapshot.carabinerRigCm[side] = {-2.0, lateral, 34.0};
-        for (int riser = 0; riser < GliderRigRiserCount; ++riser)
+        for (int riser = 0; riser < snapshot.riserCount; ++riser)
         {
-            const double foreAft = ForeAftCm[riser];
+            const double foreAft = input.riserForeAftCm[riser];
             const double vertical = std::sqrt(std::max(0.0,
                 riserLength * riserLength - foreAft * foreAft));
             snapshot.riserTopRigCm[side][riser] = {
@@ -95,8 +93,10 @@ GliderRigSnapshot BuildGliderRigSnapshot(const GliderRigSnapshotInput& input,
     // to exist before the pose that reaches for them. The pulley is the
     // rearmost riser rather than a named one, which is what lets a two-liner
     // route its brakes through the B riser with no change here.
+    snapshot.riserCount =
+        std::clamp(input.riserCount, 1, GliderRigRiserCount);
     PopulateHardwareAnchors(snapshot, input);
-    constexpr int RearRiser = GliderRigRearRiserIndex;
+    const int RearRiser = RearRiserIndex(snapshot.riserCount);
     snapshot.pilot = EvaluatePilotPose({input.harnessRollRad,
         input.harnessPitchRad, snapshot.weightShift, snapshot.brakeTravel[0],
         snapshot.brakeTravel[1], snapshot.brakeForceN[0],
@@ -123,6 +123,10 @@ GliderRigSnapshot InterpolateGliderRigSnapshot(
         current.simulationTimeSeconds, t);
     out.pilot = Lerp(previous.pilot, current.pilot, t);
     out.weightShift = Lerp(previous.weightShift, current.weightShift, t);
+    // Riser count is a property of the wing, not a continuous measurement.
+    // Take the current boundary's, so a wing swap cannot blend two riser sets
+    // into a half-existing third one.
+    out.riserCount = current.riserCount;
     out.torsoSurge = Lerp(previous.torsoSurge, current.torsoSurge, t);
     out.telemetry = current.telemetry;
     // Only render-consumed continuous measurements are blended. Discrete
@@ -179,7 +183,7 @@ GliderRigSnapshot InterpolateGliderRigSnapshot(
             current.brakeTravelVelocityPerS[side], t);
         out.carabinerRigCm[side] = Lerp(previous.carabinerRigCm[side],
             current.carabinerRigCm[side], t);
-        for (int riser = 0; riser < GliderRigRiserCount; ++riser)
+        for (int riser = 0; riser < out.riserCount; ++riser)
             out.riserTopRigCm[side][riser] = Lerp(
                 previous.riserTopRigCm[side][riser],
                 current.riserTopRigCm[side][riser], t);

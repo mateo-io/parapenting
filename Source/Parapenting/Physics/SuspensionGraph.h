@@ -39,6 +39,10 @@ enum class LineRow
 constexpr int LineRowCount = 5;
 const char* LineRowName(LineRow row);
 
+// Widest riser set the fixed-size spec arrays hold: a three-liner with a split
+// A. A two-liner uses the first two entries and leaves the rest unread.
+constexpr int LinePlanMaxRisers = 4;
+
 enum class SuspensionNodeKind
 {
     // Fixed to the payload. The anchor the whole network reacts against until
@@ -110,12 +114,25 @@ struct LinePlanSpec
 {
     // Published: central canopy-to-riser line length.
     double canopyToRiserM = 7.3;
-    // Riser lengths at trim and on full bar, indexed A, A', B, C. The forward
-    // risers shorten by 120/120/80/0 mm, which is the published bar travel.
-    double trimRiserLengthM[4]{0.50, 0.50, 0.50, 0.50};
-    double acceleratedRiserLengthM[4]{0.38, 0.38, 0.42, 0.50};
+    // How many risers this wing hangs on, and which row each one carries.
+    //
+    // Four is a three-liner with a split A: A, A', B, C. A two-liner like an
+    // Enzo has two, A and B, and its rear riser is therefore the B - which is
+    // what the brake pulley hangs off and what a C-stall equivalent pulls on.
+    // Everything downstream reads these rather than assuming four, so a wing
+    // with a different riser set is a line-plan change and not a code change.
+    //
+    // The arrays stay at the maximum width so the spec remains a plain
+    // aggregate with no allocation; entries past riserCount are unused.
+    int riserCount = 4;
+    LineRow riserRow[LinePlanMaxRisers]{
+        LineRow::A, LineRow::ABaby, LineRow::B, LineRow::C};
+    // Riser lengths at trim and on full bar. The forward risers shorten by
+    // 120/120/80/0 mm, which is the published bar travel.
+    double trimRiserLengthM[LinePlanMaxRisers]{0.50, 0.50, 0.50, 0.50};
+    double acceleratedRiserLengthM[LinePlanMaxRisers]{0.38, 0.38, 0.42, 0.50};
     // Fore-aft separation of the riser maillons on the plate, +X forward.
-    double riserForeAftM[4]{0.035, 0.035, 0.0, -0.035};
+    double riserForeAftM[LinePlanMaxRisers]{0.035, 0.035, 0.0, -0.035};
     // Level 3: the harness itself, which is where carabiner separation and
     // everything weight shift does now come from. There is no separate travel
     // or tilt stand-in any more - the pilot's CG moves and the harness rolls.
@@ -173,6 +190,20 @@ struct LinePlanSpec
 // EPIC 2 ML: three A mains, one baby-A, four B, three C per wing, matching the
 // published line count, each cascading into the upper gallery.
 const LinePlanSpec& Epic2MlLinePlan();
+
+// Reconfigure a plan's RISER SET as a two-liner: A and B only, with the B as
+// the rear riser the brake pulley hangs off and rear-riser steering acts on.
+//
+// This changes the risers, not the line plan. Which rows exist above them and
+// how they cascade is wing-specific data - a real two-liner has no C row at
+// all, its rear lines cascade into the B - and that is a digitisation job for
+// a named wing, not something to invent here. So this makes the riser system
+// support a two-liner; it does not make this wing into an Enzo.
+//
+// The riser lengths and bar travel below are placeholders in the same spirit:
+// structurally right, not measured off a real Enzo, and they should be
+// replaced from published data before any two-liner claims to fly correctly.
+void MakeTwoLinerRiserSet(LinePlanSpec& spec);
 
 // Reads the scalar part of the plan from Data/Wings/*-lineplan.json. The main
 // and upper topology stays in code: it is structure, not measurement, and a

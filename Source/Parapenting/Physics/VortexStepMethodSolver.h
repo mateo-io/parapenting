@@ -202,7 +202,38 @@ struct InstalledDragSpec
     double lineDragCoefficient = 1.05;
     // Manufactured line length is not all normal to the flow: cascades
     // overlap, upper galleries are inclined, lower lines shield one another.
+    //
+    // THOSE THREE EFFECTS ARE NOT COMPARABLE, and this number spent eleven
+    // levels implying they were. Summed off the built suspension graph -
+    // `L d sin(theta)` over every cable, which is geometry the solver has had
+    // since Level 2 - INCLINATION IS WORTH 0.993. The lines hang canopy to
+    // pilot and fan out spanwise, both perpendicular to a horizontal wind, and
+    // only the fore-and-aft spread between the A and C rows tilts any of them.
+    // So this fraction is not a blend: it is a self-shielding allowance with a
+    // rounding error of geometry on top. `PHYSICS_LEARNINGS` §62.
+    //
+    // Kept as the legacy path, used when `lineProjectedAreaM2` is zero. Prefer
+    // the measured area below, which leaves exactly one stated number.
     double lineProjectedFraction = 0.35;
+    // The projected line area measured off the graph, m2. Zero means "not
+    // measured, use the three numbers above". A solver that has built its own
+    // suspension network fills this in, because at that point the length, the
+    // diameter and the inclination are all consequences of the wing rather
+    // than statements about it.
+    double lineProjectedAreaM2 = 0.0;
+    // How much of that measured area the cascade shields from itself. THIS IS
+    // THE ONE NUMBER IN LINE DRAG THAT IS STILL STATED, which is the whole
+    // point of measuring the rest: it is a single flow-physics question with a
+    // literature behind it instead of a lumped fudge carrying two negligible
+    // effects and one unexamined one.
+    //
+    // 0.394 is what the old lumped 0.35 amounts to once the geometry is
+    // measured - 254.0 x 0.00105 x 0.35 divided by the graph's own projected
+    // area - and it is carried forward DELIBERATELY UNCHANGED so that this
+    // refactor alters no flight behaviour. It is not evidence. A factor of
+    // two and a half from shielding alone is aggressive against published
+    // practice on line drag, and justifying or replacing it is item 12's.
+    double lineShieldingFactor = 0.394;
     // Seated pilot plus harness, frontal area.
     double harnessAreaM2 = 0.32;
     double harnessDragCoefficient = 1.05;

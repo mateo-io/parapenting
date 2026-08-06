@@ -244,6 +244,15 @@ survive the drag becoming a consequence.
     and it is now a single flow-physics question** rather than a lumped number:
     how much does a line cascade shield itself? Bounded and printed by
     `suspension_tests`.
+  - **Wired in.** The solver measures the projected line area off its own graph
+    at construction; length, diameter and inclination are consequences now, not
+    statements. `lineShieldingFactor` is the only stated number left in line
+    drag, carried over at 0.394 so that nothing about the flight changed —
+    every headline number identical at printed precision, with a 0.14% residual
+    in the area recorded rather than tuned away. **Justifying or replacing that
+    one number is what is left of this part of item 12**, and it is now a
+    question that can be answered from literature instead of from the glide it
+    has to produce.
   - **Lead, not a result, and it must not be fitted:** §56 needed 0.199 m² of
     Cd·A at the harness end to land glide, speed and sink together. A defensible
     shielding allowance of 0.9 would restore (0.993−0.35)/0.993 × 0.237 × 1.05 ≈

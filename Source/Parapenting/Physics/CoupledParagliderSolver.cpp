@@ -85,6 +85,39 @@ CoupledParagliderSolver::CoupledParagliderSolver(
     for (const VsmSection& section : Aerodynamics.Sections())
         SectionLineGapM.push_back(LineFoldGapM(Lines, section.spanFraction));
 
+    // The line drag AREA, measured off the same graph rather than stated.
+    //
+    // `InstalledDragSpec` used to carry three numbers for this - a
+    // manufactured length, a mean diameter and a "projected fraction" whose
+    // comment attributed it to overlap, inclination and shielding together.
+    // Summed here, `L d sin(theta)` over every cable against the flow, the
+    // INCLINATION part of that is 0.993: the lines hang canopy-to-pilot and fan
+    // out spanwise, both perpendicular to a horizontal wind, so only the
+    // fore-and-aft spread between the A and C rows tilts any of them at all.
+    // The three numbers were one number wearing a coat. `PHYSICS_LEARNINGS`
+    // §62.
+    //
+    // What is left stated is `lineShieldingFactor`, alone and labelled, which
+    // is the point: a single flow-physics question with a literature behind it
+    // instead of a lump nobody could check. Its value is carried over from the
+    // old lumped number so that measuring the geometry changes no flight
+    // behaviour - this is a refactor of the JUSTIFICATION, not of the physics.
+    {
+        const Vec3 flow{1.0, 0.0, 0.0};
+        double projected = 0.0;
+        for (const CableElement& cable : Lines.elements)
+        {
+            if (cable.nodeA < 0 || cable.nodeB < 0) continue;
+            const Vec3 span = Lines.nodes[cable.nodeB].designM
+                - Lines.nodes[cable.nodeA].designM;
+            const double length = Length(span);
+            if (length < 1.0e-9) continue;
+            projected += length * cable.diameterM
+                * Length(Cross(span / length, flow));
+        }
+        InstalledDrag.lineProjectedAreaM2 = projected;
+    }
+
     // The chord the brake bends, measured where the brake fan lands rather
     // than averaged over a span it does not reach. On this wing the fan takes
     // the trailing edge between 22% and 86% of the half span, where the chord

@@ -80,8 +80,12 @@ InstalledDragResult EvaluateInstalledDrag(
     if (speed < 1.0e-6) return result;
     const double dynamicPressure = 0.5 * airDensityKgM3 * speed * speed;
 
-    const double lineArea = spec.lineTotalLengthM * spec.lineMeanDiameterM
-        * spec.lineProjectedFraction;
+    // Measured area times the one stated allowance, when the caller has built
+    // a graph to measure; the three-number legacy path when it has not.
+    const double lineArea = spec.lineProjectedAreaM2 > 0.0
+        ? spec.lineProjectedAreaM2 * spec.lineShieldingFactor
+        : spec.lineTotalLengthM * spec.lineMeanDiameterM
+            * spec.lineProjectedFraction;
     result.lineDragN =
         dynamicPressure * lineArea * spec.lineDragCoefficient;
     // NOTE THE SHAPE OF THIS. The extra area is added in a SEPARATE statement,

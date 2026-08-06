@@ -2607,6 +2607,23 @@ way down the lines rather than at the canopy. Same order, same end of the
 aircraft, arrived at from geometry rather than from the glide it needs to
 produce.
 
+**The geometry is now wired in, and one number is left stated.** The solver
+computes the projected line area from its own graph at construction, so the
+length, the diameter and the inclination are consequences of the wing rather
+than statements about it. `lineShieldingFactor` is what remains — alone,
+labelled, and carried over from the old lumped value at **0.394** so that
+measuring the geometry changes no flight behaviour. This is a refactor of the
+*justification*, not of the physics, and the suite confirms it: every headline
+number identical at printed precision.
+
+*The one thing that is not exact:* 0.394 reproduces the old drag area to **0.14%**,
+not to the bit. The factor is stated to three digits rather than tuned to
+however many it would take to preserve the product exactly, because a
+five-decimal coefficient chosen to make a diff vanish is the same species of
+number this section exists to remove. 0.14% is below the printed precision of
+every gate, and it is written down here rather than discovered later as an
+unexplained drift.
+
 **Stated as a lead and not a result**, because it connects a geometric
 measurement to a fitted requirement and those are different kinds of number: it
 would be exactly the sort of coincidence this axis has produced and retracted

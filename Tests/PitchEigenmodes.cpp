@@ -685,11 +685,13 @@ using DamperReference = CoupledParagliderSolver::LinkDampingReference;
 
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                  double ratio, int maximumSeconds,
-                 DamperReference reference = DamperReference::World)
+                 DamperReference reference = DamperReference::World,
+                 double dragOffset = 0.0)
 {
     OwnTrim out{CoupledState{}, CoupledParagliderSolver(canopy, linePlan)};
     out.solver.SetSwingDampingRatio(ratio);
     out.solver.SetLinkDampingReference(reference);
+    out.solver.SetSectionDragOffset(dragOffset);
 
     // The same criterion as `pitch_axis_trace`: ten seconds whose incidence
     // spread is under 0.01 degrees. A fixed settle would be a guess, and the
@@ -3887,6 +3889,203 @@ void BasinCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "missing.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Pointing item 12 at item 11: is the missing drag the missing stabiliser?
+//
+// Everything above searched the LINK. Section 54 finished that search in the
+// only way left - the basin is enormous and grows as the aircraft destabilises,
+// so no property of the disturbance explains the boundary either - and every
+// pointer left over says WING: the largest sensitivity in the matrix is
+// `d(surge)/d(surge)`, which is speed stability, and section 54's basin edge is
+// nose-down at the low-CL loop gain rather than at a stall.
+//
+// The wing has a known, named, quantified defect, and it has been sitting in a
+// different item for four levels. Item 12: the solved section runs 0.0157 at
+// trim against a published 0.018-0.025, glide is 10.96 against 9.5, and the
+// missing term is the shear layer off the cell mouth, left out twice because
+// its size is a dial.
+//
+// A phugoid's damping is classically `zeta = CD / (CL sqrt2)`, which is one
+// over root-two times the glide ratio. A wing that glides a sixth too far has a
+// phugoid damped a sixth too little. If `swingDampingRatio` is standing in for
+// anything a wing term could supply, this is the first place to look, and it
+// has never been looked at because the two disagreements live in different
+// items and nobody put them in the same run.
+//
+// THE PREDICTION, WITH ITS SIZE, because a direction alone would be too easy to
+// confirm. Restoring the published glide is a 15% increase in CD/CL, so:
+//
+//   * classical zeta should rise about 15%, 0.065 to 0.074;
+//   * the measured phugoid sigma at ratio 0.35 should rise about 15% in
+//     magnitude, -0.0201 to about -0.023;
+//   * and 0.024 of sigma is worth 0.05 of ratio between 0.35 and 0.30, so
+//     0.003 of sigma is worth about 0.006 of RATIO.
+//
+// That last number is the point. If the arithmetic holds, drag is worth about
+// one hundredth of the coefficient and CANNOT be what 0.35 is standing in for -
+// which would eliminate the largest known modelling error as the mechanism and
+// say so quantitatively rather than by argument. If instead the boundary moves
+// a tenth or more, the two items are one item and item 12 is on item 11's
+// critical path.
+//
+// The honest confound, stated before the run: adding drag does not only add
+// damping. It moves the trim - speed, incidence, and the CL the loop gain is
+// evaluated at - so this is not the same wing with a bigger damping term. All
+// four are printed for that reason, and the loop gain going the other way would
+// be a finding rather than an error.
+//
+// The offset is calibrated by bisection against the glide rather than stated,
+// so the number tested is "whatever drag lands the published figure" and not a
+// coefficient anybody chose.
+//
+// WHAT IT CAME BACK WITH (PHYSICS_LEARNINGS section 55). The magnitude estimate
+// held and the SIGN did not, which is the second time on this axis that a
+// prediction's arithmetic survived its direction:
+//
+//   * sigma at ratio 0.35 FALLS from -0.0201 to -0.0159 - 21% less damped where
+//     15% more was predicted - and 0.30 goes from "does not settle in an hour"
+//     to departing during its own settle. Restoring the missing drag
+//     DESTABILISES this wing, by about 0.02 of coefficient, and drag is
+//     eliminated as item 11's mechanism twice: an order too small, and backwards.
+//   * the forecast that leaves is worth more than the null result: closing item
+//     12 should be expected to COST pitch stability and to need more artificial
+//     damping, not less.
+//   * the lead: `zeta = CD/(CL sqrt2)` assumes drag at the centre of gravity,
+//     and here it acts at the canopy 6.6 m above the pilot. Put the same extra
+//     drag on the HARNESS - `InstalledDragSpec.harnessDragCoefficient` already
+//     models it - and see whether sigma reverses. If it does, the destabilising
+//     quantity is the moment arm rather than the drag.
+//   * and one for item 12 rather than this one: landing the glide with a flat
+//     offset takes the trim speed out with it, 9.93 m/s against a published
+//     10.83, while sink stays low at 1.040 against 1.140. A uniform Cd offset
+//     is the wrong SHAPE for the missing term.
+
+struct Trimmed
+{
+    double glide = 0.0;
+    double speedMps = 0.0;
+    double sinkMps = 0.0;
+    double incidenceDeg = 0.0;
+    bool settled = false;
+    bool departed = false;
+};
+
+Trimmed TrimWith(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                 double ratio, double dragOffset, int maximumSeconds)
+{
+    const OwnTrim trim = SettleAt(canopy, linePlan, ratio, maximumSeconds,
+                                  DamperReference::World, dragOffset);
+    Trimmed out;
+    out.settled = trim.settled;
+    out.departed = trim.departed;
+    out.incidenceDeg = trim.incidenceRad * 180.0 / Pi;
+    const Vec3 v = trim.state.velocityWorldMps;
+    const double horizontal = std::sqrt(v.x * v.x + v.y * v.y);
+    out.speedMps = std::sqrt(horizontal * horizontal + v.z * v.z);
+    out.sinkMps = -v.z;
+    out.glide = out.sinkMps > 1.0e-6 ? horizontal / out.sinkMps : 0.0;
+    return out;
+}
+
+void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+               double transitionTimeS, int maximumSeconds)
+{
+    constexpr double PublishedGlide = 9.5;
+    std::printf("DRAG: item 12 pointed at item 11. Restore the published glide "
+                "with a section drag\noffset, then ask whether the ratio "
+                "boundary moves. Predicted: sigma at 0.35 from\n-0.0201 to "
+                "about -0.023, worth about 0.006 of RATIO - too small to be "
+                "what 0.35\nstands in for. A tenth or more makes the two items "
+                "one item.\n\n");
+
+    // Bisect the offset against the glide. The bracket is generous at the top
+    // because the relationship is not linear - drag changes the trim, which
+    // changes the drag.
+    double low = 0.0, high = 0.020, offset = 0.0;
+    Trimmed atOffset;
+    for (int step = 0; step < 9; ++step)
+    {
+        offset = 0.5 * (low + high);
+        atOffset = TrimWith(canopy, linePlan, 0.35, offset, maximumSeconds);
+        if (!atOffset.settled && !atOffset.departed)
+        {
+            std::printf("  offset %.5f did not settle in %d s - the "
+                        "calibration cannot continue.\n\n", offset,
+                        maximumSeconds);
+            return;
+        }
+        if (atOffset.departed || atOffset.glide < PublishedGlide) high = offset;
+        else low = offset;
+    }
+    const Trimmed clean = TrimWith(canopy, linePlan, 0.35, 0.0,
+                                   maximumSeconds);
+    std::printf("  calibrated offset %.5f on the section drag coefficient, "
+                "against a solved 0.0157\n  at trim.\n\n", offset);
+    std::printf("%14s %10s %10s %10s %12s\n", "wing", "glide", "speed",
+                "sink", "incidence");
+    std::printf("%14s %10.2f %9.2fm %9.3fm %11.2fd\n", "as it flies",
+                clean.glide, clean.speedMps, clean.sinkMps,
+                clean.incidenceDeg);
+    std::printf("%14s %10.2f %9.2fm %9.3fm %11.2fd\n", "drag restored",
+                atOffset.glide, atOffset.speedMps, atOffset.sinkMps,
+                atOffset.incidenceDeg);
+    std::printf("%14s %10.2f %9.2fm %9.3fm %11s\n\n", "published", 9.50,
+                10.83, 1.140, "-");
+
+    // The boundary, both wings, at each ratio's own trim. This is the
+    // `OwnTrimSweep` question asked twice.
+    // BOTH outcomes, not just the drag wing's. The whole claim this table can
+    // make is a difference between two wings, and "departed while settling" and
+    // "still moving when the budget ran out" are different facts - section 54
+    // paid 3600 s of settle to establish exactly that distinction at 0.30. A
+    // table that prints one wing's outcome beside two wings' sigmas hides the
+    // comparison it exists to make, and the first version of this did.
+    std::printf("%8s %11s %11s %13s %18s %18s\n", "ratio", "sigma clean",
+                "sigma drag", "period drag", "outcome clean", "outcome drag");
+    for (const double ratio : {0.35, 0.30, 0.25, 0.20})
+    {
+        double sigma[2] = {0.0, 0.0}, period[2] = {0.0, 0.0};
+        bool have[2] = {false, false};
+        const char* outcome[2] = {"", ""};
+        for (int which = 0; which < 2; ++which)
+        {
+            const double useOffset = which == 0 ? 0.0 : offset;
+            const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
+                                          maximumSeconds,
+                                          DamperReference::World, useOffset);
+            outcome[which] = trim.departed
+                ? "DEPARTED settling"
+                : (trim.settled ? "settled" : "not settled");
+            if (trim.departed) continue;
+            const Spectrum spectrum = Analyse(trim.solver, trim.state,
+                                              transitionTimeS, 1.0, false);
+            Mode phugoid;
+            if (!PhugoidOf(spectrum, phugoid)) continue;
+            // A state that never settled has no trim to linearise about, and
+            // section 54 is where that was learned the expensive way.
+            if (!trim.settled) continue;
+            sigma[which] = phugoid.growthPerS;
+            period[which] = phugoid.periodS;
+            have[which] = true;
+        }
+        std::printf("%8.2f", ratio);
+        for (int which = 0; which < 2; ++which)
+        {
+            if (have[which]) std::printf(" %+11.4f", sigma[which]);
+            else std::printf(" %11s", "no trim");
+        }
+        if (have[1]) std::printf(" %12.2fs", period[1]);
+        else std::printf(" %13s", "-");
+        std::printf(" %18s %18s\n", outcome[0], outcome[1]);
+        (void)period[0];
+    }
+    std::printf("\n  A ratio that gains a trim when the drag is restored is "
+                "the boundary moving. The\n  size is what decides the "
+                "question: item 11 needs 0.29 of coefficient explained,\n  and "
+                "the classical estimate above says drag is worth about "
+                "0.006.\n\n");
+}
+
 // What the two tables came back with, written where the numbers are rather
 // than only in PHYSICS_LEARNINGS.
 void Verdict()
@@ -3971,6 +4170,7 @@ int main(int argc, char** argv)
     bool project = false;
     bool damper = false;
     bool amplitude = false;
+    bool drag = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -3982,6 +4182,7 @@ int main(int argc, char** argv)
         if (argument == "--project") project = true;
         if (argument == "--damper") damper = true;
         if (argument == "--amplitude") amplitude = true;
+        if (argument == "--drag") drag = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -4128,6 +4329,13 @@ int main(int argc, char** argv)
         // growing at 0.008/s, and longer than the 348 s in which 0.25 left
         // during its own settle.
         BasinCheck(canopy, linePlan, 0.25, maximum, 420.0);
+    }
+
+    if (drag)
+    {
+        // The same 3600 s budget the amplitude pass needed, and for the same
+        // reason: "not settled" has to mean something about the aircraft.
+        DragCheck(canopy, linePlan, 0.25, settleSeconds < 420 ? 180 : 3600);
     }
 
     if (project)

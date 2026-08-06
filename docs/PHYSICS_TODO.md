@@ -207,8 +207,22 @@ survive the drag becoming a consequence.
   the arc removed the solver gives 1.085, which IS above the planar limit and
   is the discretisation error the elliptical-wing validation already reports at
   3.6%. Worth 8% of the induced drag, not the 100% of profile drag needed.
+- **Glide alone is not a sufficient criterion, and §55 measured why.** Asked to
+  land the published glide, `pitch_eigenmodes --drag` bisects a flat section
+  offset to Δcd 0.01035 and gets glide 9.49 against 9.50 — while the trim speed
+  leaves, 9.93 m/s against a published 10.83 where the clean wing's 10.60 was
+  nearly right, and sink stays low at 1.040 against 1.140. A uniform offset
+  therefore satisfies the "done when" below while making two other published
+  numbers worse, so **the missing term has to land glide, speed and sink at
+  once and a flat Δcd provably cannot.** That is a constraint on its shape,
+  obtained without deciding what it is.
+- **It is not free elsewhere, either.** The same pass found that restoring the
+  drag costs pitch stability rather than buying it (§55, item 11): σ at ratio
+  0.35 falls 21% in magnitude and 0.30 goes from unsettled to departing.
+  Whoever closes this item should expect the pitch axis to get worse, and
+  should not read that as a regression in their own change.
 - Done when: glide lands inside the published figure without a coefficient
-  chosen to put it there.
+  chosen to put it there, and the trim speed and sink stay landed with it.
 - Bounded in `calibration_tests` in the direction the model is wrong.
 
 **13. MOSTLY CLOSED. The section was stalling at its nose.**
@@ -873,7 +887,7 @@ sense item 11 asks for, and the two are worth keeping apart.
 state by state, differences against an unperturbed run, and takes the
 eigenvalues of the transition matrix — every longitudinal mode at once, no
 excitation, no window, no filter. Its sub-checks are `--sweep`, `--phugoid`,
-`--shape`, `--project` and `--amplitude`, and each is a question the time
+`--shape`, `--project`, `--amplitude` and `--drag`, and each is a question the time
 domain could not answer. `--amplitude` is the exception that proves the shape
 of the level: it is the one sub-check that is *not* a linearisation about trim,
 which is why it could retire a hypothesis none of the others could reach.
@@ -946,6 +960,24 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
   does not depart, with its drift larger at 3600 s than at 900 (0.681 against
   0.148 m/s per second), which retires a guess made in the same pass: §39's
   flown boundary is not a settling-budget artefact.
+
+- **The missing drag destabilises the wing (§55).** The first time items 11 and
+  12 were run together. A phugoid is classically damped by `CD/(CL√2)`, so this
+  wing's sixth-too-far glide should mean a sixth-too-little damping and
+  `swingDampingRatio` could have been paying for it. Restored by bisection
+  against the published glide — Δcd 0.01035, glide 10.97 → 9.49 — and **σ at
+  ratio 0.35 falls from −0.0201 to −0.0159 where it was predicted to rise to
+  −0.023**, while 0.30 goes from "does not settle in an hour" to departing
+  during its own settle. The size estimate was right and the sign was not: drag
+  is worth about 0.02 of coefficient against the 0.29 needed, and it costs
+  rather than pays. **The forecast this leaves is worth more than the null
+  result: closing item 12 should be expected to LOSE pitch stability and to
+  need more artificial damping, not less.** The lead it opens is the next test
+  on this item — the classical relation assumes drag at the centre of gravity,
+  and here it acts at the canopy 6.6 m above the pilot, so put the same extra
+  drag on the harness (`InstalledDragSpec.harnessDragCoefficient`) instead and
+  see whether σ reverses. If it does, the destabilising quantity is the moment
+  arm rather than the drag.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

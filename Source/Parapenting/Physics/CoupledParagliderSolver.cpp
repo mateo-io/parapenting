@@ -629,6 +629,11 @@ void CoupledParagliderSolver::Step(
             // Warm-started by the separation state, so a handful of
             // iterations is enough once the first solve has landed.
             settings.maxIterations = state.initialised ? 40 : 600;
+            // Zero unless a test set it, and it is carried into the frozen and
+            // still probes below with the rest of the settings - a damping
+            // derivative measured on a wing with different drag from the one
+            // flying would be a difference between two wings.
+            settings.sectionDragOffset = SectionDragOffsetValue;
             if (Profiling) ++ProfileValue.aeroTicks;
             const VsmSolution solved = [&]
             {

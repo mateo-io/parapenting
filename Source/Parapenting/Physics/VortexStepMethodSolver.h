@@ -172,6 +172,19 @@ struct VsmSettings
     // Under-relaxation. The circulation solve is nonlinear through the polar,
     // and taking the full step oscillates near stall.
     double relaxation = 0.60;
+    // Added to every section's drag coefficient. THIS IS AN INSTRUMENT, NOT
+    // PHYSICS, and it defaults to zero so that nothing flies on it.
+    //
+    // `PHYSICS_TODO` item 12 says the solved section runs 0.0157 at trim where
+    // paraglider sections are quoted at 0.018-0.025, and names the missing term
+    // - the shear layer off the cell mouth - which has been tried twice and
+    // left out both times because its size is a dial. This offset is that
+    // deficit made adjustable ON PURPOSE, so that a test can ask what the wing
+    // would do if the drag were right without anybody having to decide what the
+    // missing term is. A coefficient chosen to land the glide is exactly what
+    // item 12 refuses to ship; the difference is that this one is set by a test
+    // at the moment of asking and is zero everywhere else.
+    double sectionDragOffset = 0.0;
 };
 
 // Everything hanging below the wing. On a paraglider this is not a correction

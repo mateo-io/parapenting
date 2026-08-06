@@ -488,6 +488,22 @@ public:
     LinkDampingReference DampingReference() const
         { return LinkDampingReferenceValue; }
 
+    // THE DRAG THE SECTION IS MISSING, made adjustable so that item 12 can be
+    // pointed at item 11. Added to every section's drag coefficient; zero by
+    // default, so nothing in flight is touched and the default is bit-identical
+    // to having no hook.
+    //
+    // Item 12 is the largest disagreement in the model - the solved section
+    // runs 0.0157 at trim against a published 0.018-0.025, and glide 10.96
+    // against 9.5 - and item 11 needs a stabilising mechanism a wing term could
+    // supply. A phugoid's damping is classically CD/CL over root two, so a wing
+    // whose drag is a sixth low has a phugoid whose damping is a sixth low, and
+    // `swingDampingRatio` may be paying for it. That is a testable sentence
+    // only if the drag can be moved, which is what this is for.
+    // `pitch_eigenmodes --drag` is its only caller.
+    void SetSectionDragOffset(double offset) { SectionDragOffsetValue = offset; }
+    double SectionDragOffset() const { return SectionDragOffsetValue; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
@@ -575,6 +591,7 @@ private:
     };
     ConstructionProbe ConstructionProbeSettings;
     double SwingDampingRatioValue = 0.35;
+    double SectionDragOffsetValue = 0.0;
     LinkDampingReference LinkDampingReferenceValue =
         LinkDampingReference::World;
     bool Profiling = false;

@@ -517,6 +517,19 @@ The v1–v4 goal is not complete until these are addressed:
    path that already owns full bar and 40% brake. The brake travel and turn
    rate held back for item 11 may share one cause with it, and a wing term is
    what a low-CL loop gain is made of.
+
+   **The specific next experiment is named and it is cheap.** §55 ran items 11
+   and 12 together for the first time and the missing drag turned out to
+   *destabilise* the wing: restored to the published glide, σ at ratio 0.35
+   falls from −0.0201 to −0.0159 and 0.30 goes from unsettled to departing. The
+   classical `ζ = CD/(CL√2)` assumes drag at the centre of gravity, and here it
+   acts at the canopy 6.6 m above the pilot. So put the same extra drag on the
+   **harness** instead — `InstalledDragSpec.harnessDragCoefficient` already
+   models it — and see whether σ reverses. If it does, the destabilising
+   quantity is the moment arm rather than the drag, which is a wing–link term
+   nothing on this axis has measured and the first new handle in three levels.
+   Carry §55's forecast with it: closing item 12 should be expected to cost
+   pitch stability.
 3. Run `docs/PILOT_REVIEW_PROTOCOL.md` with experienced pilots. It is the half
    of Level 9's exit gate that cannot be closed from a keyboard, and the surge
    timing question is the only external reference available for item 11.

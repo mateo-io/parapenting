@@ -457,7 +457,8 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
                 : Polars.SeparationEquilibrium(alpha, brake, 0.0);
             solution.sections[i].angleOfAttackRad = alpha;
             solution.sections[i].liftCoefficient = polar.liftCoefficient;
-            solution.sections[i].dragCoefficient = polar.dragCoefficient;
+            solution.sections[i].dragCoefficient =
+                polar.dragCoefficient + settings.sectionDragOffset;
             solution.sections[i].momentCoefficient = polar.momentCoefficient;
             const Vec3 freeInPlane = -(freestream
                 - section.spanDirection

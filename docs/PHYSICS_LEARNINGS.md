@@ -2056,6 +2056,88 @@ same measurement returned a 20.8 s mode at the 900 s budget and a 15.3 s mode at
 3600 s, which is the corroboration: there is no trim there, so there is no
 spectrum there either.
 
+## 55. The missing drag destabilises the wing, and the classical phugoid relation has the sign backwards here
+
+§54 finished the search of the link: the basin is enormous and *grows* as the
+aircraft destabilises, so nothing about the disturbance explains the boundary
+either. Every pointer left over said **wing** — the largest sensitivity in the
+matrix is `d(surge)/d(surge)`, which is speed stability, and §54's basin edge is
+nose-down at the low-CL loop gain rather than at a stall.
+
+The wing has exactly one known, named, quantified defect, and it had been
+sitting in a different item for four levels. **Item 12:** the solved section
+runs 0.0157 at trim against a published 0.018–0.025, glide is 10.96 against 9.5.
+A phugoid's damping is classically `ζ = CD / (CL √2)` — one over root-two times
+the glide ratio — so a wing that glides a sixth too far has a phugoid damped a
+sixth too little, and `swingDampingRatio` could have been paying for it. Nobody
+had put the two items in the same run, because they were two items.
+
+**The prediction was stated with its size, which is what made it fail usefully.**
+Restoring the published glide is a 15% increase in CD/CL, so: ζ 0.065 → 0.074, σ
+at ratio 0.35 from −0.0201 to about −0.023, and since 0.024 of σ is worth 0.05
+of ratio, that is **about 0.006 of coefficient** against the 0.29 item 11 needs.
+The expected result was elimination by a factor of fifty.
+
+**The magnitude estimate held. The sign did not.**
+
+| ratio | σ clean | σ with drag restored | outcome clean | outcome with drag |
+|---|---|---|---|---|
+| 0.35 | −0.0201 | **−0.0159** | settled | settled |
+| 0.30 | no trim | no trim | not settled | **DEPARTED settling** |
+| 0.25 | no trim | no trim | departed | departed |
+
+Restoring the missing drag makes the phugoid **less** damped — σ falls 21% in
+magnitude where it was predicted to rise 15% — and ratio 0.30, which on the
+clean wing merely failed to settle inside an hour (§54), now departs during its
+own settle. The boundary moved, and it moved the **wrong way**, by about 0.02 of
+coefficient. Drag is eliminated as the mechanism twice over: it is an order too
+small, and it has the wrong sign.
+
+**The useful half is a forecast rather than a null result.** Item 12 is not on
+item 11's critical path in the direction anyone would have guessed — whoever
+closes the drag deficit should expect to **lose** pitch stability and to need
+*more* artificial swing damping, not less. That is now a written prediction
+against a future change, which is the most a null result can be worth.
+
+**Why the classical relation fails here, as a lead and not a measurement.**
+`ζ = CD/(CL√2)` is derived for drag acting at the centre of gravity of a rigid
+aircraft along its flight path. On this aircraft the section drag acts at the
+**canopy**, about 6.6 m above the pilot on a pendulum, and extra drag up there
+pitches the wing against the payload rather than simply opposing the speed
+excursion. If that is what is happening, the destabilising quantity is not drag
+but the **height at which it acts** — which is testable immediately and cheaply,
+because installed drag is already modelled separately at the harness
+(`InstalledDragSpec.harnessDragCoefficient`). Put the same total extra drag on
+the *pilot* instead of the canopy: if σ moves the other way, the mechanism is
+the moment arm, and that is a wing–link term nothing on this axis has measured.
+**This is the next test on item 11 and it is the first new handle in three
+levels.**
+
+**A second finding, which belongs to item 12 rather than item 11.** The offset
+was calibrated by bisection against the glide, not stated — and landing the
+glide **overshoots everything else**:
+
+| wing | glide | speed | sink | incidence |
+|---|---|---|---|---|
+| as it flies | 10.97 | 10.60 m/s | 0.962 m/s | 4.92° |
+| drag restored, Δcd 0.01035 | 9.49 | 9.93 m/s | 1.040 m/s | 6.36° |
+| published | 9.50 | 10.83 m/s | 1.140 m/s | — |
+
+Glide lands and the trim speed leaves — 9.93 against a published 10.83, where
+the clean wing's 10.60 was nearly right — while sink is *still* low at 1.040
+against 1.140. So a uniform section-drag offset is the wrong **shape** for the
+missing term, and item 12's "done when glide lands inside the published figure"
+is not a sufficient criterion: this offset satisfies it while making two other
+published numbers worse. The missing drag has to land glide, speed and sink at
+once, and a flat Δcd provably cannot.
+
+**Method note.** The claim that 0.30 got worse is entirely a difference between
+"did not settle" and "departed while settling". The first version of the table
+printed both wings' σ and only the drag wing's outcome, which hid exactly that
+comparison — the numbers were right and the table was not entitled to the
+conclusion drawn from them. §54 spent 3600 s of settle budget establishing that
+distinction; a table that drops it is a table that has un-learned it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

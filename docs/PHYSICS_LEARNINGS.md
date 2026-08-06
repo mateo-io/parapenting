@@ -2235,6 +2235,76 @@ coupling question in those terms. Run it on the harness wing. If the phase moves
 the way the sketch says, the mechanism is closed; if it does not, this is a
 measured effect with the wrong story attached to it.
 
+> **RETRACTED by §57.** It ran, and it was the wrong story: both phases move the
+> *same* way, by a few degrees, against a σ that moves ±60%, at two transition
+> times and with converged residuals. Everything else measured in this section
+> stands — which is why the paragraph above was labelled a sketch and kept
+> separate from the numbers. §57 has what the phase table shows instead, and it
+> is better than the sketch was.
+
+## 57. The mechanism sketch is retracted, and the mode shape says something better
+
+§56 measured a real effect and attached a story to it, and labelled the story a
+sketch: canopy and pilot drag pitch the aircraft opposite ways about the link,
+so the phugoid's incidence correction changes sign. The prediction that follows
+has a sign in it — relative to the clean wing, the two drag wings' link-swing
+phase against surge must move in **opposite directions**. §41 is why phase is
+the right question: what decides whether the link's motion removes energy from
+the phugoid or feeds it is *when* the lean happens, not how big it is.
+
+**It fails.** Both phases move the *same* way, and both barely move:
+
+| wing | period | σ | phase | link/speed | articulation | residual |
+|---|---|---|---|---|---|---|
+| as it flies | 16.60 s | −0.0201 | −107.8° | 0.4587 | 0.292 | 2e−14 |
+| drag at canopy | 13.66 s | −0.0159 | −111.6° | 0.5447 | 0.250 | 3e−14 |
+| drag at harness | 16.83 s | −0.0328 | −109.1° | 0.4609 | 0.290 | 2e−14 |
+
+Canopy −3.8°, harness −1.3°, same direction, against a σ that moves ±60%. At
+the second transition time it is −3.9° and −1.4°, so this is the aircraft and
+not the sampling, and the residuals say the eigenvector solves converged. **The
+sketch is retracted. The measurement it was attached to is untouched** — the
+boundary really does move a full ratio step — and this is the fifth retraction
+on this axis, the same shape as §40 retracting §34's damping formula.
+
+**What the table shows instead is worth more than the sketch was.** Look at the
+harness row against the clean row in every column *except* σ: link/speed 0.4609
+against 0.4587, articulation 0.290 against 0.292, period 16.83 against 16.60.
+**The harness wing damps 63% harder with a phugoid mode shape indistinguishable
+from the clean wing's.** The canopy wing, meanwhile, is the one that restructures
+the mode — link/speed up 19%, articulation down 14% — and it damps *less*.
+
+So the stabilisation does not run through the link's participation in the mode
+at all. Eleven levels have looked for a link mechanism, and the thing that
+finally moved the boundary changes the link's role in the mode by half a
+percent. **That is a strong constraint: whatever the harness drag is doing, it
+is doing it inside the mode rather than to it.**
+
+**And articulation tracks stability a fourth time.** §53 tabulated three
+independent measures of link–wing interaction falling as the aircraft
+destabilises with the ratio. Here the axis is different — drag location, not
+ratio — and the pattern holds: the destabilised wing (canopy, σ −0.0159) has
+articulation 0.250 and the stable one (harness, σ −0.0328) has 0.290. Four for
+four, on two different axes, and still no mechanism that uses it.
+
+**The next hypothesis, named and NOT asserted, because that is the mistake this
+section exists to correct.** `ζ = CD/(CL√2)` assumes drag at the centre of
+gravity — and on this aircraft the pilot essentially *is* the centre of gravity,
+105 kg of system against 5.1 kg of canopy. So "harness drag stabilises because
+it is the classical term applied where the classical term belongs" is the
+obvious next story. **It does not fit the numbers as it stands:** the classical
+relation predicts +15% of damping for this glide change and the harness wing
+delivers +63%, four times over. Something is amplifying it.
+
+That is testable rather than arguable, and the test turns two points into a
+function: `InstalledDragSpec.harnessBelowCanopyM` is the arm the harness drag
+acts on, 7.8 m. Hold the drag fixed and sweep the arm. If σ is monotone in the
+arm and heads toward the canopy wing's value as the arm goes to zero, then
+height is the whole story and the 63% is the arm doing work the classical
+relation has no term for. If σ is flat in the arm, the harness and canopy cases
+differ by something other than height — which would mean §56's headline is also
+mis-explained, though still measured.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

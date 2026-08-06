@@ -529,13 +529,22 @@ The v1–v4 goal is not complete until these are addressed:
    mechanism in three levels to move the boundary the right way, and not the
    whole answer.
 
-   The next step on it needs no new machinery: **run `--shape` on the harness
-   wing.** The sketch is that canopy and pilot drag pitch the aircraft opposite
-   ways about the link, so the phugoid's incidence correction changes sign;
-   `--shape` already measures the phase of link swing against surge, which is
-   the form §41 put the coupling question in. A phase that moves as the sketch
-   says closes the mechanism; one that does not means the effect is real and the
-   story attached to it is wrong.
+   **That mechanism sketch has since been tested and retracted (§57), and the
+   measurement has not.** Both drag wings' link-swing phase moves the same way
+   and by a few degrees against a σ that moves ±60%. What the phase table showed
+   instead is a better constraint than the sketch was: the harness wing damps
+   63% harder with a phugoid mode shape *indistinguishable* from the clean
+   wing's, while the canopy wing is the one that restructures the mode and damps
+   less. Whatever the harness drag does, it does it **inside** the mode rather
+   than to it — so eleven levels of hunting for a link mechanism were looking at
+   the wrong object.
+
+   **The next experiment turns two points into a function.**
+   `InstalledDragSpec.harnessBelowCanopyM` is the 7.8 m arm the harness drag
+   acts on: hold the drag fixed and sweep the arm. The classical relation
+   predicts +15% of damping for this glide change and the harness wing delivers
+   +63%, so something is amplifying it fourfold; a σ monotone in the arm would
+   say that something is the arm.
 
    **Read §56 before touching item 12**, which it may matter to more: the
    missing drag applied at the harness lands glide, trim speed *and* sink

@@ -4163,11 +4163,39 @@ void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
 // wing. If the link-swing phase against surge moves the way the sketch above
 // says, the mechanism is closed; if not, this is a real effect with the wrong
 // story attached to it.
+// The published glide, and the drag that lands it at one end of the link or the
+// other. Bisected rather than stated, so what gets tested is "whatever drag
+// lands the published figure" and never a coefficient anybody chose - and
+// shared, so that `--height` and `--phase` are provably talking about the same
+// two wings rather than two numbers that happen to look alike.
+std::pair<double, Trimmed> BisectToGlide(
+    const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+    bool atHarness, int maximumSeconds)
+{
+    constexpr double PublishedGlide = 9.5;
+    double low = 0.0;
+    double high = atHarness ? 1.20 : 0.020;
+    double value = 0.0;
+    Trimmed trimmed;
+    for (int step = 0; step < 9; ++step)
+    {
+        value = 0.5 * (low + high);
+        const AddedDrag added = atHarness
+            ? AddedDrag{0.0, value} : AddedDrag{value, 0.0};
+        trimmed = TrimWith(canopy, linePlan, 0.35, added, maximumSeconds);
+        if (trimmed.departed || !trimmed.settled
+            || trimmed.glide < PublishedGlide)
+            high = value;
+        else
+            low = value;
+    }
+    return {value, trimmed};
+}
+
 void HeightCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                  double transitionTimeS, int maximumSeconds,
                  double referenceAreaM2)
 {
-    constexpr double PublishedGlide = 9.5;
     std::printf("HEIGHT: the same drag at the two ends of the link. Section 55 "
                 "found drag at the\nCANOPY destabilises the wing; the suspect "
                 "is the 6.6 m arm rather than the drag.\nPredicted: harness "
@@ -4175,29 +4203,10 @@ void HeightCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "same\npublished glide, so they differ only in where the drag "
                 "acts.\n\n");
 
-    const auto bisect = [&](bool atHarness)
-    {
-        double low = 0.0;
-        double high = atHarness ? 1.20 : 0.020;
-        double value = 0.0;
-        Trimmed trimmed;
-        for (int step = 0; step < 9; ++step)
-        {
-            value = 0.5 * (low + high);
-            const AddedDrag added = atHarness
-                ? AddedDrag{0.0, value} : AddedDrag{value, 0.0};
-            trimmed = TrimWith(canopy, linePlan, 0.35, added, maximumSeconds);
-            if (trimmed.departed || !trimmed.settled
-                || trimmed.glide < PublishedGlide)
-                high = value;
-            else
-                low = value;
-        }
-        return std::pair<double, Trimmed>(value, trimmed);
-    };
-
-    const auto [sectionOffset, canopyTrim] = bisect(false);
-    const auto [harnessArea, harnessTrim] = bisect(true);
+    const auto [sectionOffset, canopyTrim] =
+        BisectToGlide(canopy, linePlan, false, maximumSeconds);
+    const auto [harnessArea, harnessTrim] =
+        BisectToGlide(canopy, linePlan, true, maximumSeconds);
     const Trimmed clean = TrimWith(canopy, linePlan, 0.35, AddedDrag{},
                                    maximumSeconds);
 
@@ -4297,6 +4306,136 @@ void HeightCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "put, and item 11 is out of\n  candidates.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Does the mechanism sketch survive contact with the mode shape?
+//
+// Section 56 measured a real effect and attached a STORY to it, and said so:
+// drag at the canopy and drag at the pilot pitch the aircraft opposite ways
+// about the link, so the incidence correction the phugoid's speed oscillation
+// receives has opposite sign, so the same drag damps from one end and drives
+// from the other. That is a sketch. It has never been measured, and a measured
+// effect with an unmeasured story attached is exactly what section 34's damping
+// formula was before section 40 retracted it.
+//
+// The instrument for it already exists and costs no new flying. `--shape` takes
+// the phugoid's eigenvector and reports the PHASE of link swing against surge -
+// which is the form section 41 put the coupling question in, and the quantity
+// its whole argument turned on. Section 41's own words: what decides whether
+// the link's motion removes energy from the phugoid or feeds it is WHEN the
+// lean happens relative to the speed oscillation, not how big it is.
+//
+// So run it on all three wings, at the ratio all three can settle at.
+//
+// THE PREDICTION, and it is sharper than section 56's because it has a sign in
+// it: relative to the clean wing, the canopy wing's phase and the harness
+// wing's phase should move in OPPOSITE directions. Both moving the same way, or
+// neither moving, means the phase is not what carries the effect and section
+// 56's sketch is wrong - which would leave the measurement standing and its
+// explanation retracted, the same shape of result as section 40.
+//
+// The controls come free with the instrument and both can fail: the residual
+// says whether the eigenvector solve converged at all, and the articulation
+// column is the one quantity in `Shape` that has no normalisation choice in it.
+//
+// WHAT IT CAME BACK WITH (PHYSICS_LEARNINGS section 57): the sketch is WRONG and
+// is retracted. Both phases move the same way and by a few degrees - canopy
+// -3.8, harness -1.3 - against a sigma that moves 60%, and at the second
+// transition time it is -3.9 and -1.4, so it is the aircraft rather than the
+// sampling. Section 56's measurement is untouched.
+//
+// The rest of the table is the finding. The harness wing damps 63% harder with
+// a mode shape INDISTINGUISHABLE from the clean wing's - link/speed 0.4609
+// against 0.4587, articulation 0.290 against 0.292 - while the canopy wing is
+// the one that restructures the mode, link/speed +19% and articulation -14%,
+// and damps less. Whatever the harness drag does, it does it INSIDE the mode
+// rather than to it, and eleven levels of looking for a link mechanism were
+// looking at the wrong object.
+//
+// Next, and it turns two points into a function: `harnessBelowCanopyM` is the
+// 7.8 m arm. Hold the drag and sweep the arm. The classical relation predicts
+// +15% for this glide change and the harness wing delivers +63%, so something
+// amplifies it fourfold; monotone in the arm would say that something is the
+// arm.
+void PhaseCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                double transitionTimeS, int maximumSeconds,
+                double sectionOffset, double harnessArea)
+{
+    std::printf("PHASE: section 56 measured an effect and attached a story to "
+                "it. The story says\nthe link-swing phase against surge moves "
+                "in OPPOSITE directions for drag at the\ncanopy and drag at "
+                "the pilot. Section 41 is why phase is the right question.\n\n");
+
+    // The two wings are handed IN, not re-bisected here. They do not depend on
+    // the transition time, and this check runs at two of them - bisecting per
+    // call would pay for eighteen multi-hundred-second settles to arrive at the
+    // same two numbers, and would leave open the question of whether it had.
+    std::printf("  the same two wings as `--height`, bisected once to the "
+                "published glide:\n  section Cd offset %.5f, harness Cd.A "
+                "%.3f m2.\n\n", sectionOffset, harnessArea);
+
+    struct Case { const char* name; AddedDrag added; };
+    const Case cases[3] = {
+        {"as it flies", AddedDrag{}},
+        {"drag at canopy", AddedDrag{sectionOffset, 0.0}},
+        {"drag at harness", AddedDrag{0.0, harnessArea}},
+    };
+
+    std::printf("%16s %9s %10s %11s %12s %13s %10s\n", "wing", "period",
+                "sigma", "phase deg", "link/speed", "articulation",
+                "residual");
+    double phase[3] = {0, 0, 0};
+    bool have[3] = {false, false, false};
+    for (int which = 0; which < 3; ++which)
+    {
+        const OwnTrim trim = SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                                      DamperReference::World,
+                                      cases[which].added);
+        if (trim.departed || !trim.settled)
+        {
+            std::printf("%16s %9s %10s %11s %12s %13s %10s\n",
+                        cases[which].name, "-", "-", "no trim", "-", "-", "-");
+            continue;
+        }
+        const Spectrum spectrum = Analyse(trim.solver, trim.state,
+                                          transitionTimeS, 1.0, false);
+        const Vec3 v = trim.state.velocityWorldMps;
+        const double trimSpeed = std::sqrt(v.x * v.x + v.z * v.z);
+        const Shape shape = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                    trimSpeed, 8.0, 40.0);
+        if (!shape.valid)
+        {
+            std::printf("%16s %9s %10s %11s %12s %13s %10s\n",
+                        cases[which].name, "-", "-", "no mode", "-", "-", "-");
+            continue;
+        }
+        std::printf("%16s %8.2fs %+10.4f %+11.1f %12.4f %13.3f %10.2e\n",
+                    cases[which].name, shape.periodS, shape.growthPerS,
+                    shape.phaseDeg, shape.linkPerSpeed, shape.articulation,
+                    shape.residual);
+        phase[which] = shape.phaseDeg;
+        have[which] = true;
+    }
+
+    if (have[0] && have[1] && have[2])
+    {
+        const double canopyMove = phase[1] - phase[0];
+        const double harnessMove = phase[2] - phase[0];
+        std::printf("\n  phase against the clean wing: canopy %+.1f deg, "
+                    "harness %+.1f deg.\n", canopyMove, harnessMove);
+        const bool opposite = canopyMove * harnessMove < 0.0;
+        std::printf("  They move %s, so the sketch in section 56 is %s.\n",
+                    opposite ? "in OPPOSITE directions" : "the SAME way",
+                    opposite ? "supported"
+                             : "NOT supported - the effect stands and the "
+                               "story does not");
+    }
+    std::printf("\n  The residual is the eigenvector solve's own answer for "
+                "whether it converged;\n  articulation is the one column with "
+                "no normalisation choice in it. Either\n  going wrong makes "
+                "the phase column meaningless rather than merely "
+                "wrong.\n\n");
+}
+
 // What the two tables came back with, written where the numbers are rather
 // than only in PHYSICS_LEARNINGS.
 void Verdict()
@@ -4383,6 +4522,7 @@ int main(int argc, char** argv)
     bool amplitude = false;
     bool drag = false;
     bool height = false;
+    bool phase = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -4396,6 +4536,7 @@ int main(int argc, char** argv)
         if (argument == "--amplitude") amplitude = true;
         if (argument == "--drag") drag = true;
         if (argument == "--height") height = true;
+        if (argument == "--phase") phase = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -4557,6 +4698,25 @@ int main(int argc, char** argv)
         // Cd offset into the drag AREA the harness knob is expressed in.
         HeightCheck(canopy, linePlan, 0.25,
                     settleSeconds < 420 ? 180 : 3600, 27.0);
+    }
+
+    if (phase)
+    {
+        // Section 56's own next step: the mode shape behind its mechanism.
+        const int budget = settleSeconds < 420 ? 180 : 3600;
+        // Bisected ONCE, here, and handed to both calls below.
+        const auto [sectionOffset, canopyTrim] =
+            BisectToGlide(canopy, linePlan, false, budget);
+        const auto [harnessArea, harnessTrim] =
+            BisectToGlide(canopy, linePlan, true, budget);
+        (void)canopyTrim;
+        (void)harnessTrim;
+        PhaseCheck(canopy, linePlan, 0.25, budget, sectionOffset, harnessArea);
+        // A phase that is a property of the aircraft does not care what the
+        // sampling interval was; one that moves with T is the discretisation,
+        // which is the control `--shape` has always run and this needs more,
+        // not less - the whole claim is a difference of two phases.
+        PhaseCheck(canopy, linePlan, 0.10, budget, sectionOffset, harnessArea);
     }
 
     if (project)

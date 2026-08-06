@@ -1014,13 +1014,29 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
     independent equal-force estimate of 0.279, and the harness wing trims at
     10.64 m/s and 4.84° against the clean wing's 10.60 and 4.92°, so the two
     differ in where the drag acts and hardly at all in where they trim.
-  - **Next on this thread, and it needs no new machinery:** run `--shape` on the
-    harness wing. The mechanism sketch is that canopy and pilot drag pitch the
-    aircraft opposite ways about the link, so the phugoid's incidence correction
-    changes sign — and `--shape` already measures the phase of link swing
-    against surge, which is the form §41 put the coupling question in. A phase
-    that moves as the sketch says closes the mechanism; one that does not means
-    this is a real effect with the wrong story attached.
+  - **The mechanism sketch that came with it is RETRACTED (§57), and the
+    measurement is not.** `--phase` ran it: both drag wings' link-swing phase
+    moves the *same* way and by a few degrees, against a σ that moves ±60%, at
+    two transition times with converged residuals. Fifth retraction on this
+    axis.
+  - **What replaced it is a sharper constraint.** The harness wing damps 63%
+    harder with a phugoid mode shape *indistinguishable* from the clean wing's —
+    link/speed 0.4609 against 0.4587, articulation 0.290 against 0.292 — while
+    the canopy wing is the one that restructures the mode (link/speed +19%,
+    articulation −14%) and damps less. Whatever the harness drag does, it does
+    it **inside** the mode rather than to it, so eleven levels of looking for a
+    link mechanism were looking at the wrong object. Articulation also tracks
+    stability for a fourth time, now on a second axis (§53 had three, all on
+    ratio).
+  - **Next, and it turns two points into a function:**
+    `InstalledDragSpec.harnessBelowCanopyM` is the 7.8 m arm the harness drag
+    acts on. Hold the drag fixed and sweep the arm. Monotone in the arm, heading
+    for the canopy wing's σ as the arm goes to zero, means height is the whole
+    story and the arm is doing work the classical relation has no term for —
+    which it must be, because the classical `ζ = CD/(CL√2)` predicts +15% for
+    this glide change and the harness wing delivers +63%. Flat in the arm means
+    the two cases differ by something other than height, and §56's headline is
+    measured but mis-explained too.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

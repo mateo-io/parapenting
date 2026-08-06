@@ -1064,14 +1064,22 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
     which is precisely why it has been standing in since Level 3. What §§55–58
     measured is real and is a *different* mechanism: a speed-dependent force at
     the bob.
-  - **NEXT, AND IT IS THE MISSING TERM RATHER THAN ANOTHER PROBE.** The pilot's
-    velocity through the air is the aircraft's airspeed plus the link rate
-    crossed into the link arm; its drag follows from the `InstalledDragSpec`
-    already here, and the lines sweeping is the same integral over the line
-    length. Neither is a dial — both are consequences of geometry the solver
-    already has. This item's 0.06 was derived from exactly those two terms
-    before any of this work, so running them is a **test** of a standing
-    prediction and not a calibration.
+  - **THAT TERM IS NOW IN, AND IT SETTLED THE QUESTION AGAINST THIS ITEM
+    (§60).** `SetHarnessDragReference(Pilot)` evaluates the pilot's drag against
+    the pilot's own airflow — aircraft plus w×r, geometry the solver already
+    had. It is worth 14% of σ, **0.01 of coefficient**, and no movement of the
+    boundary, against a standing prediction of 0.29. The control column
+    reproduced the eleven-level boundary exactly, so the measurement is sound.
+    See the refutation under the estimate at the top of this item.
+  - **DEBT, not a decision: the new reference is physically right and defaults
+    OFF.** The pilot's drag really does depend on the pilot's airflow, and
+    `Aircraft` is the wrong reference on any wing whose pilot swings. Making
+    `Pilot` the default is a flight-behaviour change needing the calibration
+    gates re-evaluated — and this item's gates are already loosened — so it is
+    owed as a deliberate pass rather than tacked onto a measurement.
+  - **What is left to measure here is small and is worth doing for closure:**
+    the lines sweeping, estimated at ~7% of a term worth 0.01. It cannot change
+    the conclusion; it closes the pair.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity
@@ -1113,6 +1121,20 @@ aircraft's pitch diverges and it is fully separated inside a minute.
   speed and no damping fixes that.
 - Estimated honestly from what physically damps the swing - the pilot's drag on
   an 8 m arm, plus the lines sweeping - the ratio is nearer 0.06.
+  - **REFUTED BY MEASUREMENT (§60), and it is off by about twenty-five times.**
+    The first of those two terms is now implemented — the pilot's drag
+    evaluated against the pilot's own airflow, aircraft plus w×r — and it is
+    worth **14% of σ and 0.01 of coefficient**, with the boundary not moving at
+    all. The second cannot rescue it: line Cd·A is 0.098 against the harness's
+    0.336, and the lines sweep at a velocity proportional to distance along the
+    arm, so their damping torque carries an ∫s³ds/L⁴ = ¼ weighting — about 7%
+    of a term already worth 0.01. **`swingDampingRatio` is not standing in for
+    aerodynamic swing damping.** This sentence has framed the item since Level
+    3 and every attempt on this axis inherited it.
+  - What demonstrably moves the boundary is a *different* mechanism, found in
+    §§56–58: the **magnitude of drag applied at the bob**, acting through the
+    speed oscillation, σ linear in the height at which it acts. The item has
+    been named after the wrong one of the two.
 - Tried and rejected: damping the link against the CANOPY rather than the world,
   which is where the friction physically is. It leaves the pendulum free to be
   dragged by the wing and the aircraft left the envelope in twenty seconds.

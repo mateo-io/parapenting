@@ -2448,6 +2448,61 @@ geometry the solver already has. And item 11's 0.06 is a *prediction* of what
 they are worth, made before any of this, which makes the next run a test rather
 than a calibration.
 
+## 60. Item 11's founding estimate is wrong: the pilot's swing drag is worth 0.01, not 0.29
+
+§59 found that the two terms item 11's opening estimate names — *the pilot's own
+drag on an 8 m arm, plus the lines sweeping* — were never in the solver. This
+puts the first one in and measures it. It is a **test of a standing prediction**:
+item 11 has said since Level 3 that the ratio implied by those terms is "nearer
+0.06" than 0.35, derived by hand from the physics long before §§53–59 existed and
+never fitted to anything since.
+
+| ratio | clean | σ clean | pilot airflow | σ pilot |
+|---|---|---|---|---|
+| 0.35 | settled | −0.0201 | settled | **−0.0230** |
+| 0.30 | not settled | — | not settled | — |
+| 0.25 | DEPARTED | — | **not settled** | — |
+| 0.20 and below | DEPARTED | — | DEPARTED | — |
+
+**The control passes exactly** — σ −0.0201 at 0.35, 0.30 unsettled, 0.25
+departing, which is what this axis has reported for eleven levels — so the
+change moved only what it was supposed to.
+
+**The term is real, stabilising, and small.** σ improves 14% at ratio 0.35 and
+0.25 is upgraded from departing to merely not settling. **The boundary does not
+move.** Calibrated against §56, where 63% of σ bought one 0.05 step of ratio,
+14% is worth about **0.01 of coefficient against the 0.29 needed** — three per
+cent of the problem.
+
+**So item 11's founding estimate is refuted, and it is off by a factor of about
+twenty-five.** `swingDampingRatio` is *not* standing in for the pilot's
+aerodynamic swing damping. That sentence has been at the top of the item since
+Level 3, it framed every attempt on this axis, and it is wrong.
+
+**The lines will not rescue it, by the same arithmetic that should have been
+done first.** Line drag area is 254 m × 0.00105 m × 0.35 projected = 0.093 m², so
+Cd·A 0.098 against the harness's 0.336 — 29%. But the lines sweep at a velocity
+proportional to distance along the arm, so their damping torque carries an
+∫s³ds/L⁴ = ¼ weighting the bob does not. **The lines sweeping should therefore
+be worth about 0.29 × ¼ ≈ 7% of the pilot's term**, which is itself worth 0.01.
+That is an estimate with its derivation shown, not a measurement, and it is the
+remaining check — but nothing about it can turn 0.01 into 0.29.
+
+**What this does to the shape of item 11.** The mechanism that demonstrably
+moves the boundary is the one §§56–58 found, and it is *not* the one the item
+named: it is the **magnitude of drag applied at the bob**, acting through the
+speed oscillation, with σ linear in the height at which it acts. The
+swing-rate-proportional damping the item has always described is measured, at
+last, and is a rounding error. Those are two different mechanisms, and eleven
+levels of this item have been named after the wrong one.
+
+**The change is physically right and is left off by default**, which is a debt
+rather than a decision: the pilot's drag really does depend on the pilot's
+airflow, and `Aircraft` is the wrong reference on any wing whose pilot swings.
+Making `Pilot` the default is a flight-behaviour change that needs the
+calibration gates re-evaluated, and item 11's gates are already loosened, so it
+belongs in a deliberate pass rather than tacked onto a measurement.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

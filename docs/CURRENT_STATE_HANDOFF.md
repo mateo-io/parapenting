@@ -571,11 +571,26 @@ The v1–v4 goal is not complete until these are addressed:
    why it has stood in since Level 3, and it means §§55–58 measured a real but
    *different* mechanism.
 
-   **So the next step is the missing term, not another probe:** give the bob its
-   own airspeed (aircraft airspeed plus link rate crossed into the link arm) and
-   add the lines' sweeping drag over the same geometry. Neither is a dial. Item
-   11's 0.06 was derived from exactly those two terms years of work ago, which
-   makes the next run a test of a standing prediction.
+   **That term is now implemented, and it refuted item 11's founding estimate
+   (§60).** The pilot's drag evaluated against the pilot's own airflow is worth
+   14% of σ, **0.01 of coefficient**, and no movement of the boundary — against
+   a standing prediction of 0.29, so the estimate is off by about
+   twenty-five times. The control column reproduced the eleven-level boundary
+   exactly. The lines sweeping cannot rescue it: their Cd·A is 0.098 against the
+   harness's 0.336 and their damping torque carries an extra ¼ weighting, so
+   ~7% of a term already worth 0.01.
+
+   **`swingDampingRatio` is therefore not standing in for aerodynamic swing
+   damping**, which is the sentence that has framed this axis since Level 3.
+   What demonstrably moves the boundary is the *other* mechanism, §§56–58: the
+   magnitude of drag applied at the bob, acting through the speed oscillation,
+   σ linear in the height it acts at. The item has been named after the wrong
+   one of the two.
+
+   **One debt is owed rather than deferred:** `HarnessDragReference::Pilot` is
+   physically right — `Aircraft` is the wrong reference on any wing whose pilot
+   swings — and it defaults off because turning it on is a flight-behaviour
+   change needing the calibration gates re-evaluated.
 
    **Read §56 before touching item 12**, which it may matter to more: the
    missing drag applied at the harness lands glide, trim speed *and* sink

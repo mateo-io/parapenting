@@ -518,6 +518,23 @@ public:
     void SetHarnessExtraDragAtPilotFraction(double fraction)
         { InstalledDrag.extraDragAtPilotFraction = fraction; }
 
+    // WHAT AIRFLOW THE PILOT'S DRAG IS EVALUATED AGAINST. `Aircraft` is what
+    // flies and is the default; `Pilot` adds the bob's own rotation about the
+    // hinge, w x r, so the drag opposes the SWING as well as the flight path.
+    //
+    // This is the first of the two terms item 11's opening estimate names -
+    // "the pilot's own drag on an 8 m arm, plus the lines sweeping" - and §59
+    // found that neither was ever in this solver, which is why a coefficient
+    // has been standing in for them since Level 3. It is not a dial: the arm
+    // and the rate are geometry the solver already has. It defaults off only
+    // because turning it on changes what the aircraft does, and that is a
+    // deliberate step to take on measurement rather than on a first run.
+    enum class HarnessDragReference { Aircraft, Pilot };
+    void SetHarnessDragReference(HarnessDragReference reference)
+        { HarnessDragReferenceValue = reference; }
+    HarnessDragReference DragReference() const
+        { return HarnessDragReferenceValue; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
@@ -606,6 +623,8 @@ private:
     ConstructionProbe ConstructionProbeSettings;
     double SwingDampingRatioValue = 0.35;
     double SectionDragOffsetValue = 0.0;
+    HarnessDragReference HarnessDragReferenceValue =
+        HarnessDragReference::Aircraft;
     LinkDampingReference LinkDampingReferenceValue =
         LinkDampingReference::World;
     bool Profiling = false;

@@ -697,6 +697,12 @@ struct AddedDrag
     // 1 is section 56's harness wing; 0 is the same force with no share of it
     // pushing the pendulum bob.
     double atPilotFraction = 1.0;
+    // Whether the pilot's drag is evaluated against the PILOT's own airflow -
+    // the aircraft's plus w x r - rather than the aircraft's. This is the term
+    // item 11 names and section 59 found missing, and unlike everything else in
+    // this struct it is not an amount of anything: it is either the right
+    // airflow or the wrong one.
+    bool pilotReferencedDrag = false;
 };
 
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
@@ -710,6 +716,10 @@ OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     out.solver.SetSectionDragOffset(added.sectionOffset);
     out.solver.SetHarnessExtraDragAreaM2(added.harnessAreaM2);
     out.solver.SetHarnessExtraDragAtPilotFraction(added.atPilotFraction);
+    out.solver.SetHarnessDragReference(
+        added.pilotReferencedDrag
+            ? CoupledParagliderSolver::HarnessDragReference::Pilot
+            : CoupledParagliderSolver::HarnessDragReference::Aircraft);
 
     // The same criterion as `pitch_axis_trace`: ten seconds whose incidence
     // spread is under 0.01 degrees. A fixed settle would be a guess, and the
@@ -4686,6 +4696,90 @@ void PilotDragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "local and the extrapolation was wrong.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// The missing term, put in. This is a TEST OF A STANDING PREDICTION.
+//
+// Section 59 found that the two things item 11's own opening estimate names -
+// "the pilot's own drag on an 8 m arm, plus the lines sweeping" - were never in
+// this solver. The harness drag was evaluated against the AIRCRAFT's airspeed,
+// so it is a force along the flight path and cannot oppose a swing; the lines'
+// drag became a moment on the canopy and never reached the bob. Nothing
+// aerodynamic here was proportional to the swing rate, which is exactly why a
+// coefficient has been standing in for it since Level 3.
+//
+// `SetHarnessDragReference(Pilot)` puts the first of the two in: the bob's
+// velocity through the air is the aircraft's plus w x r, with r the arm from
+// the hinge down to the pilot. That is geometry the solver already has. It is
+// not a dial and there is nothing in it to tune.
+//
+// WHY THIS IS A TEST AND NOT A CALIBRATION. Item 11 has said since it was
+// written that the ratio implied by those two terms is "nearer 0.06" than 0.35.
+// That number was derived from the physics, by hand, before any of the work in
+// sections 53-59 existed, and nothing since has been fitted to it. So the
+// boundary this run reports is a prediction made years of work in advance, and
+// it can miss.
+//
+//   * Boundary near 0.06 with the pilot term alone: item 11's estimate was
+//     right and the pilot's drag is most of what the coefficient replaced.
+//   * Boundary partway - say 0.15-0.25 - with the lines still to come: the
+//     estimate named two terms and this is one of them, so the remainder is a
+//     prediction for the lines sweeping rather than a failure.
+//   * Boundary unmoved: the airflow was not the missing physics after all, and
+//     section 59's reading of the solver was right about the ABSENCE and wrong
+//     about its importance.
+//
+// The control is the clean column: the same solver with the reference off has
+// to reproduce the boundary this axis has reported for eleven levels, 0.35-0.30.
+// If it does not, the change has moved something it should not have and no
+// column beside it means anything.
+void SwingDragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                    double transitionTimeS, int maximumSeconds)
+{
+    std::printf("SWING DRAG: the pilot's drag evaluated against the PILOT's "
+                "own airflow rather\nthan the aircraft's - the first of the "
+                "two terms item 11 names and section 59\nfound missing. Item "
+                "11 predicted a ratio 'nearer 0.06' from these terms before\n"
+                "any of this work existed, so this is a test of that.\n\n");
+
+    std::printf("%8s %14s %13s %14s %13s\n", "ratio", "clean", "sigma clean",
+                "pilot airflow", "sigma pilot");
+    for (const double ratio : {0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.06})
+    {
+        double sigma[2] = {0.0, 0.0};
+        bool have[2] = {false, false};
+        const char* outcome[2] = {"", ""};
+        for (int which = 0; which < 2; ++which)
+        {
+            AddedDrag added;
+            added.pilotReferencedDrag = which == 1;
+            const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
+                                          maximumSeconds,
+                                          DamperReference::World, added);
+            outcome[which] = trim.departed
+                ? "DEPARTED" : (trim.settled ? "settled" : "not settled");
+            if (trim.departed || !trim.settled) continue;
+            const Spectrum spectrum = Analyse(trim.solver, trim.state,
+                                              transitionTimeS, 1.0, false);
+            Mode phugoid;
+            if (!PhugoidOf(spectrum, phugoid)) continue;
+            sigma[which] = phugoid.growthPerS;
+            have[which] = true;
+        }
+        std::printf("%8.2f %14s", ratio, outcome[0]);
+        if (have[0]) std::printf(" %+13.4f", sigma[0]);
+        else std::printf(" %13s", "-");
+        std::printf(" %14s", outcome[1]);
+        if (have[1]) std::printf(" %+13.4f", sigma[1]);
+        else std::printf(" %13s", "-");
+        std::printf("\n");
+    }
+    std::printf("\n  The clean column is the control and it has to reproduce "
+                "0.35-0.30, which is\n  what this axis has reported for eleven "
+                "levels. The pilot column is the\n  prediction: how far down "
+                "the ratio can go once the pilot's drag opposes the\n  swing "
+                "the way item 11 said it does.\n\n");
+}
+
 // What the two tables came back with, written where the numbers are rather
 // than only in PHYSICS_LEARNINGS.
 void Verdict()
@@ -4775,6 +4869,7 @@ int main(int argc, char** argv)
     bool phase = false;
     bool split = false;
     bool pilot = false;
+    bool swing = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -4791,6 +4886,7 @@ int main(int argc, char** argv)
         if (argument == "--phase") phase = true;
         if (argument == "--split") split = true;
         if (argument == "--pilot") pilot = true;
+        if (argument == "--swing") swing = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -4987,6 +5083,14 @@ int main(int argc, char** argv)
     {
         // The magnitude question item 11 has wanted for eleven levels.
         PilotDragCheck(canopy, linePlan, 0.25,
+                       settleSeconds < 420 ? 180 : 3600);
+    }
+
+    if (swing)
+    {
+        // The missing term, put in and measured against item 11's own standing
+        // prediction of 0.06.
+        SwingDragCheck(canopy, linePlan, 0.25,
                        settleSeconds < 420 ? 180 : 3600);
     }
 

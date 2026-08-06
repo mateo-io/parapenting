@@ -1011,8 +1011,71 @@ structureSolve:
     // the coupled solve makes it glide at 14 where the wing glides at 9.5.
     const InstalledDragResult installed = EvaluateInstalledDrag(
         InstalledDrag, airspeedBody, atmosphere.densityKgM3);
-    const Vec3 installedDragBody = airspeed > 1.0e-6
-        ? airspeedBody * (-installed.totalDragN / airspeed) : Vec3{};
+
+    // THE PILOT'S OWN AIRFLOW, which is not the aircraft's when the pilot is
+    // swinging. Item 11's estimate of the swing damping it has been replacing
+    // with a coefficient is "the pilot's drag on an 8 m arm, plus the lines
+    // sweeping", and neither term was ever in this solver: the harness drag
+    // below is built from the AIRCRAFT's airspeed, so it is a force along the
+    // flight path that cannot oppose a swing, and the lines' drag becomes a
+    // moment on the canopy that never reaches the bob. Nothing here was
+    // proportional to the swing rate except `swingDampingRatio` itself.
+    // `PHYSICS_LEARNINGS` §59.
+    //
+    // The bob's velocity through the air is the aircraft's plus its own
+    // rotation about the hinge, w x r, with r the arm from the canopy down to
+    // the pilot. That is geometry this solver already has, not a new number.
+    //
+    // WHY THE ARGUMENT AT `airVelocityWorld` DOES NOT COVER THIS, since it ends
+    // with "the swing is not, in the end, strongly damped by the air at all":
+    // that paragraph is about the CANOPY's arc velocity feeding the sections'
+    // relative wind, and the cancellation it describes is between the
+    // aerodynamic force's arm and the line tension's, about the hinge. Line
+    // tension acts ALONG the line and therefore has no moment about the hinge
+    // to cancel anything on the pilot's side. A bluff body at the end of the
+    // arm, moving through air, makes an uncancelled damping torque. The two
+    // claims are about different bodies and this one does not overturn that one.
+    const Vec3 pilotAirVelocityWorld = [&]
+    {
+        if (HarnessDragReferenceValue == HarnessDragReference::Aircraft
+            || !state.initialised)
+            return airVelocityWorld;
+        const Vec3 arm = Normalized(state.payloadDirWorld) * PendulumLengthM;
+        return airVelocityWorld + Cross(state.linkRateWorldRadps, arm);
+    }();
+    const double pilotAirspeed = Length(pilotAirVelocityWorld);
+    const bool pilotReferenced =
+        HarnessDragReferenceValue == HarnessDragReference::Pilot
+        && state.initialised;
+
+    // The harness force is computed ONCE, from whichever airflow is in force,
+    // and used both here in the system's force balance and below in the
+    // pendulum's tangential equation. Computing it twice from two different
+    // airflows is how the same force ends up acting with two magnitudes, which
+    // is the mistake the note below this one records having already made.
+    //
+    // Drag is 0.5 rho Cd A |v| v, and `harnessDragN` is that evaluated at the
+    // AIRCRAFT's dynamic pressure - so referred to the pilot's own airflow the
+    // magnitude scales by (pilotAirspeed / airspeed)^2 and the direction is the
+    // pilot's. Written as one product to keep the |v| v shape visible.
+    const Vec3 harnessDragWorldForce =
+        (pilotReferenced && airspeed > 1.0e-6)
+            ? pilotAirVelocityWorld
+                * (-installed.harnessDragN * pilotAirspeed
+                   / (airspeed * airspeed))
+            : Vec3{};
+
+    // The default path is the original statement, character for character. A
+    // reference that defaults to off has to be bit-identical when it is off,
+    // and this one is a rotation round-trip away from not being - see the note
+    // in `EvaluateInstalledDrag` about the coupled check that caught the last
+    // one of these.
+    const Vec3 installedDragBody = pilotReferenced
+        ? (airspeed > 1.0e-6
+               ? airspeedBody * (-installed.lineDragN / airspeed) : Vec3{})
+            + state.attitude.InverseRotate(harnessDragWorldForce)
+        : (airspeed > 1.0e-6
+               ? airspeedBody * (-installed.totalDragN / airspeed) : Vec3{});
     exchangedForceBody += installedDragBody;
     // Only the LINES' drag moment. The harness drag acts on the pilot, eight
     // metres below, and the path by which it pitches the wing is the pendulum
@@ -1260,7 +1323,12 @@ structureSolve:
     // Level 3's own pendulum, stepped above, which reports its pitch moment
     // separately.
     const Vec3 gravityWorld{0.0, 0.0, -GravityMps2};
-    const Vec3 harnessDragWorld = state.attitude.Rotate(harnessDragBody);
+    // The SAME force computed above, not a second evaluation of it. With the
+    // pilot reference off this is the aircraft-referenced vector rotated to
+    // world exactly as before; with it on it is the pilot's own drag, which is
+    // the term that opposes the swing and the one item 11's estimate names.
+    const Vec3 harnessDragWorld = pilotReferenced
+        ? harnessDragWorldForce : state.attitude.Rotate(harnessDragBody);
     const Vec3 relativeAccelWorld = gravityWorld - accelerationWorld
         + harnessDragWorld / std::max(1.0, PayloadMass.TotalKg());
     const Vec3 tangentialAccelWorld = relativeAccelWorld

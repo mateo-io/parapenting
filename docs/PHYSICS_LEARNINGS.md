@@ -2503,6 +2503,61 @@ Making `Pilot` the default is a flight-behaviour change that needs the
 calibration gates re-evaluated, and item 11's gates are already loosened, so it
 belongs in a deliberate pass rather than tacked onto a measurement.
 
+## 61. The correct drag reference passes every gate and is still not shipped
+
+§60 left a debt: `HarnessDragReference::Aircraft` is wrong physics — a swinging
+pilot's drag depends on the pilot's airflow — and it defaulted off only because
+flipping it inside a measurement would have been careless. This iteration
+flipped it and ran the full suite.
+
+**The suite is green.** Zero failures, eleven suites, module included. Green was
+never the test, and a decision rule was written down before the output: the
+published references arbitrate. Toward them, a failing gate encoded the old
+wrong number; away, revert whatever σ said; barely moving, keep it on
+correctness.
+
+**What it actually did, diffed against the pre-flip run:**
+
+| quantity | before | after | published | reading |
+|---|---|---|---|---|
+| glide at trim | 11.33 | 11.20 | 9.5 | **toward** |
+| sink | 0.97 | 0.99 | 1.14 | **toward** |
+| trim speed | 39.8 km/h | 39.9 | 39.0 | slightly away |
+| trim incidence | 5.14° | 5.09° | 5.30 needed | slightly away |
+| brake-incidence disagreement | 0.73° wrong way | **0.49°** | should be positive | **halved** |
+| coordinated turn 35% | NOT SETTLED | **settled** | — | better |
+| accelerator step | settled | **NOT SETTLED** | — | worse |
+| full bar left to settle | 83.4° | **45.9°** | — | far less divergent |
+| **4 m/s symmetric collapse** | **L 0.710 R 0.710** | **L 0.999 R 1.000** | — | **near-total** |
+| worst L−R fold difference | 0.323 | 0.420 | — | worse |
+
+**The prediction I recorded was half right and the half it missed is the
+important one.** I predicted trim would barely move because the swing rate at a
+settled trim is near zero and the new term is proportional to it. Trim did
+barely move. What I did not predict is that the term is *large in transients* —
+and the collapse benchmark is nothing but transient. A 4 m/s symmetric frontal
+that used to fold 71% now folds essentially completely.
+
+**So the flip is not shipped, and the rule is why.** The result is mixed rather
+than favourable: two published numbers move toward, two move slightly away, and
+the largest change of all — the collapse depth — is one **no published number
+arbitrates.** Turning a 71% benchmark fold into a 100% one is a pilot-visible
+behaviour change, on the number Level 8 and §13 were tuned against, and the
+model has no external data that says which is right. Shipping it because the
+suite is green and the physics term is correct would be replacing a measured
+benchmark with an unmeasured one on my own authority.
+
+**What that costs and what it buys.** The engine keeps a term that is
+*definitely* wrong in a way that matters only in transients; the record gains an
+exact experiment for whoever runs the SIV validation Level 9's exit gate already
+requires. That validation now has a specific question to answer rather than a
+general one: **on a 4 m/s symmetric frontal, does an EN-B fold 70% or 100%?**
+One SIV answer decides the default.
+
+The flag stays, defaulted off, with this section as its justification. Both
+states of it are now measured, which is the only reason the choice can be
+deferred honestly rather than merely postponed.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

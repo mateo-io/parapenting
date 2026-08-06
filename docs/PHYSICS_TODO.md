@@ -1071,12 +1071,24 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
     boundary, against a standing prediction of 0.29. The control column
     reproduced the eleven-level boundary exactly, so the measurement is sound.
     See the refutation under the estimate at the top of this item.
-  - **DEBT, not a decision: the new reference is physically right and defaults
-    OFF.** The pilot's drag really does depend on the pilot's airflow, and
-    `Aircraft` is the wrong reference on any wing whose pilot swings. Making
-    `Pilot` the default is a flight-behaviour change needing the calibration
-    gates re-evaluated — and this item's gates are already loosened — so it is
-    owed as a deliberate pass rather than tacked onto a measurement.
+  - **THAT DEBT HAS BEEN PAID DOWN TO A SINGLE QUESTION (§61).** The flip was
+    made and the full suite run: **green, zero failures**, and the numbers
+    diffed against the pre-flip run. Glide 11.33 → 11.20 and sink 0.97 → 0.99
+    move *toward* published; trim speed and incidence move slightly away; the
+    brake-incidence disagreement **halves**, 0.73° → 0.49°; full bar left to
+    settle ends at 45.9° instead of 83.4°. And the largest change of all is one
+    no published number arbitrates: the **4 m/s symmetric collapse folds L
+    0.999 R 1.000 where it folded 0.710/0.710** — the benchmark Level 8 and §13
+    were tuned against. The term is small in trim and large in transients, and
+    a collapse is nothing but transient.
+  - **Not shipped, and deliberately.** Replacing a measured benchmark with an
+    unmeasured one because the suite is green and the term is correct would be
+    a judgement call made on the model's own authority. The flag stays,
+    defaulted off, with both states measured — which is what makes deferring
+    this honest rather than merely postponing it.
+  - **One SIV answer decides it:** on a 4 m/s symmetric frontal, does an EN-B
+    fold 70% or 100%? That belongs in `docs/PILOT_REVIEW_PROTOCOL.md` and in
+    Level 9's outstanding external validation.
   - **What is left to measure here is small and is worth doing for closure:**
     the lines sweeping, estimated at ~7% of a term worth 0.01. It cannot change
     the conclusion; it closes the pair.

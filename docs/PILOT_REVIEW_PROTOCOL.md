@@ -108,6 +108,33 @@ does not come back once separated. Question 16 is asking whether the approach
 carries the cues a pilot relies on, independent of whether the break point is
 right.
 
+## Session 6 — one question that decides a solver default
+
+This session exists because a physics change is finished, correct, measured, and
+**parked on the answer to a single question no published figure settles**. See
+`PHYSICS_LEARNINGS` §61. Unlike the sessions above it needs a collapse, so it is
+for SIV-qualified reviewers over water only, and it may be answered from a
+reviewer's own experience instead of flown.
+
+The model can evaluate the pilot's drag against the aircraft's airflow (what
+ships) or against the pilot's own, which is the physically correct one and
+matters only when the pilot is swinging — so it matters most in a collapse. The
+two differ in almost nothing at trim and in one thing a great deal:
+
+18a. **On a 4 m/s symmetric frontal input, how much of the span folds?** The
+     shipping model says about **70%**; the corrected drag term says **very
+     nearly 100%**, a near-total frontal. Both then reinflate.
+
+18b. Does the wing recover from that fold the way the reviewer expects, in the
+     time they expect, and does the surge that follows match?
+
+18c. If flown rather than recalled: fold depth is on the HUD and in the CSV, so
+     record the number as well as the impression.
+
+A clear answer either way retires a flag and makes one of the two defaults
+correct rather than merely conservative. "It depends on the wing" is also an
+answer, and would say the model needs the term to vary with class.
+
 ## Closing questions
 
 19. If this were a real wing, what class would you call it?

@@ -587,10 +587,20 @@ The v1–v4 goal is not complete until these are addressed:
    σ linear in the height it acts at. The item has been named after the wrong
    one of the two.
 
-   **One debt is owed rather than deferred:** `HarnessDragReference::Pilot` is
-   physically right — `Aircraft` is the wrong reference on any wing whose pilot
-   swings — and it defaults off because turning it on is a flight-behaviour
-   change needing the calibration gates re-evaluated.
+   **That debt is now paid down to one question (§61).** The flip was made and
+   the full suite run: green, zero failures. Glide and sink move *toward*
+   published (11.33 → 11.20, 0.97 → 0.99), the brake-incidence disagreement
+   halves, full bar diverges to 45.9° instead of 83.4° — and the **4 m/s
+   symmetric collapse folds 0.999/1.000 where it folded 0.710/0.710**, which is
+   the benchmark Level 8 was tuned against and which no published number
+   arbitrates. The term is small in trim and large in transients.
+
+   **Not shipped, deliberately**, because replacing a measured benchmark with
+   an unmeasured one on the model's own authority is not a call the model gets
+   to make. Both states are measured, so the choice is deferred honestly rather
+   than postponed. **One SIV answer decides it — on a 4 m/s symmetric frontal,
+   does an EN-B fold 70% or 100%?** — and it is now Session 6 of
+   `docs/PILOT_REVIEW_PROTOCOL.md`.
 
    **Read §56 before touching item 12**, which it may matter to more: the
    missing drag applied at the harness lands glide, trim speed *and* sink

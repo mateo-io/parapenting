@@ -68,6 +68,86 @@ int main(int argc, char** argv)
                 graph.nodes.size(), graph.elements.size(),
                 TotalLineLengthM(graph));
 
+    // -- the drag the lines actually present -------------------------------
+    //
+    // `InstalledDragSpec::lineProjectedFraction` is 0.35, and its comment says
+    // what the number bundles: "manufactured line length is not all normal to
+    // the flow: cascades overlap, upper galleries are inclined, lower lines
+    // shield one another". Three effects, one stated number, never derived -
+    // and installed drag is 47% of the canopy's own, so this is not a
+    // correction term. `PHYSICS_TODO` item 12 asks for a glide that lands
+    // "without a coefficient chosen to put it there", and this is one of the
+    // coefficients.
+    //
+    // Two of the three effects are GEOMETRY, and the graph has the geometry. A
+    // cylinder in crossflow presents `L d sin(theta)` to the flow, theta being
+    // the angle between the line and the wind, so the inclination part of that
+    // fraction is a sum over the elements this file has already built. What it
+    // cannot see is SHIELDING - a line in another line's wake - because that is
+    // a flow question, not a geometric one.
+    //
+    // So this does not replace the dial. It splits it into a part that is
+    // measured and a residual that is named, which is the difference between a
+    // number nobody can check and a number with one honest unknown left in it.
+    {
+        const Vec3 flow{1.0, 0.0, 0.0};
+        double totalLength = 0.0;
+        double frontalAreaM2 = 0.0;
+        double projectedAreaM2 = 0.0;
+        double weightedDiameter = 0.0;
+        for (const CableElement& cable : graph.elements)
+        {
+            if (cable.nodeA < 0 || cable.nodeB < 0) continue;
+            const Vec3 a = graph.nodes[cable.nodeA].designM;
+            const Vec3 b = graph.nodes[cable.nodeB].designM;
+            const Vec3 span{b.x - a.x, b.y - a.y, b.z - a.z};
+            const double length = std::sqrt(
+                span.x * span.x + span.y * span.y + span.z * span.z);
+            if (length < 1.0e-9) continue;
+            const Vec3 dir{span.x / length, span.y / length, span.z / length};
+            // |d x f| for unit vectors is sin of the angle between them.
+            const Vec3 cross{
+                dir.y * flow.z - dir.z * flow.y,
+                dir.z * flow.x - dir.x * flow.z,
+                dir.x * flow.y - dir.y * flow.x};
+            const double sine = std::sqrt(
+                cross.x * cross.x + cross.y * cross.y + cross.z * cross.z);
+            totalLength += length;
+            weightedDiameter += length * cable.diameterM;
+            frontalAreaM2 += length * cable.diameterM;
+            projectedAreaM2 += length * cable.diameterM * sine;
+        }
+        const double meanDiameter =
+            totalLength > 0.0 ? weightedDiameter / totalLength : 0.0;
+        const double geometricFraction =
+            frontalAreaM2 > 0.0 ? projectedAreaM2 / frontalAreaM2 : 0.0;
+        const InstalledDragSpec shipped;
+        std::printf("\n  Line drag area, measured off the built graph "
+                    "(PHYSICS_LEARNINGS section 62)\n");
+        std::printf("    geometric line length      %8.1f m   (spec says "
+                    "%.1f)\n", totalLength, shipped.lineTotalLengthM);
+        std::printf("    length-weighted diameter   %8.5f m   (spec says "
+                    "%.5f)\n", meanDiameter, shipped.lineMeanDiameterM);
+        std::printf("    projected fraction, incl.  %8.3f     (spec says "
+                    "%.3f)\n", geometricFraction,
+                    shipped.lineProjectedFraction);
+        std::printf("    implied shielding residual %8.3f\n",
+                    geometricFraction > 0.0
+                        ? shipped.lineProjectedFraction / geometricFraction
+                        : 0.0);
+        std::printf("    projected area             %8.5f m2\n",
+                    projectedAreaM2);
+        // Bounds rather than a fit. Inclination alone cannot take a bundle of
+        // mostly-spanwise-inclined lines below a half, and it cannot exceed one
+        // by definition - a fraction outside that says the design pose or the
+        // flow direction is wrong, not that the wing is unusual.
+        Check(geometricFraction > 0.4 && geometricFraction < 1.0,
+              "geometric projected fraction is a fraction, and inclination "
+              "alone does not halve the bundle");
+        Check(totalLength > 200.0 && totalLength < 320.0,
+              "graph line length is near the manufactured 254 m");
+    }
+
     // -- topology ---------------------------------------------------------
     {
         Check(graph.leftCarabiner >= 0 && graph.rightCarabiner >= 0,

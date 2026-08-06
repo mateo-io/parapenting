@@ -2558,6 +2558,62 @@ The flag stays, defaulted off, with this section as its justification. Both
 states of it are now measured, which is the only reason the choice can be
 deferred honestly rather than merely postponed.
 
+## 62. The line-drag dial is not inclination plus shielding — it is 99% shielding
+
+`InstalledDragSpec::lineProjectedFraction` is 0.35, and its comment says what
+the number bundles: *manufactured line length is not all normal to the flow:
+cascades overlap, upper galleries are inclined, lower lines shield one another*.
+Three effects, one stated number, never derived — on a term that is 47% of the
+canopy's own drag. Item 12 asks for a glide that lands "without a coefficient
+chosen to put it there", and this is one of the coefficients.
+
+**Two of the three effects are geometry, and the solver has already built the
+geometry.** A cylinder in crossflow presents `L·d·sin θ` to the flow, so the
+inclination part is a sum over the cable elements `suspension_tests` already
+constructs. Measured off the built graph, against the flow direction:
+
+| quantity | measured | spec says |
+|---|---|---|
+| line length | 254.7 m | 254.0 |
+| length-weighted diameter | 0.00094 m | 0.00105 |
+| **projected fraction from inclination** | **0.993** | 0.350 |
+| projected area | 0.237 m² | 0.093 m² |
+
+**The lines are essentially all normal to the flow.** They hang from canopy to
+pilot and fan out spanwise; both directions are perpendicular to a horizontal
+wind, and only the fore-and-aft spread between the A and C rows tilts any of
+them appreciably. Inclination is worth **0.7%**, not the large share the comment
+implies.
+
+**So the dial is not three comparable effects. It is one effect, unmeasured.**
+Of the 0.35, geometry accounts for 0.993 and the residual — **0.352** — is
+entirely shielding and overlap. The shipped model therefore carries **39% of the
+line drag area its own geometry presents**, on the strength of an
+interference allowance nobody has ever justified in writing.
+
+That is not a claim that 0.35 is wrong. It is a claim that it is now *isolated*:
+a single flow-physics question — how much does a paraglider's line cascade
+shield itself? — instead of a lumped number carrying two effects that turn out
+to be negligible and one that is doing all the work. A 65% reduction from
+shielding alone is aggressive; published practice on line drag tends to use
+modest interference allowances rather than a factor of three.
+
+**And it lands next to §56, which is why it matters now.** §56 found that the
+model's missing drag, applied at the *harness* end, lands glide, trim speed and
+sink together — and needed **0.199 m² of Cd·A** to do it. Restoring the lines to
+a defensible shielding allowance of, say, 0.9 would add
+(0.993 − 0.35)/0.993 × 0.237 × 1.05 ≈ **0.16 m² of Cd·A**, at a moment arm half
+way down the lines rather than at the canopy. Same order, same end of the
+aircraft, arrived at from geometry rather than from the glide it needs to
+produce.
+
+**Stated as a lead and not a result**, because it connects a geometric
+measurement to a fitted requirement and those are different kinds of number: it
+would be exactly the sort of coincidence this axis has produced and retracted
+four times. What makes it testable rather than tempting is that the shielding
+allowance is now a lone unknown with a literature behind it, and the line drag
+it implies can be measured against the glide *without* being fitted to it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

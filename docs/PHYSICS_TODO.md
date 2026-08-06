@@ -227,6 +227,31 @@ survive the drag becoming a consequence.
   the arc removed the solver gives 1.085, which IS above the planar limit and
   is the discretisation error the elliptical-wing validation already reports at
   3.6%. Worth 8% of the induced drag, not the 100% of profile drag needed.
+- **THE LINE-DRAG DIAL IS 99% SHIELDING, AND THAT IS NOW ISOLATED (§62).**
+  `lineProjectedFraction` is 0.35 and its comment attributes it to three
+  effects: overlap, inclination, and shielding. Measured off the built
+  suspension graph — the geometry is already there — **inclination is worth
+  0.993, not a large share.** The lines hang canopy-to-pilot and fan out
+  spanwise, both perpendicular to a horizontal wind, so only the A-to-C spread
+  tilts any of them. The graph agrees with the spec on length (254.7 m against
+  254.0) and puts the mean diameter 12% lower (0.00094 against 0.00105).
+  - Consequence: the shipped model carries **39% of the line drag area its own
+    geometry presents** — projected 0.093 m² against a geometric 0.237 — and
+    the whole reduction rests on an interference allowance never justified in
+    writing. A factor of three from shielding is aggressive against published
+    practice.
+  - **This is the "coefficient chosen to put it there" this item objects to,
+    and it is now a single flow-physics question** rather than a lumped number:
+    how much does a line cascade shield itself? Bounded and printed by
+    `suspension_tests`.
+  - **Lead, not a result, and it must not be fitted:** §56 needed 0.199 m² of
+    Cd·A at the harness end to land glide, speed and sink together. A defensible
+    shielding allowance of 0.9 would restore (0.993−0.35)/0.993 × 0.237 × 1.05 ≈
+    **0.16 m²**, at a moment arm half way down the lines. Same order, same end
+    of the aircraft, from geometry rather than from the glide it has to produce
+    — which is precisely why the shielding number must be settled on its own
+    evidence before this is believed.
+
 - **Glide alone is not a sufficient criterion, and §55 measured why.** Asked to
   land the published glide, `pitch_eigenmodes --drag` bisects a flat section
   offset to Δcd 0.01035 and gets glide 9.49 against 9.50 — while the trim speed

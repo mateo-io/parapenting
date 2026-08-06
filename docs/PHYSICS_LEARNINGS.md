@@ -2380,6 +2380,74 @@ number, against a real pilot's measured drag, is the whole of item 11's
 question. The wing stops being physical partway up that sweep, which is fine:
 it is a mechanism probe, not a wing.
 
+## 59. Pilot drag reaches 0.06 at ten times a real pilot — and the term item 11 names is not in the model at all
+
+§58 gave the *form* of item 11's answer and not the magnitude. This asks the
+magnitude directly: more and more drag on the pilot, and the lowest ratio the
+aircraft still settles at with each.
+
+| extra Cd·A | × base harness | glide | boundary ratio | incidence |
+|---|---|---|---|---|
+| 0.199 | 0.6× | 9.51 | 0.30 | 4.84° |
+| 0.400 | 1.2× | 8.38 | 0.25 | 4.75° |
+| 0.800 | 2.4× | 6.74 | 0.20 | 4.57° |
+| 1.600 | 4.8× | 4.76 | 0.10 | 4.20° |
+| 3.200 | 9.5× | 2.86 | **0.06** | 3.47° |
+
+The base harness is 0.32 m² at Cd 1.05, so 0.336 m² of Cd·A before any of this
+is added.
+
+**The middle outcome of the three, and it bounds item 11 from both sides.** Drag
+at the bob *can* pay for the whole coefficient — the boundary walks all the way
+to item 11's honest 0.06 — but only at **3.2 m² of extra drag area, ten times
+the modelled pilot, on a wing gliding at 2.86 against a published 9.5.** That is
+not a paraglider. At a *credible* pilot drag — the 0.199 row, which is also the
+only row that still glides 9.51 — it buys 0.05 of the 0.29. **A sixth**, exactly
+as §56 measured, and now with the rest of the curve behind it. Roughly, each
+doubling of pilot drag buys another 0.05 of ratio.
+
+So "the installed drag is too low" is eliminated as the *whole* answer to item
+11, quantitatively rather than by argument. Something else supplies five sixths.
+
+*(The σ-at-boundary column of the raw output is not a smooth function and should
+not be read as one: it is σ at whichever coarse grid point happened to be the
+last one that settled, not at the boundary itself.)*
+
+**And then the actual finding, which came from reading the solver rather than
+the table.** Item 11's own estimate is *the pilot's drag on an 8 m arm, plus the
+lines sweeping*. Both of those are **swing dampers**: they oppose the pilot's
+motion *relative to the air*, which on a swinging pendulum includes L·q̇.
+
+The model has neither. `harnessDragBody` is built from the **aircraft's**
+airspeed vector and applied to the bob:
+
+```
+harnessDragBody = airspeedBody * (-harnessDragN / airspeed)
+```
+
+so it is a force along the flight path whose magnitude depends on flight speed —
+and it **cannot oppose the swing**, because the bob's own velocity through the
+air never enters it. The lines' drag never reaches the bob at all: it becomes a
+moment on the canopy. There is no aerodynamic term anywhere in this solver
+proportional to the swing rate. **The only thing proportional to the swing rate
+is `swingDampingRatio` itself.**
+
+That reframes the whole of §§55–58. What those measured is real but is *not* the
+mechanism item 11 names: it is a speed-dependent force applied at the bob, which
+damps the phugoid by modulating the pendulum's driving term through the speed
+oscillation. The genuine swing damper — drag opposing L·q̇ — has never been in
+the model, which is exactly why a coefficient has been standing in for it since
+Level 3.
+
+**The next iteration is therefore not another probe. It is the missing term.**
+The pilot's velocity through the air is the aircraft's airspeed plus the link
+rate crossed into the link arm; the drag on it follows from the same
+`InstalledDragSpec` already in the file, and the lines sweeping is the same
+integral over the line length. Neither is a dial — both are consequences of
+geometry the solver already has. And item 11's 0.06 is a *prediction* of what
+they are worth, made before any of this, which makes the next run a test rather
+than a calibration.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

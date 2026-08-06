@@ -1046,13 +1046,32 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
     and the model carries too little of it — which is item 12 at the harness
     (§56). The *form* of item 11's answer is now known; the *magnitude* is not.
     The glide-landing amount buys 0.05 of the 0.29.
-  - **THE NEXT TEST IS THE ONE THIS ITEM HAS WANTED FOR ELEVEN LEVELS.** Sweep
-    the harness drag well past the glide-landing value and find the ratio
-    boundary at each. If pilot drag is the mechanism there is an amount of it at
-    which the aircraft is stable near the honest 0.06 — and that amount, against
-    a real pilot's measured drag, is the whole of the question. The wing stops
-    being physical partway up the sweep, which is fine: it is a mechanism probe,
-    not a wing.
+  - **THE MAGNITUDE, MEASURED (§59): a sixth, and the rest is elsewhere.** Drag
+    at the bob reaches this item's honest 0.06 — but at **3.2 m² of extra drag
+    area, ten times the modelled pilot, on a wing gliding 2.86 against a
+    published 9.5.** At a credible pilot drag (0.199 m², the only row that still
+    glides 9.51) it buys 0.05 of the 0.29. Each doubling of pilot drag buys
+    about another 0.05. So "the installed drag is too low" is eliminated as the
+    *whole* answer, quantitatively.
+  - **THE TERM THIS ITEM NAMES IS NOT IN THE MODEL (§59).** The estimate at the
+    top of this item is *the pilot's drag on an 8 m arm, plus the lines
+    sweeping*, and both are **swing dampers** — they oppose the pilot's motion
+    relative to the air, which on a swinging pendulum includes L·q̇. The solver
+    has neither. `harnessDragBody` is built from the **aircraft's** airspeed and
+    so cannot oppose the swing; the lines' drag becomes a canopy moment and
+    never reaches the bob. **Nothing aerodynamic in this solver is proportional
+    to the swing rate — the only such term is `swingDampingRatio` itself**,
+    which is precisely why it has been standing in since Level 3. What §§55–58
+    measured is real and is a *different* mechanism: a speed-dependent force at
+    the bob.
+  - **NEXT, AND IT IS THE MISSING TERM RATHER THAN ANOTHER PROBE.** The pilot's
+    velocity through the air is the aircraft's airspeed plus the link rate
+    crossed into the link arm; its drag follows from the `InstalledDragSpec`
+    already here, and the lines sweeping is the same integral over the line
+    length. Neither is a dial — both are consequences of geometry the solver
+    already has. This item's 0.06 was derived from exactly those two terms
+    before any of this work, so running them is a **test** of a standing
+    prediction and not a calibration.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

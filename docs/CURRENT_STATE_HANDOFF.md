@@ -555,12 +555,27 @@ The v1–v4 goal is not complete until these are addressed:
    The form of the answer is known; the magnitude is not — the glide-landing
    amount buys 0.05 of the 0.29.
 
-   **The next experiment is the one item 11 has wanted for eleven levels:**
-   sweep the harness drag well past the glide-landing value and find the ratio
-   boundary at each. If there is an amount of pilot drag at which the aircraft
-   is stable near 0.06, that amount — against a real pilot's measured drag — is
-   the whole question. The wing stops being physical partway up the sweep, which
-   is fine: it is a mechanism probe, not a wing.
+   **That has run, and it bounds item 11 from both sides (§59).** Drag at the
+   bob reaches the honest 0.06 — at 3.2 m² of extra drag area, ten times the
+   modelled pilot, on a wing gliding 2.86. At a credible pilot drag it buys 0.05
+   of the 0.29, a sixth. "The installed drag is too low" is therefore eliminated
+   as the *whole* answer.
+
+   **And reading the solver turned up the thing that matters more.** Item 11's
+   own estimate names *the pilot's drag on an 8 m arm, plus the lines sweeping*
+   — both **swing dampers**, opposing the pilot's motion relative to the air,
+   which includes L·q̇. The model has neither: `harnessDragBody` is built from
+   the *aircraft's* airspeed and cannot oppose the swing, and line drag becomes
+   a canopy moment that never reaches the bob. **Nothing aerodynamic here is
+   proportional to the swing rate except `swingDampingRatio` itself.** That is
+   why it has stood in since Level 3, and it means §§55–58 measured a real but
+   *different* mechanism.
+
+   **So the next step is the missing term, not another probe:** give the bob its
+   own airspeed (aircraft airspeed plus link rate crossed into the link arm) and
+   add the lines' sweeping drag over the same geometry. Neither is a dial. Item
+   11's 0.06 was derived from exactly those two terms years of work ago, which
+   makes the next run a test of a standing prediction.
 
    **Read §56 before touching item 12**, which it may matter to more: the
    missing drag applied at the harness lands glide, trim speed *and* sink

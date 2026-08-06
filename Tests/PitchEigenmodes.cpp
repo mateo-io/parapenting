@@ -4604,6 +4604,28 @@ void ApplicationPointCheck(
 //   * The boundary stops falling. Then the linear relation of section 58 is
 //     local, and the extrapolation behind all of this is wrong.
 //
+// WHAT IT CAME BACK WITH (PHYSICS_LEARNINGS section 59): the middle one. The
+// boundary reaches 0.06, so drag at the bob CAN pay the whole coefficient - at
+// 3.2 m2 of extra area, ten times the modelled pilot, on a wing gliding 2.86
+// against a published 9.5. At a credible pilot drag, the 0.199 row which is
+// also the only one still gliding 9.51, it buys 0.05 of the 0.29. A sixth, and
+// each doubling of pilot drag buys about another 0.05.
+//
+// The sigma-at-boundary column is NOT a smooth function and must not be read as
+// one: it is sigma at whichever coarse grid point last settled, not at the
+// boundary.
+//
+// The finding that matters came from reading the solver rather than this table.
+// Item 11's estimate names the pilot's drag on an 8 m arm PLUS THE LINES
+// SWEEPING, and both are swing dampers - they oppose the pilot's motion
+// relative to the air, which on a swinging pendulum includes L*qdot. The model
+// has neither. `harnessDragBody` is built from the AIRCRAFT's airspeed, so it
+// cannot oppose the swing; line drag becomes a canopy moment and never reaches
+// the bob. Nothing aerodynamic in this solver is proportional to the swing rate
+// except swingDampingRatio itself. So sections 55-58 measured a real but
+// DIFFERENT mechanism, and the next step is the missing term rather than
+// another probe.
+//
 // The scan walks the ratio DOWN and stops at the first one that does not
 // settle, because the boundary is monotone in every table this axis has
 // produced and paying for the rows below it buys nothing.

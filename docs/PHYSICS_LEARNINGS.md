@@ -2305,6 +2305,81 @@ relation has no term for. If σ is flat in the arm, the harness and canopy cases
 differ by something other than height — which would mean §56's headline is also
 mis-explained, though still measured.
 
+## 58. σ is linear in the height the drag acts at, and that height is what `swingDampingRatio` has been standing in for
+
+§56 had two aircraft and a factor of two between them; §57 killed the story
+attached to that and left the fact sharper. This turns the two points into a
+function.
+
+**The sweep that was named was not the one available.** `harnessBelowCanopyM`
+looks like the arm to vary, but it is the pendulum's own geometry — moving it
+moves the baseline harness drag and the line moment too, so the sweep would
+change three things and credit one. And a pendulum's bob is at the end of the
+link by construction; there is no height for it to be at. What *is* free is how
+much of the extra force pushes the bob, with the rest applied at the canopy
+where its arm is zero. The resultant's height moves continuously with that
+fraction.
+
+**Every row re-bisected to the published glide**, because the first pass held
+the drag area fixed instead — on the argument that the total force does not
+depend on the fraction, which is true of the force and false of the aircraft —
+and the glide walked 9.51 to 9.72 across the sweep. The table's own control
+caught it.
+
+| share at pilot | Cd·A | glide | period | σ | speed | incidence | articulation |
+|---|---|---|---|---|---|---|---|
+| 1.00 | 0.199 | 9.51 | 16.83 s | −0.0328 | 10.64 | 4.84° | 0.290 |
+| 0.75 | 0.213 | 9.51 | 15.74 s | −0.0280 | 10.42 | 5.28° | 0.273 |
+| 0.50 | 0.227 | 9.49 | 14.79 s | −0.0240 | 10.20 | 5.72° | 0.260 |
+| 0.25 | 0.237 | 9.50 | 14.07 s | −0.0196 | 10.02 | 6.13° | 0.250 |
+| 0.00 | 0.246 | 9.49 | 13.46 s | −0.0160 | 9.85 | 6.54° | 0.242 |
+
+**σ is monotone and very nearly linear in the fraction** — successive steps of
+0.0048, 0.0040, 0.0044, 0.0036 — across a factor of 2.05 in damping at constant
+glide. The application point is the whole story.
+
+**The zero end is an independent check and it passes to 0.6%.** Fraction 0 puts
+a bare force at the canopy reference; §55's canopy wing puts distributed drag
+through the VSM at the section control points, changing the local flow and the
+solve. They are different constructions of "drag at the canopy" and they land at
+σ −0.0160 and −0.0159.
+
+**The confound that cannot be removed, and why it does not explain the trend.**
+Incidence is an output, not an input, and it drifts 4.84° → 6.54° across the
+table. But the model's own pitch loop gain goes as 1/CL², so higher incidence is
+higher CL is a *lower* loop gain is *more* stable — and the high-incidence end
+of this sweep is the *least* stable. The trim drift works against the σ trend
+rather than producing it. That is an argument and not a measurement, and it is
+labelled as one in the output.
+
+**Articulation tracks stability a fifth time**, 0.290 → 0.242 down the same
+column. Five instances now, on three axes — ratio (§53), drag location (§57),
+and application height here — and still nothing that uses it.
+
+**What this means for item 11, which is the point.** Item 11 has said since it
+was written that the honest ratio, *estimated from what physically damps the
+swing — the pilot's drag on an 8 m arm, plus the lines sweeping — is nearer
+0.06* against the 0.35 the model needs. This sweep measures that same mechanism
+from the other end: drag applied at the bob damps the phugoid, drag applied at
+the canopy does not, and σ is linear in how much of it acts at the bob. **The
+pilot's own drag is not an analogue of `swingDampingRatio`; it is the physical
+quantity the coefficient is standing in for**, and the model has been carrying
+too little of it — which is item 12, at the harness rather than the section
+(§56).
+
+That is the first mechanism-shaped answer item 11 has had. It is worth being
+precise about how much it explains: the glide-landing amount of harness drag
+buys 0.05 of the 0.29 (§56). The *form* is now known and the *magnitude* is not,
+and those are different claims.
+
+**The next test follows directly and is the one item 11 has wanted for eleven
+levels.** Sweep the harness drag well past the glide-landing value and find the
+ratio boundary at each. If pilot drag is the mechanism, there is some amount of
+it at which the aircraft is stable at a ratio near the honest 0.06 — and that
+number, against a real pilot's measured drag, is the whole of item 11's
+question. The wing stops being physical partway up that sweep, which is fine:
+it is a mechanism probe, not a wing.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

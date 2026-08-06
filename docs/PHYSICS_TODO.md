@@ -1028,15 +1028,31 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
     link mechanism were looking at the wrong object. Articulation also tracks
     stability for a fourth time, now on a second axis (§53 had three, all on
     ratio).
-  - **Next, and it turns two points into a function:**
-    `InstalledDragSpec.harnessBelowCanopyM` is the 7.8 m arm the harness drag
-    acts on. Hold the drag fixed and sweep the arm. Monotone in the arm, heading
-    for the canopy wing's σ as the arm goes to zero, means height is the whole
-    story and the arm is doing work the classical relation has no term for —
-    which it must be, because the classical `ζ = CD/(CL√2)` predicts +15% for
-    this glide change and the harness wing delivers +63%. Flat in the arm means
-    the two cases differ by something other than height, and §56's headline is
-    measured but mis-explained too.
+  - **σ IS LINEAR IN THE HEIGHT THE DRAG ACTS AT, and that height is what this
+    coefficient has been standing in for (§58).** The arm sweep as named was not
+    available — `harnessBelowCanopyM` is the pendulum's own geometry and moving
+    it moves three things — so the sweep is the *share* of the extra drag that
+    pushes the bob, with the rest applied at the canopy where its arm is zero,
+    every row re-bisected to the published glide. σ runs −0.0328 → −0.0280 →
+    −0.0240 → −0.0196 → −0.0160 from all-at-pilot to none, monotone and nearly
+    linear, a factor of 2.05 at constant glide. The zero end lands at −0.0160
+    against §55's independently-constructed canopy wing at −0.0159.
+  - **This item's own opening estimate is the mechanism.** It has said from the
+    start that the ratio estimated from what physically damps the swing — the
+    pilot's drag on an 8 m arm plus the lines sweeping — is nearer 0.06. §58
+    measures that from the other end: drag at the bob damps the phugoid, drag at
+    the canopy does not. The pilot's drag is not an analogue of
+    `swingDampingRatio`, it is the physical quantity the coefficient replaces,
+    and the model carries too little of it — which is item 12 at the harness
+    (§56). The *form* of item 11's answer is now known; the *magnitude* is not.
+    The glide-landing amount buys 0.05 of the 0.29.
+  - **THE NEXT TEST IS THE ONE THIS ITEM HAS WANTED FOR ELEVEN LEVELS.** Sweep
+    the harness drag well past the glide-landing value and find the ratio
+    boundary at each. If pilot drag is the mechanism there is an amount of it at
+    which the aircraft is stable near the honest 0.06 — and that amount, against
+    a real pilot's measured drag, is the whole of the question. The wing stops
+    being physical partway up the sweep, which is fine: it is a mechanism probe,
+    not a wing.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

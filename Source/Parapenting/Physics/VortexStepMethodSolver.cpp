@@ -92,11 +92,25 @@ InstalledDragResult EvaluateInstalledDrag(
     // so a last-bit difference in the harness drag walks into a different fold
     // path. A hook that defaults to off has to be bit-identical when it is off,
     // and reassociating a product is not bit-identical.
+    //
+    // The split below keeps that promise a second time, and it is why the two
+    // `if`s are shaped the way they are rather than as one expression: at the
+    // default fraction of 1 the pilot's share IS the whole extra, the second
+    // `if` is skipped, and both statements reduce to exactly the arithmetic
+    // that produced sections 56 and 57. Anything else would silently re-derive
+    // those numbers.
+    const double extraDragN = spec.extraDragAreaM2 != 0.0
+        ? dynamicPressure * spec.extraDragAreaM2 : 0.0;
+    const double extraAtPilotN = extraDragN * spec.extraDragAtPilotFraction;
     result.harnessDragN = dynamicPressure * spec.harnessAreaM2
         * spec.harnessDragCoefficient;
-    if (spec.extraDragAreaM2 != 0.0)
-        result.harnessDragN += dynamicPressure * spec.extraDragAreaM2;
+    if (extraAtPilotN != 0.0) result.harnessDragN += extraAtPilotN;
     result.totalDragN = result.lineDragN + result.harnessDragN;
+    // The share that acts at the canopy still slows the aircraft; it just does
+    // not push the bob, and its arm about the canopy is zero so it makes no
+    // moment either.
+    if (extraDragN != extraAtPilotN)
+        result.totalDragN += extraDragN - extraAtPilotN;
 
     // The harness drag acts a long way below the canopy, so it pitches the
     // wing nose-down as well as slowing it. Lines are spread over that span,

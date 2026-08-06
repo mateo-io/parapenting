@@ -512,6 +512,12 @@ public:
     double HarnessExtraDragAreaM2() const
         { return InstalledDrag.extraDragAreaM2; }
 
+    // How much of that extra drag pushes the pendulum bob rather than acting at
+    // the canopy. 1 by default, which is the harness wing of §56; sweeping it to
+    // 0 holds the force and the glide fixed and moves only where it is applied.
+    void SetHarnessExtraDragAtPilotFraction(double fraction)
+        { InstalledDrag.extraDragAtPilotFraction = fraction; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }

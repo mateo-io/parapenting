@@ -693,6 +693,10 @@ struct AddedDrag
     // Added to the harness as a Cd times A in m2: the same drag at the PILOT,
     // 7.8 m lower.
     double harnessAreaM2 = 0.0;
+    // How much of `harnessAreaM2` acts on the pilot rather than at the canopy.
+    // 1 is section 56's harness wing; 0 is the same force with no share of it
+    // pushing the pendulum bob.
+    double atPilotFraction = 1.0;
 };
 
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
@@ -705,6 +709,7 @@ OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     out.solver.SetLinkDampingReference(reference);
     out.solver.SetSectionDragOffset(added.sectionOffset);
     out.solver.SetHarnessExtraDragAreaM2(added.harnessAreaM2);
+    out.solver.SetHarnessExtraDragAtPilotFraction(added.atPilotFraction);
 
     // The same criterion as `pitch_axis_trace`: ten seconds whose incidence
     // spread is under 0.01 degrees. A fixed settle would be a guess, and the
@@ -4170,7 +4175,7 @@ void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
 // two wings rather than two numbers that happen to look alike.
 std::pair<double, Trimmed> BisectToGlide(
     const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
-    bool atHarness, int maximumSeconds)
+    bool atHarness, int maximumSeconds, double atPilotFraction = 1.0)
 {
     constexpr double PublishedGlide = 9.5;
     double low = 0.0;
@@ -4181,7 +4186,7 @@ std::pair<double, Trimmed> BisectToGlide(
     {
         value = 0.5 * (low + high);
         const AddedDrag added = atHarness
-            ? AddedDrag{0.0, value} : AddedDrag{value, 0.0};
+            ? AddedDrag{0.0, value, atPilotFraction} : AddedDrag{value, 0.0};
         trimmed = TrimWith(canopy, linePlan, 0.35, added, maximumSeconds);
         if (trimmed.departed || !trimmed.settled
             || trimmed.glide < PublishedGlide)
@@ -4436,6 +4441,229 @@ void PhaseCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "wrong.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Two points into a function: WHERE the drag acts, swept.
+//
+// Section 56 has two aircraft - the same drag at the canopy and at the pilot -
+// and they differ in sigma by a factor of two. Section 57 killed the mechanism
+// that was supposed to explain it and left a sharper fact in its place: the
+// harness wing damps 63% harder with a mode shape indistinguishable from the
+// clean wing's. Two points and no function.
+//
+// The obvious sweep is not available. `harnessBelowCanopyM` looks like the arm
+// to vary, but it is the geometry of the pendulum itself - moving it moves the
+// BASELINE harness drag and the line moment with it, so the sweep would change
+// three things and attribute the result to one. Worse, the bob of a pendulum is
+// at the end of the link by construction; there is no height for it to be at.
+//
+// What IS free is how much of the extra force pushes the bob. The share that
+// does not acts at the canopy, where its arm about the canopy is zero. The
+// resultant's height moves continuously with that fraction, the total force on
+// the system does not change with it at all, and therefore neither does the
+// glide - so this sweep holds the drag AND the trim fixed and varies only the
+// application point. That is a better isolation than the geometric arm would
+// have been, and it is available where the geometric arm is not.
+//
+// THE PREDICTION: sigma monotone in the fraction, from -0.0328 at 1 toward the
+// canopy wing's -0.0159 at 0. Monotone means the application point is the whole
+// story and the classical relation's missing fourfold lives in the arm. Flat
+// means the harness and canopy wings differ by something ELSE - and since
+// section 57 already retracted the story, that would leave section 56's
+// headline measured and unexplained twice over.
+//
+// ONE THING THIS CANNOT DO, stated so the zero end is not over-read: fraction 0
+// is not the same aircraft as section 55's canopy wing. That one adds drag
+// through the VSM at the section control points, which changes the local flow
+// and the solve; this one applies a bare force at the canopy reference. They
+// should be close and they are not identical, and a gap between them at the
+// zero end is a statement about that difference rather than about height.
+//
+// WHAT IT CAME BACK WITH (PHYSICS_LEARNINGS section 58): monotone and nearly
+// linear. Sigma -0.0328, -0.0280, -0.0240, -0.0196, -0.0160 from all-at-pilot
+// to none, at a glide held to 9.49-9.51, a factor of 2.05. The application
+// point is the whole story, and the caveat above resolved the good way: the
+// zero end is -0.0160 against section 55's separately-constructed canopy wing
+// at -0.0159.
+//
+// The consequence is item 11's, and it is the first mechanism-shaped answer
+// that item has had. Item 11 has said from the start that the ratio implied by
+// what physically damps the swing - the pilot's drag on an 8 m arm plus the
+// lines sweeping - is nearer 0.06. This measures the same mechanism from the
+// other end: drag at the bob damps the phugoid and drag at the canopy does not.
+// The pilot's drag is not an ANALOGUE of swingDampingRatio, it is the physical
+// quantity the coefficient replaces. Form known, magnitude not: the
+// glide-landing amount buys 0.05 of the 0.29.
+void ApplicationPointCheck(
+    const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+    double transitionTimeS, int maximumSeconds, double harnessArea)
+{
+    std::printf("SPLIT: the same extra drag, moved continuously from the pilot "
+                "to the canopy. The\ntotal force does not change with the "
+                "fraction, so the glide should not either -\nonly where it "
+                "acts. Predicted: sigma monotone, -0.0328 at 1 toward -0.0159 "
+                "at 0.\n\n");
+    std::printf("  harness Cd.A %.3f m2, bisected to the published glide at "
+                "fraction 1.\n\n", harnessArea);
+
+    std::printf("%12s %9s %9s %10s %11s %10s %12s %13s\n", "at pilot",
+                "Cd.A", "glide", "period", "sigma", "speed", "incidence",
+                "articulation");
+    for (const double fraction : {1.00, 0.75, 0.50, 0.25, 0.00})
+    {
+        // RE-BISECTED AT EVERY FRACTION. The first version of this held the
+        // Cd.A fixed instead, on the argument that the total force does not
+        // depend on the fraction - which is true of the force and false of the
+        // aircraft. Moving the drag to the canopy trims the wing slower and at
+        // higher incidence, which changes the WING's own drag, and the glide
+        // walked 9.51 to 9.72 across the sweep. The table's own warning caught
+        // it. Each row now carries whatever drag lands the published glide at
+        // its own fraction, so the rows differ in application point and not in
+        // how well they glide.
+        const auto [area, areaTrim] = BisectToGlide(
+            canopy, linePlan, true, maximumSeconds, fraction);
+        (void)areaTrim;
+        const AddedDrag added{0.0, area, fraction};
+        const OwnTrim trim = SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                                      DamperReference::World, added);
+        if (trim.departed || !trim.settled)
+        {
+            std::printf("%11.2f %9.3f %9s %10s %11s %10s %12s %13s\n",
+                        fraction, area, "-", "-",
+                        trim.departed ? "DEPARTED" : "no trim", "-", "-", "-");
+            continue;
+        }
+        const Vec3 v = trim.state.velocityWorldMps;
+        const double horizontal = std::sqrt(v.x * v.x + v.y * v.y);
+        const double sink = -v.z;
+        const double glide = sink > 1.0e-6 ? horizontal / sink : 0.0;
+        const double trimSpeed = std::sqrt(v.x * v.x + v.z * v.z);
+        const Spectrum spectrum = Analyse(trim.solver, trim.state,
+                                          transitionTimeS, 1.0, false);
+        Mode phugoid;
+        if (!PhugoidOf(spectrum, phugoid))
+        {
+            std::printf("%11.2f %9.3f %9.2f %10s %11s %9.2fm %11.2fd %13s\n",
+                        fraction, area, glide, "-", "no mode", trimSpeed,
+                        trim.incidenceRad * 180.0 / Pi, "-");
+            continue;
+        }
+        const Shape shape = ShapeOf(spectrum, spectrum.phi, transitionTimeS,
+                                    trimSpeed, 8.0, 40.0);
+        std::printf("%11.2f %9.3f %9.2f %9.2fs %+11.4f %9.2fm %11.2fd "
+                    "%13.3f\n",
+                    fraction, area, glide, phugoid.periodS, phugoid.growthPerS,
+                    trimSpeed, trim.incidenceRad * 180.0 / Pi,
+                    shape.valid ? shape.articulation : 0.0);
+    }
+    std::printf("\n  The glide column is the control and it is now flat by "
+                "construction; the Cd.A\n  column is what that cost, and a "
+                "Cd.A that climbs steeply toward the canopy end\n  is the "
+                "same fact as the first version's drifting glide, moved "
+                "somewhere it can\n  be read. INCIDENCE IS STILL NOT HELD, "
+                "and cannot be: it is an output. Read it\n  against the loop "
+                "gain, which goes as 1/CL^2 - higher incidence is higher CL "
+                "is a\n  LOWER loop gain is more stable, so the incidence "
+                "drift across this table works\n  AGAINST the sigma trend "
+                "rather than producing it.\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// How much of the 0.29 can pilot drag actually pay for?
+//
+// Section 58 established the FORM of item 11's answer: sigma is linear in how
+// much of the drag acts at the pendulum bob, drag at the canopy does not damp
+// the phugoid at all, and item 11's own opening estimate - the ratio implied by
+// the pilot's drag on an 8 m arm plus the lines sweeping is nearer 0.06 - is
+// therefore a description of the mechanism rather than a coincidence. What it
+// did NOT establish is the magnitude. The glide-landing amount of harness drag
+// buys 0.05 of ratio against the 0.29 the item needs.
+//
+// This asks the magnitude question directly, and it is the one item 11 has
+// wanted for eleven levels: put more and more drag on the pilot, and find the
+// lowest ratio the aircraft still settles at with each.
+//
+// THE WING STOPS BEING PHYSICAL PARTWAY UP THIS SWEEP AND THAT IS FINE. A
+// harness carrying several square metres of drag area is not a paraglider, and
+// the glide column is printed so that where it stops being one is visible
+// rather than assumed. This is a mechanism probe: the question it answers is
+// "how much pilot drag would it take", and the answer is worth having even
+// where the amount is absurd - especially there, because an absurd amount is
+// how this ends up eliminated as the whole explanation.
+//
+// THE PREDICTION, and it splits three ways rather than two:
+//
+//   * The boundary falls to 0.06 at a drag a real pilot could plausibly have -
+//     the base harness is 0.32 m2 at Cd 1.05, so 0.336 m2 of Cd.A, and
+//     something under twice that would be credible for an unfaired pilot in a
+//     school harness. Then item 11 is SOLVED and its answer is that the
+//     installed drag is too low.
+//   * The boundary falls to 0.06 only at a drag several times any real pilot's.
+//     Then pilot drag is the mechanism and NOT the whole magnitude, and item 11
+//     needs this plus something else. This is the outcome section 58's 0.05 of
+//     0.29 points at.
+//   * The boundary stops falling. Then the linear relation of section 58 is
+//     local, and the extrapolation behind all of this is wrong.
+//
+// The scan walks the ratio DOWN and stops at the first one that does not
+// settle, because the boundary is monotone in every table this axis has
+// produced and paying for the rows below it buys nothing.
+void PilotDragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                    double transitionTimeS, int maximumSeconds)
+{
+    std::printf("PILOT DRAG: how much of item 11's 0.29 can drag at the bob "
+                "pay for? More and\nmore drag on the pilot, and the lowest "
+                "ratio that still settles with each. The\nwing stops being "
+                "physical partway up this table - the glide column is where "
+                "to\nsee that.\n\n");
+    std::printf("  the base harness is 0.32 m2 at Cd 1.05, so 0.336 m2 of "
+                "Cd.A before any of\n  this is added.\n\n");
+
+    std::printf("%10s %9s %10s %12s %12s %13s\n", "extra Cd.A", "glide",
+                "speed", "boundary", "sigma there", "incidence");
+    for (const double area : {0.199, 0.400, 0.800, 1.600, 3.200})
+    {
+        double boundary = 0.0, sigmaThere = 0.0, glide = 0.0, speed = 0.0;
+        double incidence = 0.0;
+        bool any = false;
+        for (const double ratio : {0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.06})
+        {
+            const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
+                                          maximumSeconds,
+                                          DamperReference::World,
+                                          AddedDrag{0.0, area, 1.0});
+            if (trim.departed || !trim.settled) break;
+            const Spectrum spectrum = Analyse(trim.solver, trim.state,
+                                              transitionTimeS, 1.0, false);
+            Mode phugoid;
+            if (!PhugoidOf(spectrum, phugoid)) break;
+            const Vec3 v = trim.state.velocityWorldMps;
+            const double horizontal = std::sqrt(v.x * v.x + v.y * v.y);
+            const double sink = -v.z;
+            boundary = ratio;
+            sigmaThere = phugoid.growthPerS;
+            glide = sink > 1.0e-6 ? horizontal / sink : 0.0;
+            speed = std::sqrt(v.x * v.x + v.z * v.z);
+            incidence = trim.incidenceRad * 180.0 / Pi;
+            any = true;
+        }
+        if (!any)
+        {
+            std::printf("%10.3f %9s %10s %12s %12s %13s\n", area, "-", "-",
+                        "none at 0.35", "-", "-");
+            continue;
+        }
+        std::printf("%10.3f %9.2f %9.2fm %12.2f %+12.4f %12.2fd\n", area,
+                    glide, speed, boundary, sigmaThere, incidence);
+    }
+    std::printf("\n  The boundary column is the LOWEST ratio that still "
+                "settles, so a table that\n  walks it down to 0.06 at a "
+                "credible pilot's drag answers item 11 outright. One\n  that "
+                "reaches 0.06 only at several times any real pilot says pilot "
+                "drag is the\n  mechanism and not the whole magnitude. One "
+                "that stops falling says section 58's\n  linear relation was "
+                "local and the extrapolation was wrong.\n\n");
+}
+
 // What the two tables came back with, written where the numbers are rather
 // than only in PHYSICS_LEARNINGS.
 void Verdict()
@@ -4523,6 +4751,8 @@ int main(int argc, char** argv)
     bool drag = false;
     bool height = false;
     bool phase = false;
+    bool split = false;
+    bool pilot = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -4537,6 +4767,8 @@ int main(int argc, char** argv)
         if (argument == "--drag") drag = true;
         if (argument == "--height") height = true;
         if (argument == "--phase") phase = true;
+        if (argument == "--split") split = true;
+        if (argument == "--pilot") pilot = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -4717,6 +4949,23 @@ int main(int argc, char** argv)
         // which is the control `--shape` has always run and this needs more,
         // not less - the whole claim is a difference of two phases.
         PhaseCheck(canopy, linePlan, 0.10, budget, sectionOffset, harnessArea);
+    }
+
+    if (split)
+    {
+        const int budget = settleSeconds < 420 ? 180 : 3600;
+        // The same wing `--height` and `--phase` use, bisected the same way.
+        const auto [harnessArea, harnessTrim] =
+            BisectToGlide(canopy, linePlan, true, budget);
+        (void)harnessTrim;
+        ApplicationPointCheck(canopy, linePlan, 0.25, budget, harnessArea);
+    }
+
+    if (pilot)
+    {
+        // The magnitude question item 11 has wanted for eleven levels.
+        PilotDragCheck(canopy, linePlan, 0.25,
+                       settleSeconds < 420 ? 180 : 3600);
     }
 
     if (project)

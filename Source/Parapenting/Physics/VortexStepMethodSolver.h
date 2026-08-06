@@ -218,6 +218,20 @@ struct InstalledDragSpec
     // drag down HERE, on the pilot, is the difference between those two, and it
     // is a difference no amount of measuring the canopy case can produce.
     double extraDragAreaM2 = 0.0;
+    // How much of that extra drag acts on the PILOT rather than at the canopy.
+    // 1 is all of it on the pilot, which is what section 56 measured; 0 puts
+    // the same force at the canopy, where its arm about the canopy is zero and
+    // it pushes the pendulum bob not at all.
+    //
+    // This is the sweepable form of "the height at which the drag acts", and it
+    // exists because the obvious form is not available: the geometric arm is
+    // not a free parameter of a pendulum whose bob is at the end of the link.
+    // What IS free is how much of the force pushes the bob, and the resultant's
+    // height moves with it. The total force on the system does not change with
+    // this fraction, so a sweep holds the drag AND the glide fixed and varies
+    // only where it is applied - which is exactly the isolation section 57
+    // asked for.
+    double extraDragAtPilotFraction = 1.0;
 };
 
 struct InstalledDragResult

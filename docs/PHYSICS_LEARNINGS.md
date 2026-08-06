@@ -2631,6 +2631,58 @@ four times. What makes it testable rather than tempting is that the shielding
 allowance is now a lone unknown with a literature behind it, and the line drag
 it implies can be measured against the glide *without* being fitted to it.
 
+## 63. The lines sweeping, measured — and one grid step that flatters the pair
+
+§60 implemented the first of item 11's two named terms and dismissed the second
+by arithmetic: the lines carry 0.098 m² of Cd·A against the harness's 0.336, and
+their sweeping torque takes an extra ∫s³ds/L⁴ = ¼ weighting, so ~7% of a term
+already worth 0.01. That was reasoning, not measurement, and four pieces of
+reasoning have been retracted on this axis. This measures it.
+
+A cable at distance *s* below the hinge sweeps at *s·q̇*, so its damping torque
+carries an *s²* weight the drag area does not. Summing `d·L·s²` over the cascade
+at construction gives an area-moment which, times ½ρ·Cd·V, is a torque per unit
+swing rate. Four wings, because the split is the claim:
+
+| ratio | σ clean | σ pilot | σ lines | σ both |
+|---|---|---|---|---|
+| 0.35 | −0.0201 | −0.0230 | −0.0204 | −0.0229 |
+| 0.30 | not settled | not settled | not settled | **−0.0108** |
+| 0.25 | DEPARTED | not settled | DEPARTED | not settled |
+
+**The estimate holds.** The lines are worth 0.0003 of σ against the pilot term's
+0.0029 — **10%, against an estimated 7%.** Right to the precision that decides
+anything, and §60's conclusion is unchanged: the two terms together move σ by
+14%, which is about **0.01 of coefficient against the 0.29** item 11 needs.
+
+**Two honest limits on that number, and the second matters more.**
+
+*The pair is not additive.* Pilot alone gives −0.0230 and both give −0.0229 —
+adding a damper made the aircraft a shade less damped. The discrepancy from
+additivity, 0.0004, is **larger than the line term itself**, so "the lines are
+worth 10% of the pilot's term" sits at the edge of what this instrument
+resolves. The order is solid; the second digit is not.
+
+*The boundary moves one grid step, and that flatters the pair.* At ratio 0.30
+the pair **settles** where clean, pilot-alone and lines-alone all fail to — so
+on the 0.35/0.30/0.25 grid this axis has always used, the boundary goes from
+0.35–0.30 to 0.30–0.25. Read alone that looks like 0.05 of coefficient, five
+times what σ says. Both are true and the reconciliation is that **0.30 was
+already marginal**: §54 recorded it neither settling in 3600 s nor departing, at
+σ ≈ −0.008. A 14% improvement is enough to tip a ratio sitting on the settling
+criterion across it, and a coarse grid then reports a whole step. This refines
+§60's "the boundary does not move" — with both terms it does — without changing
+what the terms are worth.
+
+**Item 11's founding estimate is now fully tested rather than half tested.** Both
+named terms are implemented, both measured, and together they are worth a
+thirtieth of what the estimate claimed. The conclusion of §60 stands on two
+measurements instead of one measurement and one argument.
+
+Both terms default off, for the reason §61 gave: they change what the aircraft
+does, and that is a decision to take on evidence rather than as a side effect of
+a measurement.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

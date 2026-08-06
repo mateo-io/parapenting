@@ -703,6 +703,8 @@ struct AddedDrag
     // this struct it is not an amount of anything: it is either the right
     // airflow or the wrong one.
     bool pilotReferencedDrag = false;
+    // The lines sweeping: the second of item 11's two named terms.
+    bool lineSweepDamping = false;
 };
 
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
@@ -716,6 +718,7 @@ OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     out.solver.SetSectionDragOffset(added.sectionOffset);
     out.solver.SetHarnessExtraDragAreaM2(added.harnessAreaM2);
     out.solver.SetHarnessExtraDragAtPilotFraction(added.atPilotFraction);
+    out.solver.SetLineSweepDamping(added.lineSweepDamping);
     out.solver.SetHarnessDragReference(
         added.pilotReferencedDrag
             ? CoupledParagliderSolver::HarnessDragReference::Pilot
@@ -4266,6 +4269,7 @@ void HeightCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
             if (which == 2)
                 outcome = trim.departed ? "DEPARTED settling"
                     : (trim.settled ? "settled" : "not settled");
+            (void)0;
             if (trim.departed || !trim.settled) continue;
             const Spectrum spectrum = Analyse(trim.solver, trim.state,
                                               transitionTimeS, 1.0, false);
@@ -4741,17 +4745,23 @@ void SwingDragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "11 predicted a ratio 'nearer 0.06' from these terms before\n"
                 "any of this work existed, so this is a test of that.\n\n");
 
-    std::printf("%8s %14s %13s %14s %13s\n", "ratio", "clean", "sigma clean",
-                "pilot airflow", "sigma pilot");
-    for (const double ratio : {0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.06})
+    // Four wings, because the pair has to be ATTRIBUTABLE: clean, each named
+    // term alone, and both together. Running only "both" would confirm a total
+    // and leave the split to arithmetic, and the split is the claim - section
+    // 60 estimated the lines at ~7% of the pilot's term and dismissed them on
+    // that basis.
+    std::printf("%8s %13s %13s %13s %13s\n", "ratio", "sigma clean",
+                "sigma pilot", "sigma lines", "sigma both");
+    for (const double ratio : {0.35, 0.30, 0.25})
     {
-        double sigma[2] = {0.0, 0.0};
-        bool have[2] = {false, false};
-        const char* outcome[2] = {"", ""};
-        for (int which = 0; which < 2; ++which)
+        double sigma[4] = {0.0, 0.0, 0.0, 0.0};
+        bool have[4] = {false, false, false, false};
+        const char* outcome[4] = {"", "", "", ""};
+        for (int which = 0; which < 4; ++which)
         {
             AddedDrag added;
-            added.pilotReferencedDrag = which == 1;
+            added.pilotReferencedDrag = which == 1 || which == 3;
+            added.lineSweepDamping = which == 2 || which == 3;
             const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
                                           maximumSeconds,
                                           DamperReference::World, added);
@@ -4765,14 +4775,19 @@ void SwingDragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
             sigma[which] = phugoid.growthPerS;
             have[which] = true;
         }
-        std::printf("%8.2f %14s", ratio, outcome[0]);
-        if (have[0]) std::printf(" %+13.4f", sigma[0]);
-        else std::printf(" %13s", "-");
-        std::printf(" %14s", outcome[1]);
-        if (have[1]) std::printf(" %+13.4f", sigma[1]);
-        else std::printf(" %13s", "-");
+        std::printf("%8.2f", ratio);
+        for (int which = 0; which < 4; ++which)
+        {
+            if (have[which]) std::printf(" %+13.4f", sigma[which]);
+            else std::printf(" %13s", outcome[which]);
+        }
         std::printf("\n");
     }
+    std::printf("\n  Section 60 estimated the lines at about 7%% of the "
+                "pilot's term, from their\n  0.098 m2 of Cd.A against the "
+                "harness's 0.336 and a quarter-weighting for\n  sweeping. The "
+                "lines column against the pilot column is that estimate's "
+                "test.\n");
     std::printf("\n  The clean column is the control and it has to reproduce "
                 "0.35-0.30, which is\n  what this axis has reported for eleven "
                 "levels. The pilot column is the\n  prediction: how far down "

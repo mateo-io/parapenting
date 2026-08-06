@@ -118,6 +118,40 @@ CoupledParagliderSolver::CoupledParagliderSolver(
         InstalledDrag.lineProjectedAreaM2 = projected;
     }
 
+    // The same cascade, weighted for SWINGING rather than for flying.
+    //
+    // A cable at distance s below the hinge sweeps at s*qdot when the pilot
+    // swings, and drag goes as the square of that, so the damping torque it
+    // makes about the hinge carries an s^2 weight where the drag area carried
+    // none. Summing `d * L * s^2` here gives an area-moment in m^4 which, times
+    // 0.5 rho Cd V, is a torque per unit swing rate. §60 named this term and
+    // estimated it at a quarter of the pilot's own weighting; measuring it is
+    // cheaper than arguing about the quarter.
+    //
+    // s is taken at the cable's midpoint, measured from the hinge along the
+    // link. That is exact for the mains, which run nearly straight down, and it
+    // understates the upper galleries slightly because they fan outward - which
+    // is the conservative direction for a term being tested against an estimate
+    // that says it is negligible.
+    {
+        double areaMoment = 0.0;
+        for (const CableElement& cable : Lines.elements)
+        {
+            if (cable.nodeA < 0 || cable.nodeB < 0) continue;
+            const Vec3 a = Lines.nodes[cable.nodeA].designM;
+            const Vec3 b = Lines.nodes[cable.nodeB].designM;
+            const double length = Length(b - a);
+            if (length < 1.0e-9) continue;
+            // Distance from the hinge, which sits at the canopy origin in the
+            // design frame. The payload hangs below, so this is a depth.
+            const Vec3 mid{0.5 * (a.x + b.x), 0.5 * (a.y + b.y),
+                           0.5 * (a.z + b.z)};
+            const double s = Length(mid - Lines.canopyDesignOriginM);
+            areaMoment += cable.diameterM * length * s * s;
+        }
+        LineSweepAreaMomentM4 = areaMoment;
+    }
+
     // The chord the brake bends, measured where the brake fan lands rather
     // than averaged over a span it does not reach. On this wing the fan takes
     // the trailing edge between 22% and 86% of the half span, where the chord
@@ -1366,9 +1400,27 @@ structureSolve:
         + harnessDragWorld / std::max(1.0, PayloadMass.TotalKg());
     const Vec3 tangentialAccelWorld = relativeAccelWorld
         - linkDirWorld * Dot(linkDirWorld, relativeAccelWorld);
-    const Vec3 linkAngularAccel =
+    Vec3 linkAngularAccel =
         Cross(linkDirWorld, tangentialAccelWorld)
             / std::max(0.5, PendulumLengthM);
+    // The lines sweeping, when it is switched on. The torque is
+    // 0.5 rho Cd V (sum d L s^2) qdot, opposing the link's world rotation, and
+    // it becomes an angular acceleration through the pendulum's inertia about
+    // the hinge, m L^2. Written as an explicit term rather than folded into the
+    // damping below, because the whole point of it is to be a MEASURED
+    // alternative to that coefficient rather than an addition to it.
+    if (LineSweepDamping && LineSweepAreaMomentM4 > 0.0 && airspeed > 1.0e-6)
+    {
+        const double inertia = std::max(1.0, PayloadMass.TotalKg())
+            * std::max(0.5, PendulumLengthM)
+            * std::max(0.5, PendulumLengthM);
+        const double torquePerRate = 0.5 * atmosphere.densityKgM3
+            * InstalledDrag.lineDragCoefficient
+            * InstalledDrag.lineShieldingFactor
+            * LineSweepAreaMomentM4 * airspeed;
+        linkAngularAccel = linkAngularAccel - state.linkRateWorldRadps
+            * (torquePerRate / inertia);
+    }
 
     // Symplectic, and with the damping taken implicitly for the same reason
     // the canopy's is.

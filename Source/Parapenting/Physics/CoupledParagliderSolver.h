@@ -535,6 +535,21 @@ public:
     HarnessDragReference DragReference() const
         { return HarnessDragReferenceValue; }
 
+    // THE LINES SWEEPING - the second of the two terms item 11's opening
+    // estimate names, and the other one §59 found missing. A line at distance s
+    // from the hinge sweeps at s*qdot when the pilot swings, and its drag
+    // opposes that, so the cascade is a rotational damper about the hinge. The
+    // shipped model applies line drag as a canopy moment from the flight-path
+    // airspeed only, so this is absent exactly as the harness term was.
+    //
+    // Off by default for the same reason as the harness reference: it changes
+    // what the aircraft does. §60's arithmetic predicts it is worth about 7% of
+    // a term itself worth 0.01 of coefficient, so this is a CLOSURE
+    // measurement - it cannot change item 11's conclusion, it can only confirm
+    // or refute the estimate that dismissed it.
+    void SetLineSweepDamping(bool on) { LineSweepDamping = on; }
+    bool LineSweepDampingEnabled() const { return LineSweepDamping; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
@@ -625,6 +640,11 @@ private:
     double SectionDragOffsetValue = 0.0;
     HarnessDragReference HarnessDragReferenceValue =
         HarnessDragReference::Aircraft;
+    bool LineSweepDamping = false;
+    // Sum of d * L * s^2 over the cascade, m^4, where s is a cable's distance
+    // from the hinge. Times 0.5 rho Cd V it is a damping torque per unit swing
+    // rate. Measured off the graph at construction, like the drag area.
+    double LineSweepAreaMomentM4 = 0.0;
     LinkDampingReference LinkDampingReferenceValue =
         LinkDampingReference::World;
     bool Profiling = false;

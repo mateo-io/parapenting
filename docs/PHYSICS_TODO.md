@@ -1123,9 +1123,23 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
   - **One SIV answer decides it:** on a 4 m/s symmetric frontal, does an EN-B
     fold 70% or 100%? That belongs in `docs/PILOT_REVIEW_PROTOCOL.md` and in
     Level 9's outstanding external validation.
-  - **What is left to measure here is small and is worth doing for closure:**
-    the lines sweeping, estimated at ~7% of a term worth 0.01. It cannot change
-    the conclusion; it closes the pair.
+  - **THE PAIR IS NOW CLOSED — both named terms implemented and measured
+    (§63).** The lines sweeping is a torque about the hinge with an s² weight,
+    summed off the graph as `d·L·s²`. Measured, the lines are worth **10% of
+    the pilot's term** against an estimated 7%: the arithmetic that dismissed
+    them holds. Together the two terms move σ by 14%, **about 0.01 of
+    coefficient against the 0.29**, so this item's founding estimate is now
+    refuted on two measurements rather than one measurement and one argument.
+  - **One refinement of §60, in the pair's favour:** at ratio 0.30 the two
+    terms together *settle* where clean and either term alone do not, so on the
+    0.35/0.30/0.25 grid the boundary does move one step. That flatters them —
+    0.30 was already marginal (§54: neither settling in 3600 s nor departing, σ
+    ≈ −0.008), so a 14% improvement tips a ratio sitting on the criterion and a
+    coarse grid reports a whole step. Worth 0.01, not 0.05.
+  - **Instrument limit, recorded because it bounds the smaller number:** the
+    pair is not additive — pilot alone −0.0230, both −0.0229 — and the
+    departure from additivity is *larger than the line term itself*. The order
+    of the lines' contribution is solid; its second digit is not.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

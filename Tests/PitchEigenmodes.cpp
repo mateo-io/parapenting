@@ -683,15 +683,28 @@ struct OwnTrim
 
 using DamperReference = CoupledParagliderSolver::LinkDampingReference;
 
+// Extra drag, and WHERE it acts. One struct rather than two parameters,
+// because the whole question `--height` asks is the difference between its two
+// fields and a call site that sets both would be asking something else.
+struct AddedDrag
+{
+    // Added to every section's drag coefficient: drag at the CANOPY.
+    double sectionOffset = 0.0;
+    // Added to the harness as a Cd times A in m2: the same drag at the PILOT,
+    // 7.8 m lower.
+    double harnessAreaM2 = 0.0;
+};
+
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                  double ratio, int maximumSeconds,
                  DamperReference reference = DamperReference::World,
-                 double dragOffset = 0.0)
+                 AddedDrag added = {})
 {
     OwnTrim out{CoupledState{}, CoupledParagliderSolver(canopy, linePlan)};
     out.solver.SetSwingDampingRatio(ratio);
     out.solver.SetLinkDampingReference(reference);
-    out.solver.SetSectionDragOffset(dragOffset);
+    out.solver.SetSectionDragOffset(added.sectionOffset);
+    out.solver.SetHarnessExtraDragAreaM2(added.harnessAreaM2);
 
     // The same criterion as `pitch_axis_trace`: ten seconds whose incidence
     // spread is under 0.01 degrees. A fixed settle would be a guess, and the
@@ -3971,10 +3984,10 @@ struct Trimmed
 };
 
 Trimmed TrimWith(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
-                 double ratio, double dragOffset, int maximumSeconds)
+                 double ratio, AddedDrag added, int maximumSeconds)
 {
     const OwnTrim trim = SettleAt(canopy, linePlan, ratio, maximumSeconds,
-                                  DamperReference::World, dragOffset);
+                                  DamperReference::World, added);
     Trimmed out;
     out.settled = trim.settled;
     out.departed = trim.departed;
@@ -4006,7 +4019,8 @@ void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     for (int step = 0; step < 9; ++step)
     {
         offset = 0.5 * (low + high);
-        atOffset = TrimWith(canopy, linePlan, 0.35, offset, maximumSeconds);
+        atOffset = TrimWith(canopy, linePlan, 0.35, AddedDrag{offset, 0.0},
+                            maximumSeconds);
         if (!atOffset.settled && !atOffset.departed)
         {
             std::printf("  offset %.5f did not settle in %d s - the "
@@ -4017,7 +4031,7 @@ void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
         if (atOffset.departed || atOffset.glide < PublishedGlide) high = offset;
         else low = offset;
     }
-    const Trimmed clean = TrimWith(canopy, linePlan, 0.35, 0.0,
+    const Trimmed clean = TrimWith(canopy, linePlan, 0.35, AddedDrag{},
                                    maximumSeconds);
     std::printf("  calibrated offset %.5f on the section drag coefficient, "
                 "against a solved 0.0157\n  at trim.\n\n", offset);
@@ -4049,10 +4063,11 @@ void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
         const char* outcome[2] = {"", ""};
         for (int which = 0; which < 2; ++which)
         {
-            const double useOffset = which == 0 ? 0.0 : offset;
+            const AddedDrag added =
+                which == 0 ? AddedDrag{} : AddedDrag{offset, 0.0};
             const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
                                           maximumSeconds,
-                                          DamperReference::World, useOffset);
+                                          DamperReference::World, added);
             outcome[which] = trim.departed
                 ? "DEPARTED settling"
                 : (trim.settled ? "settled" : "not settled");
@@ -4084,6 +4099,202 @@ void DragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "question: item 11 needs 0.29 of coefficient explained,\n  and "
                 "the classical estimate above says drag is worth about "
                 "0.006.\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// The same drag, at a different height. Section 55's lead, made into a run.
+//
+// `--drag` found that restoring the wing's missing drag DESTABILISES it: sigma
+// at ratio 0.35 falls from -0.0201 to -0.0159 and 0.30 goes from unsettled to
+// departing. That is backwards from `zeta = CD / (CL sqrt2)`, and the obvious
+// suspect is the assumption under that relation rather than the relation: it is
+// derived for drag acting at the centre of gravity of a RIGID aircraft. This
+// aircraft is two bodies on a link, and section drag acts at the CANOPY, 6.6 m
+// above the pilot. Extra drag up there is also a pitching moment.
+//
+// The experiment separates the two in the only way that can: same aircraft,
+// same total drag, applied at the two ends of the link. The harness already
+// carries drag on the PILOT - `InstalledDragSpec` applies it to the payload and
+// its own comment warns that reaching the canopy through the lines is the whole
+// point of having a pendulum - so the counterpart knob is a Cd times A there.
+//
+// EQUAL GLIDE, NOT EQUAL COEFFICIENT, is what makes it a control. Both wings
+// are bisected to the published 9.5, so they carry the same total drag at trim
+// and differ only in where it is applied. The canopy case's offset times the
+// reference area gives an equal-FORCE estimate of what the harness figure
+// should come out near, and it is printed as a cross-check on the bisection.
+//
+// THE PREDICTION. If section 55's destabilisation is the moment arm, harness
+// drag - which pitches the wing the other way through the link, and which acts
+// on the body that does not carry the lift - should move sigma the OTHER way:
+// at worst neutral, at best more negative than the clean wing's -0.0201. If
+// instead both wings destabilise by about the same amount, the height is
+// irrelevant, drag itself is destabilising on this aircraft, and the lead is
+// dead - which would leave item 11 with no live candidate at all and would make
+// that the finding.
+//
+// The confound from section 55 applies here too and is printed for the same
+// reason: any drag moves the trim. Watch the incidence column - if the harness
+// wing trims somewhere very different from the canopy wing, the two are not
+// only differing in where the drag acts.
+//
+// WHAT IT CAME BACK WITH (PHYSICS_LEARNINGS section 56). Confirmed, and by more
+// than its own margin - the first prediction on this axis in three levels to
+// come back the way it was written:
+//
+//   * sigma at ratio 0.35: -0.0159 at the canopy, -0.0201 clean, -0.0328 at the
+//     HARNESS. The same drag is 63% better damping at one end of the link and
+//     21% worse at the other, so the destabilising quantity is the MOMENT ARM.
+//   * the boundary moves one full step. The harness wing settles at 0.30 with
+//     sigma -0.0200 - the clean wing's own value at 0.35 - does not settle at
+//     0.25, and departs at 0.20. Boundary 0.30-0.25 against the clean
+//     0.35-0.30, which is 0.05 of the 0.29 item 11 needs. A sixth, not the
+//     answer.
+//   * the control held: 0.199 m2 bisected against a 0.279 m2 equal-force
+//     estimate, and the harness wing trims at 10.64 m/s and 4.84 degrees
+//     against the clean wing's 10.60 and 4.92 - so the confound above is small
+//     here, where for the canopy wing at 9.93 and 6.36 it was not.
+//   * and one for item 12, possibly the larger finding: the harness wing lands
+//     glide, speed AND sink at once - 9.51, 10.64, 1.113 against a published
+//     9.50, 10.83, 1.140 - where the section offset lands glide alone. Item 12
+//     has assumed a section term for four levels.
+//
+// Next on this thread, and it needs nothing new: run `--shape` on the harness
+// wing. If the link-swing phase against surge moves the way the sketch above
+// says, the mechanism is closed; if not, this is a real effect with the wrong
+// story attached to it.
+void HeightCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                 double transitionTimeS, int maximumSeconds,
+                 double referenceAreaM2)
+{
+    constexpr double PublishedGlide = 9.5;
+    std::printf("HEIGHT: the same drag at the two ends of the link. Section 55 "
+                "found drag at the\nCANOPY destabilises the wing; the suspect "
+                "is the 6.6 m arm rather than the drag.\nPredicted: harness "
+                "drag moves sigma the other way. Both wings bisected to the "
+                "same\npublished glide, so they differ only in where the drag "
+                "acts.\n\n");
+
+    const auto bisect = [&](bool atHarness)
+    {
+        double low = 0.0;
+        double high = atHarness ? 1.20 : 0.020;
+        double value = 0.0;
+        Trimmed trimmed;
+        for (int step = 0; step < 9; ++step)
+        {
+            value = 0.5 * (low + high);
+            const AddedDrag added = atHarness
+                ? AddedDrag{0.0, value} : AddedDrag{value, 0.0};
+            trimmed = TrimWith(canopy, linePlan, 0.35, added, maximumSeconds);
+            if (trimmed.departed || !trimmed.settled
+                || trimmed.glide < PublishedGlide)
+                high = value;
+            else
+                low = value;
+        }
+        return std::pair<double, Trimmed>(value, trimmed);
+    };
+
+    const auto [sectionOffset, canopyTrim] = bisect(false);
+    const auto [harnessArea, harnessTrim] = bisect(true);
+    const Trimmed clean = TrimWith(canopy, linePlan, 0.35, AddedDrag{},
+                                   maximumSeconds);
+
+    std::printf("  canopy: section Cd offset %.5f, which over %.1f m2 of "
+                "reference area is an\n          equal-force estimate of %.3f "
+                "m2 of Cd.A at the harness.\n", sectionOffset, referenceAreaM2,
+                sectionOffset * referenceAreaM2);
+    std::printf("  harness: %.3f m2 of Cd.A, bisected to the same glide. The "
+                "two agreeing to\n           within a quarter or so is the "
+                "cross-check that this is one drag\n           moved rather "
+                "than two different ones.\n\n", harnessArea);
+
+    std::printf("%16s %10s %10s %10s %12s\n", "wing", "glide", "speed", "sink",
+                "incidence");
+    const auto row = [](const char* name, const Trimmed& t)
+    {
+        std::printf("%16s %10.2f %9.2fm %9.3fm %11.2fd\n", name, t.glide,
+                    t.speedMps, t.sinkMps, t.incidenceDeg);
+    };
+    row("as it flies", clean);
+    row("drag at canopy", canopyTrim);
+    row("drag at harness", harnessTrim);
+    std::printf("%16s %10.2f %9.2fm %9.3fm %11s\n\n", "published", 9.50, 10.83,
+                1.140, "-");
+
+    std::printf("%8s %13s %13s %13s %18s\n", "ratio", "sigma clean",
+                "sigma canopy", "sigma harness", "outcome harness");
+    for (const double ratio : {0.35, 0.30, 0.25})
+    {
+        const AddedDrag cases[3] = {
+            AddedDrag{}, AddedDrag{sectionOffset, 0.0},
+            AddedDrag{0.0, harnessArea}};
+        double sigma[3] = {0, 0, 0};
+        bool have[3] = {false, false, false};
+        const char* outcome = "";
+        for (int which = 0; which < 3; ++which)
+        {
+            const OwnTrim trim = SettleAt(canopy, linePlan, ratio,
+                                          maximumSeconds,
+                                          DamperReference::World,
+                                          cases[which]);
+            if (which == 2)
+                outcome = trim.departed ? "DEPARTED settling"
+                    : (trim.settled ? "settled" : "not settled");
+            if (trim.departed || !trim.settled) continue;
+            const Spectrum spectrum = Analyse(trim.solver, trim.state,
+                                              transitionTimeS, 1.0, false);
+            Mode phugoid;
+            if (!PhugoidOf(spectrum, phugoid)) continue;
+            sigma[which] = phugoid.growthPerS;
+            have[which] = true;
+        }
+        std::printf("%8.2f", ratio);
+        for (int which = 0; which < 3; ++which)
+        {
+            if (have[which]) std::printf(" %+13.4f", sigma[which]);
+            else std::printf(" %13s", "no trim");
+        }
+        std::printf(" %18s\n", outcome);
+    }
+    // WHERE the harness wing's boundary is, not just that it moved. The table
+    // above stops at 0.25 because that is where the other two wings stopped
+    // being comparable, and "lower than 0.30" is not a number item 11 can use.
+    std::printf("\n  The harness wing on its own, taken down until it stops "
+                "flying. This is the\n  number item 11 wants: not that the "
+                "boundary moved, but where it now is.\n\n");
+    std::printf("%8s %13s %11s %18s\n", "ratio", "sigma", "period",
+                "outcome");
+    for (const double ratio : {0.25, 0.20, 0.15, 0.10})
+    {
+        const OwnTrim trim = SettleAt(canopy, linePlan, ratio, maximumSeconds,
+                                      DamperReference::World,
+                                      AddedDrag{0.0, harnessArea});
+        const char* outcome = trim.departed ? "DEPARTED settling"
+            : (trim.settled ? "settled" : "not settled");
+        Mode phugoid;
+        Spectrum spectrum;
+        bool have = false;
+        if (!trim.departed && trim.settled)
+        {
+            spectrum = Analyse(trim.solver, trim.state, transitionTimeS, 1.0,
+                               false);
+            have = PhugoidOf(spectrum, phugoid);
+        }
+        std::printf("%8.2f", ratio);
+        if (have) std::printf(" %+13.4f %10.2fs", phugoid.growthPerS,
+                              phugoid.periodS);
+        else std::printf(" %13s %11s", "-", "-");
+        std::printf(" %18s\n", outcome);
+    }
+
+    std::printf("\n  Harness sigma below the clean column and canopy sigma "
+                "above it is the arm: the\n  SAME drag stabilises from one end "
+                "of the link and destabilises from the other,\n  which is a "
+                "moment-arm term and not a drag term. Both above the clean "
+                "column\n  says drag destabilises this aircraft wherever it is "
+                "put, and item 11 is out of\n  candidates.\n\n");
 }
 
 // What the two tables came back with, written where the numbers are rather
@@ -4171,6 +4382,7 @@ int main(int argc, char** argv)
     bool damper = false;
     bool amplitude = false;
     bool drag = false;
+    bool height = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -4183,6 +4395,7 @@ int main(int argc, char** argv)
         if (argument == "--damper") damper = true;
         if (argument == "--amplitude") amplitude = true;
         if (argument == "--drag") drag = true;
+        if (argument == "--height") height = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -4336,6 +4549,14 @@ int main(int argc, char** argv)
         // The same 3600 s budget the amplitude pass needed, and for the same
         // reason: "not settled" has to mean something about the aircraft.
         DragCheck(canopy, linePlan, 0.25, settleSeconds < 420 ? 180 : 3600);
+    }
+
+    if (height)
+    {
+        // 27.0 m2 is the wing's reference area, and it is what turns a section
+        // Cd offset into the drag AREA the harness knob is expressed in.
+        HeightCheck(canopy, linePlan, 0.25,
+                    settleSeconds < 420 ? 180 : 3600, 27.0);
     }
 
     if (project)

@@ -84,8 +84,18 @@ InstalledDragResult EvaluateInstalledDrag(
         * spec.lineProjectedFraction;
     result.lineDragN =
         dynamicPressure * lineArea * spec.lineDragCoefficient;
+    // NOTE THE SHAPE OF THIS. The extra area is added in a SEPARATE statement,
+    // guarded, rather than folded into the product - because `q * A * Cd` and
+    // `q * (A * Cd + 0)` are not the same double. Written the folded way, this
+    // line changed nothing physically and still failed a coupled check: the
+    // deep symmetric frontal is a partly separated solve with no steady state,
+    // so a last-bit difference in the harness drag walks into a different fold
+    // path. A hook that defaults to off has to be bit-identical when it is off,
+    // and reassociating a product is not bit-identical.
     result.harnessDragN = dynamicPressure * spec.harnessAreaM2
         * spec.harnessDragCoefficient;
+    if (spec.extraDragAreaM2 != 0.0)
+        result.harnessDragN += dynamicPressure * spec.extraDragAreaM2;
     result.totalDragN = result.lineDragN + result.harnessDragN;
 
     // The harness drag acts a long way below the canopy, so it pitches the

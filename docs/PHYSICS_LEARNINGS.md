@@ -2138,6 +2138,103 @@ comparison — the numbers were right and the table was not entitled to the
 conclusion drawn from them. §54 spent 3600 s of settle budget establishing that
 distinction; a table that drops it is a table that has un-learned it.
 
+## 56. The same drag stabilises from one end of the link and destabilises from the other
+
+§55 found that restoring the wing's missing drag makes it *less* stable, which
+is backwards from `ζ = CD/(CL√2)`, and named the suspect: that relation is
+derived for drag acting at the centre of gravity of a **rigid** aircraft. This
+one is two bodies on a link, and section drag acts at the canopy 6.6 m above the
+pilot, where extra drag is also a pitching moment.
+
+The experiment is the only one that separates a drag term from a moment-arm
+term: the same aircraft, the same total drag, applied at the two ends of the
+link. `InstalledDragSpec` already carries drag on the **pilot** — its own
+comment warns that reaching the canopy through the lines is the whole point of
+having a pendulum — so the counterpart knob is a Cd·A there. **Both wings are
+bisected to the published glide of 9.5**, so they carry the same drag at trim
+and differ only in where it acts.
+
+**The prediction was confirmed, and by more than its own margin.**
+
+| ratio | σ clean | σ canopy | σ harness | outcome harness |
+|---|---|---|---|---|
+| 0.35 | −0.0201 | −0.0159 | **−0.0328** | settled |
+| 0.30 | no trim | no trim (departed) | **−0.0200** | **settled** |
+| 0.25 | no trim | no trim | — | not settled |
+| 0.20 | — | — | — | DEPARTED settling |
+
+The same drag makes the phugoid **63% better damped** at the pilot and 21%
+*worse* at the canopy. The destabilising quantity is the **moment arm, not the
+drag**, and that is a wing–link term nothing on this axis had measured in eleven
+levels of looking at coefficients.
+
+**The boundary moves one full step, and this is the number item 11 wants.** The
+harness wing settles at 0.30 with σ −0.0200 — indistinguishable from the clean
+wing's −0.0201 at 0.35 — fails to settle at 0.25, and departs at 0.20 and below.
+So the boundary goes from 0.35–0.30 to **0.30–0.25**: one 0.05 step, against the
+0.29 item 11 needs explained. **That is about a sixth of it.** The first
+mechanism in three levels to move the boundary the right way, and it is physics
+rather than a coefficient — but it is a sixth, and calling it the answer would
+be the same mistake §35 made with the phugoid.
+
+**The control is what makes it a comparison.** The harness bisection landed
+0.199 m² of Cd·A against an independent equal-force estimate of 0.279 m² —
+same order, which says this is one drag moved rather than two different ones —
+and the two wings trim in nearly the same place. The harness wing sits at
+10.64 m/s and 4.84° against the clean wing's 10.60 and 4.92°, so §55's confound
+(any drag moves the trim) is small here in a way it was not for the canopy wing
+at 9.93 m/s and 6.36°.
+
+**The item 12 finding in the same table may be the larger one.** Against the
+published 9.50 glide, 10.83 m/s and 1.140 m/s sink:
+
+| where the missing drag is put | glide | speed | sink |
+|---|---|---|---|
+| on the section (item 12's assumption) | 9.49 | 9.93 | 1.040 |
+| on the harness | **9.51** | **10.64** | **1.113** |
+
+Item 12 has assumed for four levels that the deficit is the shear layer off the
+cell mouth — a **section** term. A wing with the same deficit at the **harness**
+lands all three published numbers at once where the section version lands one
+and breaks the trim speed. That is a strong hint about where the missing drag
+lives, and the installed-drag inputs are stated dials of exactly the kind that
+hide one: `harnessAreaM2` is 0.32 and `lineProjectedFraction` is 0.35, neither
+solved.
+
+**What this does not show, stated because the result is flattering enough to
+over-read.** It does not prove the missing drag is at the harness. 0.199 m² is a
+59% increase on the harness Cd·A, which is a lot to attribute to an
+underestimate, and a combination of section and installed deficits remains open
+and is frankly more likely than either alone. What it shows is that a
+harness-side deficit is **consistent with three published numbers** and a
+section-side one is not — which is a constraint on the answer, not the answer.
+
+**A hook that defaults to off has to be bit-identical when it is off, and
+reassociating a product is not.** The harness knob was first written as
+`q * (A * Cd + extraArea)`, which with the extra area at zero is physically the
+same line and numerically a different double from `q * A * Cd`. It changed no
+physics and still **failed a coupled check**: the deep symmetric frontal is a
+partly separated solve with no steady state, so a last-bit difference in harness
+drag walks into a different fold path and the mirror-symmetry check goes. The
+fix is to add the extra term in a separate guarded statement. This project now
+has four hooks of this shape — `SetSwingDampingRatio`,
+`SetLinkDampingReference`, `SetSectionDragOffset` and this one — and each claims
+in its own comment to be bit-identical to having no hook at all; the other three
+are right by how they happened to be written rather than by design. Only the
+full suite caught it, which is the argument `Tools/check-build.sh` makes in its
+own header for never skipping it. (`x + 0.0` *is* exact, which is why the
+section-drag hook does not have the problem.)
+
+**The mechanism is named but not yet measured**, and that is the next step
+rather than a conclusion. Drag at the canopy and drag at the pilot pitch the
+aircraft opposite ways about the link, so the incidence correction the phugoid's
+speed oscillation receives has opposite sign in the two cases. That sketch
+predicts something checkable with machinery that already exists: `--shape`
+measures the phase of link swing against surge, and §41 framed the whole
+coupling question in those terms. Run it on the harness wing. If the phase moves
+the way the sketch says, the mechanism is closed; if it does not, this is a
+measured effect with the wrong story attached to it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

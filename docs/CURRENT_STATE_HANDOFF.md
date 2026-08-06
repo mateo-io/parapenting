@@ -518,18 +518,30 @@ The v1–v4 goal is not complete until these are addressed:
    rate held back for item 11 may share one cause with it, and a wing term is
    what a low-CL loop gain is made of.
 
-   **The specific next experiment is named and it is cheap.** §55 ran items 11
-   and 12 together for the first time and the missing drag turned out to
-   *destabilise* the wing: restored to the published glide, σ at ratio 0.35
-   falls from −0.0201 to −0.0159 and 0.30 goes from unsettled to departing. The
-   classical `ζ = CD/(CL√2)` assumes drag at the centre of gravity, and here it
-   acts at the canopy 6.6 m above the pilot. So put the same extra drag on the
-   **harness** instead — `InstalledDragSpec.harnessDragCoefficient` already
-   models it — and see whether σ reverses. If it does, the destabilising
-   quantity is the moment arm rather than the drag, which is a wing–link term
-   nothing on this axis has measured and the first new handle in three levels.
-   Carry §55's forecast with it: closing item 12 should be expected to cost
-   pitch stability.
+   **That experiment has now run, and it worked (§55, §56).** The missing drag
+   destabilises the wing when it acts at the canopy and *stabilises* it when the
+   same drag acts at the pilot: σ at ratio 0.35 is −0.0159 at the canopy,
+   −0.0201 clean, **−0.0328 at the harness**. The harness wing then settles at
+   0.30 — where the clean wing does not settle in an hour — with the clean
+   wing's own σ, and departs at 0.20, so **its boundary is 0.30–0.25 against the
+   clean 0.35–0.30.** The destabilising quantity is the **moment arm, not the
+   drag**. That is 0.05 of the 0.29 item 11 needs, about a sixth: the first
+   mechanism in three levels to move the boundary the right way, and not the
+   whole answer.
+
+   The next step on it needs no new machinery: **run `--shape` on the harness
+   wing.** The sketch is that canopy and pilot drag pitch the aircraft opposite
+   ways about the link, so the phugoid's incidence correction changes sign;
+   `--shape` already measures the phase of link swing against surge, which is
+   the form §41 put the coupling question in. A phase that moves as the sketch
+   says closes the mechanism; one that does not means the effect is real and the
+   story attached to it is wrong.
+
+   **Read §56 before touching item 12**, which it may matter to more: the
+   missing drag applied at the harness lands glide, trim speed *and* sink
+   against their published figures at once (9.51 / 10.64 / 1.113 against 9.50 /
+   10.83 / 1.140), where a section offset lands glide alone and breaks the
+   speed. Item 12 has assumed a section term for four levels.
 3. Run `docs/PILOT_REVIEW_PROTOCOL.md` with experienced pilots. It is the half
    of Level 9's exit gate that cannot be closed from a keyboard, and the surge
    timing question is the only external reference available for item 11.

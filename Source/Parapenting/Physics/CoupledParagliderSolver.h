@@ -504,6 +504,14 @@ public:
     void SetSectionDragOffset(double offset) { SectionDragOffsetValue = offset; }
     double SectionDragOffset() const { return SectionDragOffsetValue; }
 
+    // The same extra drag, moved to the pilot. Units are Cd times A, m2, added
+    // to the harness. Zero by default; `pitch_eigenmodes --height` is its only
+    // caller, and it is the other half of `SetSectionDragOffset` above.
+    void SetHarnessExtraDragAreaM2(double area)
+        { InstalledDrag.extraDragAreaM2 = area; }
+    double HarnessExtraDragAreaM2() const
+        { return InstalledDrag.extraDragAreaM2; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }

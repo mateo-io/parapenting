@@ -209,6 +209,15 @@ struct InstalledDragSpec
     // How far below the canopy the harness drag acts. It is a long lever, so
     // this drag is also a pitching moment.
     double harnessBelowCanopyM = 7.8;
+    // Extra drag AREA (a Cd times A, in m2) carried on the harness. Like
+    // `VsmSettings::sectionDragOffset` this is an instrument rather than
+    // physics, defaults to zero, and exists so that one question can be asked:
+    // section 55 found that drag added at the CANOPY destabilises the wing,
+    // against a classical relation derived for drag at the centre of gravity.
+    // The suspect is the 6.6 m moment arm rather than the drag. Adding the same
+    // drag down HERE, on the pilot, is the difference between those two, and it
+    // is a difference no amount of measuring the canopy case can produce.
+    double extraDragAreaM2 = 0.0;
 };
 
 struct InstalledDragResult

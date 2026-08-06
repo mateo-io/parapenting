@@ -183,8 +183,28 @@ The analytic polars agreed with the published glide, at 9.43. That agreement
 rested on `minimumDragCoefficient = 0.0125`, a stated number, and it did not
 survive the drag becoming a consequence.
 
-- The largest single candidate is the momentum thickness the shear layer off
-  the cell mouth carries onto the upper surface. It is certainly not zero.
+- **THE DEFICIT MAY NOT BE ON THE SECTION AT ALL (§56).** This item has assumed
+  for four levels that the missing drag is a section term. Asked to land the
+  published glide, a section offset gives 9.49 glide but takes the trim speed
+  out with it — 9.93 m/s against 10.83 — while the same deficit applied at the
+  **harness** lands **9.51 glide, 10.64 m/s and 1.113 m/s sink against a
+  published 9.50, 10.83 and 1.140: all three at once.** The installed-drag
+  inputs are stated dials of exactly the kind that hide a deficit —
+  `harnessAreaM2` 0.32 and `lineProjectedFraction` 0.35, neither solved — and
+  installed drag is already 47% of canopy drag, so it is not a correction term
+  where an error would be small.
+  - Not proof, and the temptation to read it as proof is the reason this bullet
+    says so: the 0.199 m² of Cd·A needed is a 59% increase on the harness, which
+    is a lot to attribute to an underestimate, and a **combination** of section
+    and installed deficits is more likely than either alone. What is
+    established is that a harness-side deficit is consistent with three
+    published numbers and a section-side one is not.
+  - Worth doing before more section work: solve the harness and line drag
+    properly — a seated pilot's frontal area and drag coefficient, and the
+    line-projected fraction — rather than sweeping the section for a term that
+    may not be missing there.
+- The largest single candidate ON THE SECTION is the momentum thickness the
+  shear layer off the cell mouth carries onto the upper surface. It is certainly not zero.
   **It has been tried twice and left out both times.** Seeded at the lip with
   `theta = h/6` - the momentum thickness of a linear profile across an opening
   of height h - quadrupling h changes the section's drag by 2%, because the lip
@@ -887,7 +907,8 @@ sense item 11 asks for, and the two are worth keeping apart.
 state by state, differences against an unperturbed run, and takes the
 eigenvalues of the transition matrix — every longitudinal mode at once, no
 excitation, no window, no filter. Its sub-checks are `--sweep`, `--phugoid`,
-`--shape`, `--project`, `--amplitude` and `--drag`, and each is a question the time
+`--shape`, `--project`, `--amplitude`, `--drag` and `--height`, and each is a
+question the time
 domain could not answer. `--amplitude` is the exception that proves the shape
 of the level: it is the one sub-check that is *not* a linearisation about trim,
 which is why it could retire a hypothesis none of the others could reach.
@@ -978,6 +999,28 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
   drag on the harness (`InstalledDragSpec.harnessDragCoefficient`) instead and
   see whether σ reverses. If it does, the destabilising quantity is the moment
   arm rather than the drag.
+
+- **THE MOMENT ARM, NOT THE DRAG — and the boundary moves one full step (§56).**
+  The first mechanism in three levels to move the boundary the right way. Same
+  aircraft, same total drag (both bisected to the published 9.5 glide), applied
+  at the two ends of the link: at the canopy σ at ratio 0.35 goes −0.0201 →
+  −0.0159, at the **harness** it goes to **−0.0328**, 63% better damped. The
+  harness wing then **settles at 0.30** with σ −0.0200 — the clean wing's own
+  value at 0.35 — does not settle at 0.25 and departs at 0.20, so its boundary
+  is **0.30–0.25 against the clean 0.35–0.30.** That is 0.05 of the 0.29 this
+  item needs, about a sixth, and it is physics rather than a coefficient. It is
+  emphatically not the whole answer.
+  - The control: the harness figure bisected to 0.199 m² of Cd·A against an
+    independent equal-force estimate of 0.279, and the harness wing trims at
+    10.64 m/s and 4.84° against the clean wing's 10.60 and 4.92°, so the two
+    differ in where the drag acts and hardly at all in where they trim.
+  - **Next on this thread, and it needs no new machinery:** run `--shape` on the
+    harness wing. The mechanism sketch is that canopy and pilot drag pitch the
+    aircraft opposite ways about the link, so the phugoid's incidence correction
+    changes sign — and `--shape` already measures the phase of link swing
+    against surge, which is the form §41 put the coupling question in. A phase
+    that moves as the sketch says closes the mechanism; one that does not means
+    this is a real effect with the wrong story attached.
 
 **What it did not close, and this is the whole of what remains:** there is no
 *mechanism* for why 0.35 is needed. What exists is a well-measured sensitivity

@@ -381,6 +381,104 @@ int main()
               "the volume follows the pattern rather than a constant");
     }
 
+    // -- does the crossport sweep break mirror symmetry? -------------------
+    //
+    // The last of the three candidates §65 named as a possible seed for the
+    // collapse asymmetry blocking §64's line-drag correction. It is the one
+    // with a record: the crossport loop WAS Gauss-Seidel once, every cell
+    // seeing its left neighbour advanced and its right neighbour not, and it
+    // was fixed when Level 8 closed. The fix has been carried by a comment
+    // ever since. Nothing failed if someone read `updated` here again.
+    //
+    // So this probe does two jobs. It tests the last candidate, and it puts a
+    // gate under a fix that had none.
+    //
+    // Getting the probe to have any power took two attempts, and the failed
+    // one is worth stating because it is the trap this whole test is about.
+    // A mirror-symmetric wing settled to steady state is symmetric to
+    // round-off WHETHER OR NOT the sweep is directional - at equilibrium every
+    // neighbour difference has gone to zero, so the crossport term is zero and
+    // a Gauss-Seidel read has nothing left to be biased about. That version
+    // passed with the defect deliberately put back. It was measuring nothing.
+    //
+    // The crossports only carry flow where there is a spanwise gradient to
+    // move air along, so the probe has to live in the transient and not at the
+    // end of it. This one inflates the whole canopy from empty with the inlets
+    // at BOTH tips dead - a mirror-symmetric configuration that holds a large
+    // pressure difference across the ribs either side of each dead group for
+    // the entire fill - and takes the worst mirror residual over EVERY step
+    // rather than the final state.
+    {
+        CellPressureState state;
+        CellPressureInput input =
+            UniformFlow(TrimDynamicPressurePa, TrimAlphaRad);
+        constexpr int DeadPerTip = 6;
+        for (int cell = 0; cell < DeadPerTip; ++cell)
+        {
+            input.dynamicPressurePa[static_cast<std::size_t>(cell)] = 0.0;
+            input.dynamicPressurePa[
+                static_cast<std::size_t>(Cells - 1 - cell)] = 0.0;
+        }
+
+        double worstPressure = 0.0;
+        double worstFill = 0.0;
+        double peakGradient = 0.0;
+        const int steps = static_cast<int>(6.0 * 120.0);
+        for (int step = 0; step < steps; ++step)
+        {
+            const CellPressureResult now =
+                solver.Step(state, input, 1.0 / 120.0);
+            double largest = 0.0;
+            for (double pressure : now.gaugePressurePa)
+                largest = std::max(largest, std::fabs(pressure));
+            for (int cell = 0; cell + 1 < Cells; ++cell)
+                peakGradient = std::max(peakGradient,
+                    std::fabs(now.gaugePressurePa[
+                                  static_cast<std::size_t>(cell)]
+                              - now.gaugePressurePa[
+                                  static_cast<std::size_t>(cell + 1)]));
+            for (int cell = 0; cell < Cells / 2; ++cell)
+            {
+                const auto left = static_cast<std::size_t>(cell);
+                const auto right = static_cast<std::size_t>(Cells - 1 - cell);
+                if (largest > 0.0)
+                    worstPressure = std::max(worstPressure,
+                        std::fabs(now.gaugePressurePa[left]
+                                  - now.gaugePressurePa[right]) / largest);
+                worstFill = std::max(worstFill,
+                    std::fabs(now.filledFraction[left]
+                              - now.filledFraction[right]));
+            }
+        }
+        std::printf("Cell mirror symmetry through a 6 s inflation with both "
+                    "tip groups' inlets dead: worst relative pressure "
+                    "difference %.3e, worst fill difference %.3e, across a "
+                    "peak rib gradient of %.1f Pa\n",
+                    worstPressure, worstFill, peakGradient);
+        // The gradient is printed because it is what gives the probe its
+        // power: a directional sweep converts it into a mirror difference, and
+        // a symmetric one does not. Without it this measures nothing, which is
+        // exactly how the first version of this test passed with the defect
+        // reintroduced.
+        Check(peakGradient > 10.0,
+              "the crossports are carrying real flow, so this probe can tell "
+              "a directional sweep from a symmetric one");
+        // Both measured, and the power is not where it looks like it should
+        // be. With the Gauss-Seidel read put back deliberately, the PRESSURE
+        // residual stays at 0.000e+00 and only the FILL residual moves - to
+        // 1.018e-03, one whole step of fill between cells 5 and 39. A cell
+        // that is still filling holds no pressure by construction, so the
+        // asymmetry lives in the fill front where the pressures are all still
+        // zero, and a probe that watched pressure alone would have reported a
+        // clean mirror on a solver that had the defect in it.
+        Check(worstPressure < 1.0e-9,
+              "the crossport sweep is mirror-symmetric in pressure");
+        Check(worstFill < 1.0e-9,
+              "and mirror cells FILL at the same rate - the half of the claim "
+              "that actually detects a directional sweep, so the pressure "
+              "model does not seed the collapse asymmetry");
+    }
+
     if (Failures == 0) std::printf("All pressure checks passed.\n");
     else std::printf("%d pressure check(s) failed.\n", Failures);
     return Failures == 0 ? 0 : 1;

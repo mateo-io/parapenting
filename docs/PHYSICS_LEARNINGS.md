@@ -2755,6 +2755,11 @@ strength of a correct-sounding argument.
 
 ## 65. The wing is symmetric to round-off, so the collapse asymmetry is amplification and Level 11 is a stability problem
 
+> **Superseded in part by §67.** The elimination stands. "Amplification" and
+> "Level 11 is a stability problem" do not: the divergence was later measured to
+> be two single-step discontinuities with no growth rate, and the fix is branch
+> selection in the separated solve rather than stabilising a symmetric solution.
+
 §64 was blocked by the 4 m/s symmetric frontal folding L 0.779 against R 0.903.
 The gate blames the partly separated solve having no steady state and names
 Level 11 as the fix — an explanation that had never been tested, and which does
@@ -2802,6 +2807,9 @@ mirror partner, and the worst residual is under 1e-12.
 
 ## 66. The VSM's section loop is symmetric too, and the amplification case is now the strong one
 
+> **Superseded in part by §67**, on the same point as §65: the 9.3e-15 measurement
+> stands, the "amplification of order 1e14" reading of it does not.
+
 §65 eliminated the suspension graph as a seed for the collapse asymmetry and
 named three untested downstream candidates: the VSM's section ordering, the
 collapse solver, the pressure model. This tests the first and most likely — the
@@ -2832,6 +2840,97 @@ remains a stability problem rather than a defect hunt.
 
 Bounded in `aerodynamics_tests` at 1e-9, which is six orders above the measured
 value and far below any systematic asymmetry.
+
+## 67. The candidate list is empty, and the divergence is two discontinuities rather than an amplification
+
+§65 named three downstream candidates that could seed the collapse asymmetry
+blocking §64's line-drag correction. §66 eliminated the first. This closes the
+other two, and then measures the thing the whole chain had only ever inferred.
+
+**The collapse solver was already eliminated, by a test nobody remembered
+writing.** `collapse_tests` has carried a mirror gate since Level 8: mirrored
+input, spanwise-varying so a uniform field cannot flatter it, 240 steps, worst
+section mirror error **0.00e+00**. It needed running, not writing.
+
+**The pressure model needed a real probe, and the first one was worthless.**
+The crossport loop is the one candidate with a record — it *was* Gauss-Seidel
+once, every cell seeing its left neighbour advanced and its right neighbour
+not, and it was fixed when Level 8 closed. Since then the fix has been carried
+by a comment. Nothing failed if someone read `updated` there again.
+
+The first probe settled a symmetric wing to steady state and compared mirror
+cells. It passed — **and it passed with the defect deliberately reintroduced.**
+At equilibrium every neighbour difference has gone to zero, so the crossport
+term is zero and a directional sweep has nothing left to be directional about.
+The probe was measuring nothing, and would have reported the candidate
+eliminated on no evidence.
+
+The working probe lives in the transient: the canopy inflates from empty with
+both tip groups' inlets dead, which holds a **65.8 Pa** gradient across the ribs
+for the whole fill, and the residual is taken over every step rather than at
+the end. Measured: **0.000e+00** relative pressure difference and **0.000e+00**
+fill difference. Round-off, exactly.
+
+**And the power is not where it looks like it should be.** With the defect put
+back, the *pressure* residual stays at 0.000e+00 and only the *fill* residual
+moves — to 1.018e-03, one whole step of fill between cells 5 and 39. A cell
+that is still filling holds no pressure by construction, so the asymmetry lives
+in the fill front where every pressure is still zero. A probe watching pressure
+alone reports a clean mirror on a solver that has the defect in it.
+
+**So all three candidates are closed** — suspension graph 1e-15, VSM 9.3e-15,
+collapse solver 0.00e+00, pressure model 0.00e+00 — and the pressure probe
+doubles as the regression gate that fix never had.
+
+### The amplification picture had the magnitude right and the mechanism wrong
+
+Elimination left "amplification of order 1e14" standing, but that was always an
+inference from endpoints: a 1e-15 wing reaching a 0.124 fold difference implies
+a large factor somewhere, without anyone watching it happen. Watching it happen
+says there is **no growth rate**, because nothing grows. The event is two
+single-step discontinuities a tenth of a second apart, and the first is
+invisible:
+
+| | |
+|---|---|
+| enters the fold at | **2.33e-15** |
+| **t = 1.400 s** | the pressure **margin** field breaks: 1.95e-14 → **4.91e-01** in one 8.3 ms step |
+| **t = 1.500 s** | the **fold** breaks: 2.29e-15 → **3.94e-02** in one step, 100 ms later |
+| peak | **9.55e-01** |
+
+The 100 ms in the middle is the whole finding. At t=1.40 the canopy is carrying
+an O(1) left-right asymmetry **in the criterion** while remaining a measurably
+symmetric wing folded to 1e-15 — because every margin involved is still
+*positive*, and a positive margin holds the nose regardless of its size:
+`target = clamp(-margin/0.6, 0, 1)` is zero for all of them. The asymmetry is
+latent. At t=1.50 that field crosses zero on one side only, and the sign test
+turns it into a fold difference in a single step.
+
+**The amplifier is a sign test applied to a field that had already lost its
+symmetry while every value in it had the same sign.** Not an unstable mode
+growing round-off — there is no exponential to fit, and the step before each
+break is still at round-off.
+
+**This sharpens Level 11 rather than confirming the plan for it.** §65 and §66
+concluded "a stability problem — Level 11 needs a formulation whose symmetric
+solution is *stable*." That aims at a mechanism which is not present. Nothing
+here is a symmetric solution being nudged off an unstable equilibrium; the
+margin field jumps by O(1) in one step, which is **branch selection in the
+separated aerodynamic solve**, the same no-steady-state regime `PHYSICS_TODO`
+item 6 records. The fix is convergence and single-valuedness there, not damping.
+
+**What is still not proven.** The upstream jump is *consistent with* the VSM's
+separated branch and is not directly attributed to it: what is measured is that
+the margin field breaks first and the fold follows, so the asymmetry arrives
+from upstream rather than being made in the collapse solver. Which upstream
+step produces the O(1) jump is the next question, and it is a much narrower one
+than the list this chain started with — a single 8.3 ms step at a known time on
+a reproducible run.
+
+Gated in `coupled_tests` as the causal claim: the margin must lose symmetry no
+later than the fold does. If the fold ever broke first, the collapse solver
+would be manufacturing the asymmetry rather than revealing it, and this
+section's elimination of it would be wrong.
 
 ## Numbers worth remembering
 

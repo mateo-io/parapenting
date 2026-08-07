@@ -286,6 +286,26 @@ survive the drag becoming a consequence.
     ruled out individually, so a symmetric frontal *enters* the collapse regime
     symmetric to round-off and leaves it 0.124 apart. **The collapse solver and
     the pressure model are what remain**, and both take the same cheap probe.
+  - **The list is empty, and the explanation has changed shape (§67).** The
+    collapse solver was already gated at **0.00e+00** in `collapse_tests`; the
+    pressure model measures **0.000e+00** in pressure and in fill through an
+    inflation transient, now gated in `pressure_tests` — which is also the
+    regression gate the Level 8 Gauss-Seidel fix never had. *All* candidates are
+    closed.
+  - **But "amplification of order 1e14" is the wrong picture, measured.** The
+    symmetric frontal enters the fold at 2.33e-15 and peaks at 9.55e-01 through
+    **two single-step discontinuities**, not a growth: at **t=1.400 s** the
+    pressure *margin* field breaks 1.95e-14 → 4.91e-01 in one 8.3 ms step while
+    every margin is still positive and the wing stays folded to 1e-15; at
+    **t=1.500 s**, 100 ms later, that field crosses zero on one side and the
+    fold breaks 2.29e-15 → 3.94e-02 in one step. The amplifier is a **sign test
+    on a field that had already lost its symmetry silently**. So Level 11 is
+    *not* "make the symmetric solution stable" — that mechanism is not present.
+    It is **branch selection in the separated solve** (item 6's no-steady-state
+    regime). Gated in `coupled_tests`: the margin must break no later than the
+    fold, or the collapse solver would be making the asymmetry rather than
+    revealing it. **Which upstream step produces the O(1) jump is the open
+    question** — one 8.3 ms step, at a known time, on a reproducible run.
   - Not tuned around: a shielding value picked as the largest that keeps the
     symmetry gate green would be the coefficient-chosen-to-put-it-there this
     item objects to. 0.394 stays, labelled measured-wrong.

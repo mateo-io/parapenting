@@ -1008,6 +1008,163 @@ int main()
               "folds still match; the path there does not. Bounded so it "
               "cannot quietly grow, and Level 11 is the fix");
 
+        // -- the divergence itself, measured rather than inferred ----------
+        //
+        // §65-§67 closed the seed hunt by elimination: the suspension graph
+        // (1e-15), the VSM's section loop (9.3e-15), the collapse solver
+        // (0.00e+00) and the pressure model (0.00e+00) each preserve mirror
+        // symmetry on their own. That left amplification as the only surviving
+        // account - but it was an INFERENCE FROM ENDPOINTS. A 1e-15 wing
+        // arriving at a 0.124 fold difference implies a factor of 1e14
+        // somewhere, without anyone ever watching it happen.
+        //
+        // Watching it happen says the endpoints had the magnitude right and
+        // the PICTURE wrong, which is why this block exists. There is no
+        // growth rate here and nothing amplifies smoothly. The event has two
+        // discontinuities in it, a tenth of a second apart, and the first one
+        // is invisible:
+        //
+        //   t=1.40  the pressure MARGIN field stops being mirror-symmetric,
+        //           1e-14 to 0.49 in a single 8.3 ms step. Nothing happens to
+        //           the wing. Every margin involved is still POSITIVE, and a
+        //           positive margin holds the nose regardless of its size -
+        //           target is clamp(-margin/0.6, 0, 1), which is zero for all
+        //           of them. So the canopy is now carrying an O(1) left-right
+        //           asymmetry in the criterion while remaining visibly, and
+        //           measurably, a perfectly symmetric wing folded to 1e-15.
+        //
+        //   t=1.50  that asymmetric margin field crosses zero on ONE side.
+        //           The fold residual goes 2.3e-15 to 3.9e-2 in one step and
+        //           saturates near 0.9 within a second.
+        //
+        // So the amplifier is not an unstable mode growing round-off. It is a
+        // SIGN TEST applied to a field that had already lost its symmetry
+        // while every value in it was the same sign. That distinction is the
+        // whole of what Level 11 needs: damping an unstable symmetric solution
+        // would be aimed at a mechanism that is not here, and the thing to fix
+        // is branch selection in the separated aerodynamic solve, which is
+        // where a margin field jumps by O(1) in one step.
+        //
+        // The gate below is the causal claim and the one that can fail: the
+        // asymmetry must appear in the MARGIN before it appears in the FOLD.
+        // If it ever appeared in the fold first, the collapse solver would be
+        // manufacturing it rather than revealing it, and §67's elimination of
+        // that solver would be wrong.
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, handsOff, 10.0, &state);
+
+            const double dt = wing.Schedule().timeStepS;
+            const int steps = static_cast<int>(14.0 / dt);
+            const int gustSteps = static_cast<int>(1.0 / dt);
+
+            // "Broken" means far above round-off and far below the O(1) values
+            // both residuals reach; nothing in the run sits near it.
+            constexpr double BrokenSymmetry = 1.0e-9;
+            double residualAtFirstFold = -1.0;
+            double marginBreakTime = -1.0;
+            double foldBreakTime = -1.0;
+            double foldBeforeBreak = 0.0;
+            double foldAtBreak = 0.0;
+            double marginBeforeBreak = 0.0;
+            double marginAtBreak = 0.0;
+            double previousFold = 0.0;
+            double previousMargin = 0.0;
+            double peakResidual = 0.0;
+
+            for (int step = 0; step < steps; ++step)
+            {
+                CoupledAtmosphere air;
+                if (step < gustSteps)
+                {
+                    air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                    air.gustSpanFrom = -1.0;
+                    air.gustSpanTo = 1.0;
+                }
+                wing.Step(state, handsOff, air);
+
+                const CollapseResult& fold = wing.Diagnostics().collapseState;
+                const std::size_t count = fold.sections.size();
+                double residual = 0.0;
+                double marginResidual = 0.0;
+                double deepest = 0.0;
+                for (std::size_t i = 0; i < count; ++i)
+                    deepest = std::max(deepest, fold.sections[i].collapse);
+                for (std::size_t i = 0; i < count / 2; ++i)
+                {
+                    const std::size_t mirror = count - 1 - i;
+                    residual = std::max(residual,
+                        std::fabs(fold.sections[i].collapse
+                                  - fold.sections[mirror].collapse));
+                    marginResidual = std::max(marginResidual,
+                        std::fabs(fold.sections[i].pressureMargin
+                                  - fold.sections[mirror].pressureMargin));
+                }
+                peakResidual = std::max(peakResidual, residual);
+
+                const double time = step * dt;
+                // The first moment the wing is genuinely folding. A seed
+                // upstream of the collapse would already be visible here.
+                if (residualAtFirstFold < 0.0 && deepest > 0.05)
+                    residualAtFirstFold = residual;
+                if (marginBreakTime < 0.0 && marginResidual > BrokenSymmetry)
+                {
+                    marginBreakTime = time;
+                    marginBeforeBreak = previousMargin;
+                    marginAtBreak = marginResidual;
+                }
+                if (foldBreakTime < 0.0 && residual > BrokenSymmetry)
+                {
+                    foldBreakTime = time;
+                    foldBeforeBreak = previousFold;
+                    foldAtBreak = residual;
+                }
+                previousFold = residual;
+                previousMargin = marginResidual;
+            }
+
+            std::printf("Symmetric frontal, mirror residuals: %.2e entering "
+                        "the fold, %.2e at the peak\n",
+                        residualAtFirstFold, peakResidual);
+            std::printf("  margin symmetry breaks at t=%.3f s: %.2e -> %.2e "
+                        "in one step\n",
+                        marginBreakTime, marginBeforeBreak, marginAtBreak);
+            std::printf("  fold symmetry breaks at t=%.3f s: %.2e -> %.2e in "
+                        "one step, %.0f ms later\n",
+                        foldBreakTime, foldBeforeBreak, foldAtBreak,
+                        1000.0 * (foldBreakTime - marginBreakTime));
+
+            // The wing enters the fold mirror-symmetric. Every seed candidate
+            // §65-§67 examined is upstream of this moment, so any of them
+            // would have put a residual here that round-off cannot explain.
+            Check(residualAtFirstFold >= 0.0
+                  && residualAtFirstFold < BrokenSymmetry,
+                  "the symmetric frontal enters the collapse mirror-symmetric "
+                  "- the asymmetry it leaves with is acquired during the "
+                  "event, not carried into it");
+
+            // Both discontinuities are real single-step jumps rather than the
+            // top of a smooth climb, which is the claim that "amplification"
+            // got wrong. Nine orders in one step is not a growth rate.
+            Check(marginBreakTime > 0.0 && foldBreakTime > 0.0,
+                  "the symmetric frontal does lose its symmetry, so this "
+                  "measures the event rather than missing it");
+            Check(marginBeforeBreak < BrokenSymmetry
+                  && foldBeforeBreak < BrokenSymmetry,
+                  "and it loses it discontinuously - the step before each "
+                  "break is still at round-off, so there is no exponential "
+                  "growth to assign a rate to");
+
+            // The causal claim, and the one that would overturn §67 if it
+            // failed: the criterion loses symmetry BEFORE the fold does.
+            Check(marginBreakTime <= foldBreakTime,
+                  "the asymmetry appears in the aerodynamic pressure margin "
+                  "before it appears in the fold - so it arrives from the "
+                  "separated solve upstream, and the collapse solver reveals "
+                  "it rather than making it");
+        }
+
         // Brake pumping. The plan's gate is that brake only reaches a collapse
         // when the brake line has tension, and this wing has 120 mm of slack
         // sewn into a 620 mm travel - so the first 19% of the handle's travel

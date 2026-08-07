@@ -11,14 +11,28 @@ done and its exit gate is blocked, Level 11 (the unsteady wake) is unstarted but
 now **specified by measurement** rather than by ambition, all twelve test suites
 are green, and nothing geometry-driven flies the wing yet.
 
-**The ordering has changed and the master plan carries the reasoning.** The
-short form: re-measure the calibration numbers at a proper settle (item 18)
-before drawing another conclusion from one; run the symmetry gate against a
-**harness-side** drag correction, because that single test decides whether the
-unsteady wake is on the critical path or off it; close items 11 and 12
-**together**, since §55 measured that closing 12 alone costs pitch stability;
-then get the stack flying across a stated envelope so the pilot review can
-finally start.
+**The ordering has changed and the master plan carries the reasoning.** Its
+first two steps have now been run, and between them they close one question and
+open none:
+
+- **Item 18 is done and it holds.** `parapenting_calibration_settled`
+  reproduces hands-up trim at 11.174 m/s, sink 1.015, glide **10.96**,
+  incidence 4.95°, settling at **530 s** against the fast suite's 90. The same
+  run says **half the Level 9 manoeuvre set never reaches a comparable
+  number**: the accelerator step departs, 25% brake does not settle after its
+  input, and deep brake and stall approach both engage the safety envelope.
+  Those four are not disagreements with the manufacturer — they are not
+  measurements.
+- **The harness-side drag route is closed (§69).** All three candidate
+  locations for the missing drag — lines, section, harness — break the
+  symmetric frontal, and the two new ones engage the safety envelope, so the
+  benchmark cannot adjudicate between them. **Item 12 has no route around
+  Level 11.**
+
+What is left, in order: close items 11 and 12 together (the drag half now
+blocked behind the wake, the pitch half's moment-arm lead still open); get the
+stack flying across a stated envelope, which is the highest-value *unblocked*
+item and the one a pilot has independently asked for (item 19); then Level 11.
 
 **Item 10 is closed and it closed item 0 with it.** The rigid motion no longer
 counts gravity's restoring torque twice. Hands-up trim is 39.4 km/h against a
@@ -193,6 +207,16 @@ The analytic polars agreed with the published glide, at 9.43. That agreement
 rested on `minimumDragCoefficient = 0.0125`, a stated number, and it did not
 survive the drag becoming a consequence.
 
+- **AND IT CANNOT BE SETTLED HERE, MEASURED (§69).** Three wings at the same
+  published glide, flown into the same symmetric frontal: the section
+  correction splits the halves 0.958/0.703, the harness correction saturates
+  both at a full 1.000 with three times the rotation, and **both engage the
+  numerical safety envelope** where the shipped wing does not. By guiding rule
+  12 neither row is flight behaviour, so the collapse benchmark cannot say
+  which correction is right. **This item is blocked behind Level 11 whichever
+  location turns out to be correct** - the blocker was never a property of line
+  drag, it is the partly separated regime (§68), and a wing that glides 9.5
+  instead of 10.96 arrives there harder whatever slowed it down.
 - **THE DEFICIT MAY NOT BE ON THE SECTION AT ALL (§56).** This item has assumed
   for four levels that the missing drag is a section term. Asked to land the
   published glide, a section offset gives 9.49 glide but takes the trim speed

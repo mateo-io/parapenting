@@ -1008,6 +1008,134 @@ int main()
               "folds still match; the path there does not. Bounded so it "
               "cannot quietly grow, and Level 11 is the fix");
 
+        // -- does a HARNESS-side drag correction survive this gate? ---------
+        //
+        // The decisive test the master plan names, and the one that decides
+        // whether Level 11 is on the critical path to everything else or off
+        // it. It costs two runs.
+        //
+        // §64 found the largest calibration disagreement in the model - glide
+        // 10.96 against a published 9.5 - had a correction that was measured
+        // rather than fitted, and could not ship because it broke the gate
+        // above: the line-drag shielding coefficient, removed, drives the
+        // symmetric frontal deeper into the partly separated regime until the
+        // two halves stop matching. §65-§68 then spent four sessions
+        // establishing that the regime itself is the blocker and that Level 11
+        // - an unsteady wake - is what fixes it.
+        //
+        // But that assumed the correction has to be on the LINES. §56 measured
+        // a different candidate: the same deficit applied at the HARNESS lands
+        // glide, trim speed and sink together - 9.51 / 10.64 / 1.113 against a
+        // published 9.50 / 10.83 / 1.140 - where a section-side offset lands
+        // glide alone. 0.199 m2 of Cd·A is what it takes.
+        //
+        // Harness drag acts at the pilot, six metres under the canopy. It does
+        // not touch the nose pressure balance, so there is no reason it should
+        // drive the collapse deeper - but "no reason it should" is exactly the
+        // kind of sentence this project has been wrong about before, and the
+        // gate is right here. So run it.
+        //
+        // If the frontal stays symmetric with the correction applied, item 12
+        // has a route that does not need the wake, and the ladder reorders.
+        {
+            // Three wings at the SAME published glide, differing only in
+            // where the missing drag was put, each flown into the same
+            // symmetric frontal. §55 bisected the section offset to 0.01035
+            // for glide 9.49; §56 bisected the harness to 0.199 m2 for 9.51.
+            const auto frontal = [&](double sectionOffset,
+                                     double harnessAreaM2)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetSectionDragOffset(sectionOffset);
+                wing.SetHarnessExtraDragAreaM2(harnessAreaM2);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+                Weather weather;
+                weather.air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                weather.air.gustSpanFrom = -1.0;
+                weather.air.gustSpanTo = 1.0;
+                weather.gustSeconds = 1.0;
+                return FlyThrough(wing, handsOff, weather, 14.0, &state);
+            };
+
+            const FoldRun shipped = frontal(0.0, 0.0);
+            const FoldRun onSection = frontal(0.01035, 0.0);
+            const FoldRun onHarness = frontal(0.0, 0.199);
+
+            const auto report = [](const char* name, const FoldRun& run)
+            {
+                const double spread = std::fabs(run.worstLeftCollapse
+                                                - run.worstRightCollapse);
+                std::printf("  %-18s folds L %.3f R %.3f (peak spread %.3f), "
+                            "worst L-R through the event %.3f, turn %.2f "
+                            "rad/s%s\n",
+                            name, run.worstLeftCollapse,
+                            run.worstRightCollapse, spread,
+                            run.worstFoldAsymmetry, run.worstTurnRateRadps,
+                            run.safetyEnvelopeEngaged
+                                ? "  SAFETY ENVELOPE ENGAGED" : "");
+            };
+            std::printf("Where the missing drag goes, against the symmetric "
+                        "frontal - three wings at the same published glide:\n");
+            report("shipped (10.96)", shipped);
+            report("section +0.01035", onSection);
+            report("harness +0.199 m2", onHarness);
+
+            // THE ANSWER, and it is the opposite of what this block was
+            // written expecting - which is why it was worth two runs.
+            //
+            // The master plan's step 2 asked whether a harness-side correction
+            // lets item 12 close WITHOUT the unsteady wake, on the reasoning
+            // that harness drag acts at the pilot and so should not touch the
+            // nose pressure balance. It does touch it, through the pendulum:
+            // drag at the pilot pitches the wing nose-down relative to him,
+            // which is the frontal direction. Measured, at the same published
+            // glide:
+            //
+            //   shipped     L 0.710 R 0.710   turn 1.98   envelope idle
+            //   section     L 0.958 R 0.703   turn 1.93   ENVELOPE ENGAGED
+            //   harness     L 1.000 R 1.000   turn 6.53   ENVELOPE ENGAGED
+            //
+            // The section correction breaks the symmetry the same way §64's
+            // line-drag one did, 0.255 of spread. The harness correction keeps
+            // the peaks together and takes the wing to a FULL collapse with
+            // three times the rotation - and a peak spread of zero between two
+            // saturated halves is not evidence of symmetry, it is evidence of
+            // saturation.
+            //
+            // And both engage the numerical safety envelope, which by guiding
+            // rule 12 means their numbers are not flight behaviour at all. So
+            // this benchmark cannot currently adjudicate where the missing
+            // drag goes: every way of landing the published glide takes the
+            // wing outside what the solver can represent.
+            //
+            // ITEM 12 THEREFORE DOES NOT HAVE A ROUTE AROUND LEVEL 11. The
+            // wake stays on the critical path, and the reason is now measured
+            // for all three candidate locations rather than argued for one.
+            Check(!shipped.safetyEnvelopeEngaged,
+                  "the shipped wing flies this frontal without the numerical "
+                  "safety envelope - the control that makes the two rows below "
+                  "mean something");
+            Check(onSection.safetyEnvelopeEngaged
+                  && onHarness.safetyEnvelopeEngaged,
+                  "KNOWN LIMITATION: every drag correction that lands the "
+                  "published glide takes this frontal outside what the solver "
+                  "can represent, wherever the drag is put - so the collapse "
+                  "benchmark cannot say which correction is right, and item 12 "
+                  "has no route around Level 11");
+            // The failure modes differ and that is the useful part: symmetry
+            // breaks on the SECTION and saturates at the HARNESS. Bounded so a
+            // change in either is visible.
+            Check(std::fabs(onSection.worstLeftCollapse
+                            - onSection.worstRightCollapse) > 0.15,
+                  "the section-side correction splits the two halves, the same "
+                  "failure §64 measured on the lines");
+            Check(onHarness.worstLeftCollapse > 0.99,
+                  "and the harness-side correction saturates both halves at a "
+                  "full collapse, which is why its zero spread is not the "
+                  "symmetry it looks like");
+        }
+
         // -- the divergence itself, measured rather than inferred ----------
         //
         // §65-§67 closed the seed hunt by elimination: the suspension graph

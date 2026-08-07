@@ -113,14 +113,34 @@ So on that route the wake sits upstream of Level 10's exit gate, upstream of
 the largest calibration disagreement, and upstream of the envelope that decides
 whether the stack can fly the game at all.
 
-**But the route is not the only one, and the alternative has not been tested.**
-§56 found that the same deficit applied at the **harness** lands glide, trim
-speed and sink together — 9.51 / 10.64 / 1.113 against a published 9.50 / 10.83
-/ 1.140 — where a section-side offset lands glide alone. A harness-side
-correction does not obviously drive the canopy deeper into collapse, so **it may
-close item 12 without the wake at all.** Nobody has run the symmetry gate
-against it. That single cheap test decides whether Level 11 is on the critical
-path or off it, and it should be run before any wake work is scheduled.
+**That alternative has now been tested, and it failed (§69).** The hope was
+that the deficit could be placed at the **harness** instead — §56 measured that
+it lands glide, trim speed and sink together where a section-side offset lands
+glide alone — and that harness drag, acting six metres under the canopy, would
+not drive the canopy deeper into collapse. It does, through the pendulum: drag
+at the pilot pitches the wing nose-down, which is the frontal direction.
+
+Three wings at the same published glide, one symmetric frontal:
+
+| | peak fold L / R | worst L−R | turn | safety envelope |
+|---|---|---|---|---|
+| shipped (glide 10.96) | 0.710 / 0.710 | 0.303 | 1.98 rad/s | idle |
+| section +0.01035 | **0.958 / 0.703** | 0.667 | 1.93 rad/s | **ENGAGED** |
+| harness +0.199 m² | 1.000 / 1.000 | 0.433 | **6.53 rad/s** | **ENGAGED** |
+
+The section correction splits the halves like the line-drag one. The harness
+correction only *looks* symmetric — two halves saturated at a full collapse is
+saturation, not symmetry, and its path asymmetry is worse than shipped. **Both
+engage the numerical safety envelope**, so by guiding rule 12 neither row is
+flight behaviour, and the benchmark cannot adjudicate between them at all.
+
+**So item 12 has no route around Level 11, measured for all three candidate
+locations rather than argued for one.** The wake is on the critical path. What
+the test also sharpened is *why*: the corrections fail differently but at the
+same place — the partly separated regime §68 showed has no single-valued
+solution. A wing that glides 9.5 instead of 10.96 arrives there harder whatever
+slowed it down, so the blocker was never a property of line drag; line drag was
+just the first correction to reach it.
 
 ### Carried gaps, by priority
 
@@ -172,31 +192,40 @@ validity of the numbers, then get the stack in front of a pilot, and only then
 spend a research level.** A research level bought before either of those is
 paid for with unvalidated numbers and no feedback.
 
-1. **Re-measure everything at a proper settle (item 18).** Cheapest item on the
-   list with the widest blast radius: it decides what the other numbers *are*.
-   Glide moved 11.33 → 10.96 on settling alone, which is a quarter of the
-   deficit item 12 exists to explain. Do this before drawing another conclusion
-   from a calibration number.
-2. **Run the symmetry gate against a harness-side drag correction.** One test,
-   and it decides whether Level 11 is on the critical path or off it. If the
-   harness-side correction passes, item 12 has a route that does not need the
-   wake and the whole ladder reorders.
-3. **Close items 11 and 12 together**, against the re-settled numbers, with the
-   moment-arm lead (§56) as the mechanism and the harness/section split (§56)
-   as the drag question. Do not close either alone — §55 measured that closing
-   12 alone *costs* pitch stability.
-4. **Then get it flying, in its measured envelope.** Rather than holding gap 1
-   until the stack is perfect, define Level 10's exit gate as *the
+1. ~~**Re-measure everything at a proper settle (item 18).**~~ **Done, and it
+   holds.** `parapenting_calibration_settled` reproduces it: hands-up trim
+   11.174 m/s, sink 1.015, glide **10.96**, incidence 4.95°, settling at 530 s
+   against the fast suite's 90. What the same run also says is that **half the
+   Level 9 manoeuvre set never reaches a comparable number** — the accelerator
+   step departs, 25% brake does not settle even after its input, and deep brake
+   and stall approach both engage the safety envelope. Those four rows are not
+   disagreements with the manufacturer; they are not measurements.
+2. ~~**Run the symmetry gate against a harness-side drag correction.**~~
+   **Done, and it failed (§69).** All three candidate locations for the missing
+   drag — lines, section, harness — break the symmetric frontal, and the two
+   new ones engage the safety envelope, so the benchmark cannot adjudicate
+   between them. **Item 12 has no route around Level 11.** The wake is on the
+   critical path, now measured rather than assumed.
+3. **Close items 11 and 12 together** — still the right shape, but the drag
+   half is now blocked behind the wake rather than merely contested. What can
+   proceed without it is the pitch half: the moment-arm lead (§56) is the only
+   mechanism in three levels to move the boundary the right way, and it does
+   not need the drag closed to be *investigated*, only to be finished.
+4. **Get it flying, in its measured envelope.** This is now the highest-value
+   unblocked item on the list, and the one a pilot has independently asked for
+   — item 19's stall-recovery report came from flying the legacy model, whose
+   pitch axis has no gravity-referenced pendulum at all. Rather than holding
+   gap 1 until the stack is perfect, define Level 10's exit gate as *the
    geometry-driven stack flies the game across its stated and gated envelope,
    with the legacy path retained and visible outside it*. That is guiding rule
-   11 honoured rather than bypassed — both paths running side by side, with the
-   boundary published instead of implied — and it is the only thing that starts
-   the pilot review Level 9 has been owed since it closed.
-5. **Then Level 11, if step 2 says it is still needed.** It is now specified by
-   measurement rather than by ambition: the entry criterion is a separated solve
-   that is single-valued, and `coupled_tests` already contains the gate that
-   would show it — the symmetric frontal must not lose mirror symmetry on an
-   aerodynamic tick.
+   11 honoured rather than bypassed, and it is the only thing that starts the
+   pilot review Level 9 has been owed since it closed.
+5. **Level 11, the unsteady wake.** Confirmed on the critical path by step 2.
+   It is specified by measurement rather than by ambition: the entry criterion
+   is a separated solve that is single-valued, and `coupled_tests` already
+   contains the gate that would show it — the symmetric frontal must not lose
+   mirror symmetry on an aerodynamic tick, and a drag correction that lands the
+   published glide must not engage the safety envelope.
 
 **Levels 12–15 remain out of scope**, and the reason is now empirical rather
 than budgetary: Level 11 alone has taken four sessions to *specify*.

@@ -3048,6 +3048,73 @@ something other than the solve is writing into it); the residual must be below
 caps must break on the *same* tick with the pre-break residual improving — the
 last being what makes the unchanged break time mean anything.
 
+## 69. Every way of landing the published glide leaves the solver, so item 12 has no route around Level 11
+
+The master plan's step 2, run. It asked one question with a large consequence:
+does a **harness-side** drag correction close item 12 without needing the
+unsteady wake? §64's line-drag correction was blocked by the symmetric frontal
+losing its mirror symmetry, and four sessions went into establishing that the
+separated regime behind that gate is Level 11's problem. If the deficit could
+be placed at the harness instead, the whole ladder reordered.
+
+The reasoning for expecting yes was explicit and it was wrong: harness drag
+acts at the pilot, six metres under the canopy, so it should not touch the nose
+pressure balance. **It touches it through the pendulum.** Drag at the pilot
+pitches the wing nose-down relative to him, and nose-down is the frontal
+direction.
+
+### Three wings at the same published glide, one frontal
+
+Each correction bisected to the published 9.5 glide by an earlier section —
+the section offset 0.01035 (§55), the harness 0.199 m² (§56) — and flown into
+the same 4 m/s symmetric frontal:
+
+| | peak fold L / R | spread | worst L−R through the event | turn | envelope |
+|---|---|---|---|---|---|
+| shipped (glide 10.96) | 0.710 / 0.710 | 0.000 | 0.303 | 1.98 rad/s | idle |
+| section +0.01035 | **0.958 / 0.703** | **0.255** | 0.667 | 1.93 rad/s | **ENGAGED** |
+| harness +0.199 m² | 1.000 / 1.000 | 0.000 | 0.433 | **6.53 rad/s** | **ENGAGED** |
+
+**The section correction breaks the symmetry the same way the line-drag one
+did** — 0.255 of spread against §64's 0.124. That much was the expected shape
+of the answer for the wrong candidate.
+
+**The harness correction looks like it passes and does not.** A peak spread of
+zero between two halves both saturated at a full collapse is not evidence of
+symmetry, it is evidence of saturation — and the path asymmetry through the
+event is *worse* than shipped, 0.433 against 0.303, with three times the
+rotation.
+
+**And both engage the numerical safety envelope.** By guiding rule 12 that
+means their numbers are not flight behaviour at all. The benchmark cannot
+adjudicate between the candidates, because every way of landing the published
+glide takes this event outside what the solver can represent.
+
+### What this settles
+
+**Item 12 has no route around Level 11**, and that is now measured for all
+three candidate locations — lines (§64), section, harness — rather than argued
+for one. The wake stays on the critical path, and the master plan's step 2 is
+answered in the direction that costs the most.
+
+**It also sharpens what the blocker is.** The three corrections fail
+differently — one splits the halves, one saturates them, one was already known
+to split them — but they fail at the same place: the partly separated regime
+§68 showed has no single-valued solution. A wing that glides 9.5 instead of
+10.96 arrives at that regime harder, whatever slowed it down. The blocker is
+not a property of line drag; line drag was just the first correction to reach
+it.
+
+**The honest negative.** This was run hoping to take a research level off the
+critical path. It put it back on, and the value is that four sessions of
+downstream work no longer rest on an untested assumption about where the
+missing drag lives.
+
+Bounded in `coupled_tests` as three claims that can each fail independently:
+the shipped wing flies the frontal with the envelope idle (the control), both
+corrections engage it (the limitation), and the two failure modes are distinct
+— the section splits, the harness saturates.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

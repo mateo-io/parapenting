@@ -1507,7 +1507,18 @@ currently departs at 40% brake with brake lowering incidence. Swapping it under
   the reason the game still flies `ParagliderDynamics`. Guiding rule 11 was,
   and now item 11 is.
 - It is also not a switch flip: `ParagliderPawn` flies `ParagliderDynamics` and
-  about twenty headers pull types from it.
+  about twenty headers pull types from it. Measured since: the pawn makes **17
+  calls** into `Dynamics`, and only **one** is the `Step`. The rest is
+  telemetry reads and parameter setup, so the seam is narrower than the header
+  count suggests and is not what blocks this.
+- **THE BLOCKER HAS MOVED, and it is worse than it looked (§70).** Bisected,
+  the geometry-driven stack flies to **37% of brake** (confirming the
+  documented 40%), but only to **22% of speed bar** - half bar departs - and
+  weight shift produces **0.01 rad/s**, which is nothing (items 21, 22). That
+  is two of the four controls a paraglider has. A stated envelope could route
+  around a deep-brake departure; it cannot describe an aircraft with no bar and
+  no weight shift. **The stack can fly hands-up gliding to a third of brake -
+  enough to compare against the legacy model, not enough to give a player.**
 
 **18. Every calibration number was measured after too short a settle.** The
 harness gives each manoeuvre **90 seconds** — already raised once from 15 for
@@ -1648,6 +1659,39 @@ ML's certified 90-110 kg range in `calibration_tests`:
 - Glide is nearly loading-invariant as it should be - 3.25% across the whole
   range - and what movement there is tracks the incidence rather than being
   loose.
+
+**21. Weight shift does nothing in the geometry-driven stack.** 50% of weight
+shift gives **0.01 rad/s** of turn and leaves speed, sink and glide identical to
+hands up to three significant figures. The legacy model at the same input turns
+at 0.20 rad/s. Found by `parapenting_model_agreement` (§70).
+
+- **It sat in a gap between two kinds of gate and that is why it survived.** It
+  is not a departure, so the envelope gates did not catch it; it is not a
+  disagreement with a published number, so calibration did not either.
+- **It is a control, not a coefficient.** A paraglider has four inputs and this
+  is one of them - a pilot flies whole turns on weight shift alone. Item 0b
+  records the wing turning "several times too slowly" on brake; on weight shift
+  it does not turn at all.
+- Related to item 0b and possibly the same cause, but not assumed to be:
+  0b is a brake-driven turn-rate deficit, this is a weight-shift authority of
+  approximately zero.
+- **Cheapest thing standing between the stack and a pilot**, on current
+  evidence, and unowned by any other item.
+
+**22. The geometry-driven stack departs at 22% of speed bar, not at full bar.**
+The record says full bar is the pitch-divergent condition because
+`calibration_tests` only ever applied `accelerator = 1.0`. Bisected by
+`parapenting_model_agreement` (§70), the wing departs at **22% of travel** -
+half bar, an ordinary cruise input, is already well outside what the stack can
+fly.
+
+- Brake, bisected on the same run, flies to **37%** against the documented
+  "departs at 40%" - so that sentence is confirmed and now has a boundary
+  rather than a bracket.
+- **Together these move item 17's blocker.** "Departs at 40% brake" sounded
+  like an edge case a stated envelope could route around. Having no speed bar
+  beyond 22% and no weight shift at all is two of the four controls missing,
+  and an envelope excluding both does not describe a flyable aircraft.
 
 **9. Grindelwald First's anchor is 50 m above its surveyed ground.** Published
 2123 m is the top station; its WGS84 pair is on the launch slope below, which

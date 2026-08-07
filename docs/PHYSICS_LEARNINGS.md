@@ -3115,6 +3115,92 @@ the shipped wing flies the frontal with the envelope idle (the control), both
 corrections engage it (the limitation), and the two failure modes are distinct
 — the section splits, the harness saturates.
 
+## 70. The geometry-driven envelope, measured — and weight shift is the finding nobody was looking for
+
+Items 7 and 17 have been blocked for several levels on a sentence: the
+geometry-driven stack "departs at 40% brake". That is one point on one axis. A
+swap needs the whole boundary, and "fly the stack across its stated envelope"
+had no stated envelope to fly across. `parapenting_model_agreement` is guiding
+rule 11 taken literally — both models, same wing, same 105 kg, same still air,
+same inputs, settled the same way, reported side by side.
+
+### Where the two models agree
+
+| station | legacy v / sink / glide | coupled v / sink / glide | worst gap |
+|---|---|---|---|
+| hands up | 10.81 / 1.14 / 9.46 | 11.18 / 1.02 / 10.99 | 13.9% |
+| brake 10% | 10.81 / 1.14 / 9.46 | 11.18 / 1.02 / 10.99 | 13.9% |
+| brake 20% | 10.43 / 1.13 / 9.21 | 11.05 / 1.00 / 11.01 | 16.4% |
+| brake 25% | 10.26 / 1.13 / 9.09 | 10.16 / 0.94 / 10.80 | 16.6% |
+| brake 30% | 10.09 / 1.12 / 8.97 | 9.94 / 0.94 / 10.57 | 16.4% |
+| brake 40% | 9.67 / 1.37 / 7.07 | **7.81 / 7.81 / 1.00** | 85.9% |
+| weight shift 50% | 11.39 / 3.11 / 3.66 | **11.18 / 1.02 / 10.99** | 67.3% |
+| half bar | 11.69 / 1.46 / 8.01 | **7.82 / 7.82 / 1.00** | 87.5% |
+| full bar | 12.81 / 2.09 / 6.11 | **32.81 / 29.71 / 1.10** | 93.0% |
+
+Brake 10% reads identically to hands up **in both models**, which is not a bug
+in either: 10% is inside the brake free play this wing has sewn in, so the
+handle is moving through air. Two independent models agreeing on that is a
+small piece of evidence that the free play is right.
+
+**The 13.9% at hands up is item 12 and nothing else** — glide 9.46 against
+10.99. The two models agree on speed to 3% and on sink to 11%, and disagree on
+glide because one of them is missing a sixth of its drag. This comparison
+cannot say which.
+
+### The envelope, bisected
+
+| axis | flies to |
+|---|---|
+| symmetric brake | **37% of travel** |
+| speed bar | **22% of travel** |
+| weight shift | no departure — and no authority either |
+
+Departure is defined by the wing rather than by a threshold on the answer:
+incidence more than 30° above its own hands-up trim is a separated wing
+whatever speed it reports.
+
+**Brake confirms the documented number** — 37% against a stated "departs at
+40%", which is the first time that sentence has had a boundary rather than a
+bracket.
+
+**The speed bar is worse than documented and this is new.** The record says
+full bar is the pitch-divergent condition, because `calibration_tests` only
+ever applied `accelerator = 1.0`. Bisected, the wing departs at **22% of bar**.
+Half bar — an ordinary cruise input a pilot uses constantly — is already well
+outside what the stack can fly.
+
+### And the one nobody was looking for
+
+**Weight shift does essentially nothing.** 50% of weight shift produces
+**0.01 rad/s** of turn and no change in speed, sink or glide to three
+significant figures — the coupled row is identical to hands up. The legacy
+model at the same input is turning at 0.20 rad/s and descending at 3.11 m/s.
+
+This is not a departure, so no gate caught it, and it is not a disagreement
+with a published number, so calibration did not either. It sat in the gap
+between the two. Item 0b records that the wing "turns several times too slowly"
+on brake; on weight shift it does not turn at all, and weight shift is a
+primary control — a pilot flies a whole turn with it.
+
+### What this does to item 17
+
+**It moves the blocker.** The reason the geometry-driven stack cannot fly the
+game today is no longer "it departs at 40% brake", which sounded like an edge
+case a stated envelope could route around. It is that **the stack has no speed
+bar beyond 22%, and no weight shift at all** — two of the four controls a
+paraglider has. An envelope that excludes those does not describe a flyable
+aircraft; it describes hands-up gliding.
+
+So step 4 of the plan — fly the stack across a stated envelope — cannot proceed
+as written either. What it can proceed as is narrower and honest: the stack can
+fly *hands-up to a third of brake*, which is enough to compare against the
+legacy model in ordinary glide and not enough to give a player.
+
+**The order this suggests** is that weight shift is now the cheapest thing on
+the list that stands between the stack and a pilot, and it is untouched: no
+item owns it, no gate covers it, and it is a control rather than a coefficient.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

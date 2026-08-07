@@ -211,16 +211,28 @@ paid for with unvalidated numbers and no feedback.
    proceed without it is the pitch half: the moment-arm lead (§56) is the only
    mechanism in three levels to move the boundary the right way, and it does
    not need the drag closed to be *investigated*, only to be finished.
-4. **Get it flying, in its measured envelope.** This is now the highest-value
-   unblocked item on the list, and the one a pilot has independently asked for
-   — item 19's stall-recovery report came from flying the legacy model, whose
-   pitch axis has no gravity-referenced pendulum at all. Rather than holding
-   gap 1 until the stack is perfect, define Level 10's exit gate as *the
-   geometry-driven stack flies the game across its stated and gated envelope,
-   with the legacy path retained and visible outside it*. That is guiding rule
-   11 honoured rather than bypassed, and it is the only thing that starts the
-   pilot review Level 9 has been owed since it closed.
-5. **Level 11, the unsteady wake.** Confirmed on the critical path by step 2.
+4. ~~**Get it flying, in its measured envelope.**~~ **Measured, and it cannot
+   proceed as written (§70).** The envelope was never a number, so
+   `parapenting_model_agreement` made it one — both models, same wing, same
+   105 kg, same air, side by side, which is guiding rule 11 taken literally.
+   Bisected, the geometry-driven stack flies to **37% of brake** (confirming
+   the documented 40%), **22% of speed bar** — half bar departs — and weight
+   shift produces **0.01 rad/s**, which is nothing.
+
+   **That is two of the four controls a paraglider has.** A stated envelope can
+   route around a deep-brake departure; it cannot describe an aircraft with no
+   bar and no weight shift. The stack can fly hands-up gliding to a third of
+   brake: enough to compare against the legacy model, not enough to give a
+   player. The seam itself turned out not to be the obstacle — the pawn makes
+   17 calls into the legacy model and only one is the `Step`.
+
+5. **Weight shift (item 21) is the new head of this queue.** It is the cheapest
+   thing standing between the stack and a pilot, it is a *control* rather than
+   a coefficient, and it is unowned — no item covered it and no gate caught it,
+   because it is neither a departure nor a disagreement with a published
+   number. Then the speed bar (item 22). Only with those does step 4 become a
+   real option.
+6. **Level 11, the unsteady wake.** Confirmed on the critical path by step 2.
    It is specified by measurement rather than by ambition: the entry criterion
    is a separated solve that is single-valued, and `coupled_tests` already
    contains the gate that would show it — the symmetric frontal must not lose

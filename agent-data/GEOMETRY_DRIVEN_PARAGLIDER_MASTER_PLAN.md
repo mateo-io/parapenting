@@ -273,12 +273,22 @@ paid for with unvalidated numbers and no feedback.
    for it to vary with.
 
    So this **leaves the head of the queue**. What replaces it is not a bigger
-   version of it: because the gain is linear, the requirement divides out to
-   **about 10° of antisymmetric twist to match today's full-brake roll**, and
-   the question in front of the channel is now structural and well posed —
-   *does a canopy on its lines twist that far under a 300 N row-tension
-   difference?* That is answerable against the rib and membrane structure, and
-   it settles item 21 and item 0b together in whichever direction it falls.
+   version of it: because the gain is linear, the requirement divides out, and
+   the question in front of the channel is structural — *does a canopy on its
+   lines twist that far under a 300 N row-tension difference?*
+
+   **And then that question turned out not to be the first one either** (§73).
+   Imposing the twist and flying the aircraft gives **0.0272 rad/s per degree,
+   linear**, so 0.20 rad/s wants about **seven degrees** — but **the aircraft
+   spirals at four**, winding up to 3.48 rad/s with the safety envelope never
+   engaging. A stable turn tops out near 0.09 rad/s, so a real wing's turn is
+   on the far side of a departure and **perfect canopy torsion would not reach
+   it**. Every stable turn also banks only 38-40% of its own coordinated bank,
+   at a constant fraction across a sixfold input range.
+
+   Both are new items (**25**), both are unowned, and both are measurable
+   today without building anything. **They are in front of item 21**, because
+   a channel whose output the aircraft cannot use is not worth a level.
 
 6. **Level 11, the unsteady wake.** Confirmed on the critical path by step 2.
    It is specified by measurement rather than by ambition: the entry criterion
@@ -1020,6 +1030,12 @@ several degrees under a 300 N row-tension difference?*
 - The mirror-symmetry gates still hold to round-off (§65–§71).
 - Level 7's convergence gate passes again, re-run rather than inherited.
 - Turn rate against a pilot's number, not against a coefficient.
+
+**And the gate itself is now behind a stability problem** (§73). *"Turn rate
+against a pilot's number"* cannot be met at all: the aircraft spirally departs
+at 0.19 rad/s, below the 0.2-0.3 a real EN-B holds as an ordinary turn, and
+every stable turn it flies carries a 60% bank deficit. Neither is caused by the
+channel and neither is fixed by it. See item 25.
 
 **Split by §72, because the two halves now fail for different reasons.** The
 aerodynamic gates are met: the channel exists, carries the right sign, is

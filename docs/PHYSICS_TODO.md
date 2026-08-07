@@ -1768,6 +1768,52 @@ at 0.20 rad/s. Found by `parapenting_model_agreement` (§70).
   measured reason rather than an unexamined one.
 - **No longer the cheapest thing standing between the stack and a pilot**: its
   remaining half needs canopy torsion, which is a level and not an afternoon.
+- **AND CANOPY TORSION IS NOT ENOUGH ON ITS OWN** (§73). Measured by imposing
+  the twist and flying the aircraft, which is what `SetImposedSpanwiseTwistRad`
+  exists for:
+  - **0.0272 rad/s per degree of twist, linear**, so 0.20 rad/s wants about
+    **seven degrees** — superseding the ten §72 got by dividing brake's roll
+    moment by the channel's gain, which answered a different question.
+  - **The aircraft spirals at four.** Incidence falls from 4.7° to below zero,
+    speed climbs past 21 m/s, and at ~35 s it winds up to 3.48 rad/s. The
+    safety envelope never engages; this is the model's own behaviour.
+  - So a **stable turn tops out near 0.09 rad/s**, and a real wing's 0.2–0.3
+    is on the far side of a departure. **Perfect canopy torsion would not
+    reach it.** Item 25 is in front of this item, and needs no new level.
+
+**24. `vsmConverged` is false in ordinary straight flight, so it gates
+nothing.** Counting over 40 s of settled hands-up flight, 4180 steps of 4180
+report it false. The flight solve's 40-iteration cap does not reach the 1e-6
+tolerance and is not trying to; the flag compares against it anyway.
+
+- Found while checking whether §73's spiral departure was numerical — for
+  which it was useless, because a diagnostic that is false in the nominal case
+  cannot distinguish the abnormal one.
+- **Cheap and worth doing**: report the residual it actually reached against
+  what the cap allows, or compare against a tolerance the flight solve is
+  aiming at. Either makes the flag mean something.
+- Nothing currently gates on it, which is the only reason this is small.
+
+**25. The aircraft has almost no stable turn envelope, and every turn it flies
+skids.** Both measured in §73, both unowned, and item 21 is now behind them.
+
+- **Spiral departure between 3° and 4° of imposed twist**, i.e. between 0.086
+  and 0.19 rad/s of turn. A real EN-B holds 0.2–0.3 rad/s as an ordinary,
+  sustainable turn. This one departs before reaching it.
+- **Every stable turn banks 38–40% of its own coordinated bank**, and the
+  fraction is constant while the input varies sixfold — 39%, 39%, 38%, 40%
+  across the sweep. That is a missing mechanism, not a tuning error: the wing
+  yaws round without the bank following, holding a steady sideslip.
+- Whether these are one fault or two is **not established**. They are
+  consistent with one — a wing that will not bank into its own turn is a wing
+  whose roll is not doing the work — but that is a hypothesis.
+- **Why this outranks item 21's remaining half**: it needs no new level to
+  measure, it is upstream of the turn authority the geometric channel was
+  meant to supply, and building canopy torsion without it would deliver a
+  channel whose output the aircraft cannot use.
+- It is also the most likely thing standing behind Level 8's unverified gate
+  — *"asymmetric separation produces spin/spiral behaviour"* (item 23) —
+  which is the other exit gate the sweep flagged as high-risk.
 
 **22. The geometry-driven stack departs at 22% of speed bar, not at full bar.**
 The record says full bar is the pitch-divergent condition because

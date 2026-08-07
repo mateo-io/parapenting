@@ -672,6 +672,20 @@ void CoupledParagliderSolver::Step(
             }
             aero.internalPressureCoefficient = flyingPressure;
 
+            // The imposed twist, if a measurement asked for one. Nothing
+            // supplies this in flight - the geometric channel's structural
+            // half does not exist (§72) - so this is the only thing that ever
+            // writes the channel, and it writes nothing unless a test set it.
+            if (ImposedSpanwiseTwistRadValue != 0.0)
+            {
+                aero.sectionIncidenceOffsetRad.assign(
+                    Aerodynamics.Sections().size(), 0.0);
+                for (std::size_t i = 0; i < Aerodynamics.Sections().size(); ++i)
+                    aero.sectionIncidenceOffsetRad[i] =
+                        ImposedSpanwiseTwistRadValue
+                        * Aerodynamics.Sections()[i].spanFraction;
+            }
+
             // The gust, in the wing's own axes, at the sections it covers.
             if (Length(atmosphere.gustWorldMps) > 1.0e-9)
             {

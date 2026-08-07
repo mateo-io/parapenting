@@ -28,9 +28,18 @@ it: the line solve places every canopy attachment on one rigid body, so the
 per-station pose it was to be read from is bit-identical left to right even at
 full weight shift. The missing ingredient is **canopy torsional compliance**,
 which exists nowhere in the stack, and the requirement is now a number —
-**about 10° of antisymmetric twist** to match today's full-brake roll. So the
-next question on that thread is structural rather than an interface, and it is
-no longer the cheapest item on the list.
+a stated number of degrees of twist. So the next question on that thread is
+structural rather than an interface, and it is no longer the cheapest item on
+the list.
+
+**And the structural question is not the first one either** (§73). Imposing the
+twist and flying the aircraft gives 0.0272 rad/s per degree, linear, so a real
+wing's 0.20 rad/s wants about **seven degrees** — but **the aircraft spirally
+departs at four**, and every stable turn it flies banks only 38–40% of its own
+coordinated bank. A stable turn tops out near 0.09 rad/s. **Perfect canopy
+torsion would not reach a real wing's turn**, so item 25 — the turn envelope
+and the skid — is in front of item 21, and neither needs a new level to work
+on. That is the recommended next thread.
 
 ## Product direction
 

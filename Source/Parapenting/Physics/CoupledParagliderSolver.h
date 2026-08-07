@@ -505,6 +505,33 @@ public:
     void SetSectionDragOffset(double offset) { SectionDragOffsetValue = offset; }
     double SectionDragOffset() const { return SectionDragOffsetValue; }
 
+    // AN IMPOSED ANTISYMMETRIC TWIST, linear in span, radians at the right
+    // tip and nose-up positive. THIS IS AN INSTRUMENT, NOT PHYSICS: nothing
+    // supplies it in flight, it is zero by default, and the default is
+    // bit-identical to having no hook.
+    //
+    // It exists to make one sentence testable, and the sentence is the whole
+    // remaining question about the geometric channel. §72 built the channel
+    // and measured its aerodynamic gain - 8543 N.m/rad, linear - and then
+    // found that nothing can drive it, because the line solve places every
+    // canopy attachment on one rigid body. The missing ingredient is canopy
+    // torsional compliance, which is a level's work, and it is only worth
+    // building if the twist a canopy could plausibly find is enough.
+    //
+    // "Enough" was stated in §72 by dividing the roll BRAKE makes by the
+    // channel's gain, which answers a different question: it is the twist
+    // that matches an existing control, not the twist the AIRCRAFT needs to
+    // turn. A steady turn is not held by a steady roll moment, so those two
+    // numbers need not be close. This measures the one that matters - turn
+    // rate against imposed twist, on the whole coupled aircraft - and the
+    // requirement then divides out of that instead.
+    //
+    // `coupled_tests` is its only caller.
+    void SetImposedSpanwiseTwistRad(double twistRad)
+        { ImposedSpanwiseTwistRadValue = twistRad; }
+    double ImposedSpanwiseTwistRad() const
+        { return ImposedSpanwiseTwistRadValue; }
+
     // How many iterations the FLIGHT solve may take once it is warm. THIS IS
     // AN INSTRUMENT, NOT PHYSICS, and it defaults to the shipped 40 so that
     // nothing flies on a different number by accident.
@@ -656,6 +683,7 @@ private:
     ConstructionProbe ConstructionProbeSettings;
     double SwingDampingRatioValue = 0.35;
     double SectionDragOffsetValue = 0.0;
+    double ImposedSpanwiseTwistRadValue = 0.0;
     int FlightSolveIterationCapValue = 40;
     HarnessDragReference HarnessDragReferenceValue =
         HarnessDragReference::Aircraft;

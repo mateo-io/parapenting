@@ -3359,6 +3359,85 @@ pose, the sign is right, the gain is linear to under a percent across
 sixteen times the range, twist is a couple, left and right mirror to 1e-9, and
 full brake is worth several degrees of it.
 
+## 73. The twist the aircraft needs is seven degrees, and it spirals at four — so canopy torsion is not the only thing in front of the turn
+
+§72 left one number deciding whether canopy torsion is worth building: how much
+twist is enough. It answered by dividing the roll moment full brake makes by
+the channel's aerodynamic gain, and got about ten degrees. **That answers a
+different question.** A steady turn is not held up by a steady roll moment —
+once the wing is banked and turning, the moment keeping it there is not the
+moment that put it there — so the twist that matches an existing control and
+the twist the aircraft needs to turn need not be close.
+
+`SetImposedSpanwiseTwistRad` measures the one that matters. It is an
+instrument, on the pattern `SetSectionDragOffset` set: zero by default,
+bit-identical to having no hook, and it is the only thing that ever writes the
+channel, because the channel's structural half does not exist.
+
+### The stable envelope, settled at 240 s
+
+| twist | bank | turn | coordinated bank | ratio |
+|---|---|---|---|---|
+| 0.5° | 0.32° | 0.0130 rad/s | 0.80° | 39% |
+| 1.0° | 0.64° | 0.0264 rad/s | 1.63° | 39% |
+| 2.0° | 1.30° | 0.0543 rad/s | 3.40° | 38% |
+| 3.0° | 2.20° | 0.0864 rad/s | 5.53° | 40% |
+
+**0.0272 rad/s per degree, linear**, so a real EN-B's 0.20 rad/s wants **about
+seven degrees** of antisymmetric twist. That is the number the canopy-torsion
+level has to be measured against, and it supersedes §72's ten.
+
+### But the aircraft spirals at four
+
+At four degrees it does not settle. Incidence falls steadily from 4.7° to
+below zero, speed climbs from 10.7 m/s past 21, and at about 35 s it snaps
+into a spiral peaking at **3.48 rad/s**. The aerodynamic safety envelope
+**never engages**, and the solve is no less converged than in straight flight
+— `vsmConverged` is false at essentially every step of ordinary trim flight
+too, so it carries no signal here (see below). This is the model's own
+behaviour.
+
+**So the ceiling on this aircraft's turn is not the twist a canopy can find.**
+A stable turn tops out near 0.09 rad/s. A real wing's 0.2–0.3 is on the far
+side of a spiral departure, and **perfect canopy torsion would not reach it.**
+
+That reorders item 21 again, and in a more useful direction than §72 did.
+§72 put it behind a structural level. This puts a *stability* problem in front
+of the structural level — one that needs no new level to measure, is unowned by
+any existing item, and would have to be solved before torsion could pay for
+itself.
+
+### And every turn it does fly is skidding, by a constant fraction
+
+The right-hand columns above are the finding within the finding. Each stable
+point banks **38–40% of the coordinated bank** for its own turn rate and speed.
+A ratio that holds while the input varies sixfold is a missing mechanism rather
+than a tuning error: the aircraft yaws round without the bank following, so it
+holds a steady sideslip in every turn. Bounded rather than fixed, and it is
+also unowned.
+
+Whether the skid and the spiral are one fault or two is not established here.
+They are consistent with one — a wing that will not bank into its own turn is a
+wing whose roll is not doing the work — but that is a hypothesis and this
+section does not test it.
+
+### `vsmConverged` reads false in straight flight, so it gates nothing
+
+Found while checking whether the departure was numerical. Counting steps over
+40 s of settled hands-up flight: **4180 of them report `vsmConverged` false**,
+which is every step. The flight solve's 40-iteration cap does not reach the
+1e-6 tolerance and is not meant to; the flag compares against it anyway. A
+diagnostic that is false in the nominal case cannot distinguish the abnormal
+one, which is what made it useless for exactly the question it was consulted
+for. `PHYSICS_TODO` item 24.
+
+**The lesson, which is §72's twice over:** both sections' first answer came
+from dividing numbers that were already available, and both were answering an
+adjacent question rather than the one asked. §72 divided two moments when the
+question was about a flight path; the flag above compares against a tolerance
+nothing is trying to meet. Flying the aircraft cost one instrument and forty
+seconds of simulation, and it changed the plan.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3390,7 +3469,10 @@ full brake is worth several degrees of it.
 | leading-edge bubble limit | 3% of chord | a turbulent separation forward of this reattaches |
 | section Cd at trim | 0.0157 | published paraglider sections: 0.018-0.025 |
 | twist-to-roll gain | 8543 N·m/rad | linear to 0.03%; divides a roll requirement into a twist |
-| twist worth of full brake | ~10 deg | the twist the canopy would have to find - §72 |
+| twist worth of full brake | ~10 deg | superseded by the aircraft measurement below - §72 |
+| turn rate per degree of twist | 0.0272 rad/s | linear to 3 deg; **0.20 rad/s wants ~7 deg** - §73 |
+| stable turn ceiling | ~0.09 rad/s | 4 deg of twist spirals to 3.48 rad/s - §73 |
+| bank as a fraction of coordinated | 38-40% | constant across the sweep; every turn skids - §73 |
 | section Cm per rad of brake | -0.61 | theory -0.55; the analytic table had -0.34 |
 | usable envelope | hands-up to 25% brake | now BOTH ends are the pitch axis |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |

@@ -1611,6 +1611,182 @@ int main()
               "this, so the fix is a channel and not a number");
     }
 
+    // WHAT THE GEOMETRIC CHANNEL WOULD HAVE TO DELIVER, measured on the whole
+    // aircraft rather than inferred from a moment.
+    //
+    // §72 built the channel's aerodynamic half and measured its gain - 8543
+    // N.m/rad of roll, linear to 0.03% - and then found that nothing can drive
+    // it: the line solve places every canopy attachment on one rigid body, so
+    // the per-station pose it was to be read from is bit-identical left to
+    // right even at full weight shift. What is missing is canopy torsional
+    // compliance, which is a level's work.
+    //
+    // Whether that level is worth building turns on one number: HOW MUCH
+    // TWIST IS ENOUGH. §72 answered it by dividing the roll moment full brake
+    // makes by the channel's gain, and got about ten degrees. That answers a
+    // different question. A steady turn is not held up by a steady roll
+    // moment - once the wing is banked and turning, the roll moment needed to
+    // KEEP it there is not the moment that put it there - so the twist that
+    // matches an existing control and the twist the aircraft needs to turn
+    // need not be close, and the second is the one that decides the level.
+    //
+    // So this imposes the twist directly and flies the aircraft.
+    {
+        struct TwistPoint
+        {
+            double twistDeg;
+            double bankDeg;
+            double turnRadps;
+            double speedMps;
+        };
+        constexpr double Degree = 3.14159265358979 / 180.0;
+        std::vector<TwistPoint> sweep;
+        for (const double twistDeg : {0.0, 0.5, 1.0, 2.0, 3.0})
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, handsOff, 60.0, &state);
+            wing.SetImposedSpanwiseTwistRad(twistDeg * Degree);
+            Fly(wing, handsOff, 60.0, &state);
+            const CoupledDiagnostics& diag = wing.Diagnostics();
+            sweep.push_back({twistDeg, diag.bankRad / Degree,
+                             diag.turnRateRadps, diag.airspeedMps});
+        }
+
+        // The bank a COORDINATED turn at this rate and speed would carry.
+        const auto coordinatedBankDeg = [&](const TwistPoint& point)
+        {
+            return std::atan(point.speedMps * point.turnRadps / 9.80665)
+                / Degree;
+        };
+        std::printf("Imposed antisymmetric twist, whole aircraft:\n");
+        for (const TwistPoint& point : sweep)
+            std::printf("  twist %.2f deg: bank %5.2f deg, turn %+.4f rad/s, "
+                        "coordinated bank %5.2f deg (%3.0f%%)\n",
+                        point.twistDeg, point.bankDeg, point.turnRadps,
+                        coordinatedBankDeg(point),
+                        coordinatedBankDeg(point) > 1.0e-9
+                            ? 100.0 * point.bankDeg / coordinatedBankDeg(point)
+                            : 0.0);
+        const double perDegree = sweep[3].turnRadps / sweep[3].twistDeg;
+        std::printf("  -> %.4f rad/s per degree; 0.20 rad/s needs %.1f deg\n",
+                    perDegree, 0.20 / perDegree);
+
+        // Zero twist must be the aircraft that flew before this hook existed.
+        Check(std::fabs(sweep.front().turnRadps) < 1.0e-9,
+              "zero imposed twist is the untwisted aircraft - the instrument "
+              "is inert by default");
+
+        // The channel reaches the flight path, linearly, so the requirement
+        // divides out. This is what the whole instrument is for.
+        Check(sweep.back().turnRadps > 1.0e-3,
+              "an imposed twist turns the aircraft, so the channel reaches "
+              "the flight path and not only the roll moment");
+        Check(std::fabs(sweep[1].turnRadps / sweep[1].twistDeg - perDegree)
+                  < 0.05 * perDegree,
+              "and it does so proportionally from half a degree to two, so "
+              "the twist a target turn rate needs is one division");
+        // 0.027 rad/s per degree measured, so 0.20 rad/s - a real EN-B's turn
+        // - wants about SEVEN DEGREES of antisymmetric twist. That supersedes
+        // the ten degrees §72 derived by dividing brake's roll moment by the
+        // channel's aerodynamic gain: a steady turn is not held up by a
+        // steady roll moment, so that arithmetic answered a different
+        // question. This one flies the aircraft.
+        Check(0.20 / perDegree > 5.0 && 0.20 / perDegree < 10.0,
+              "a real wing's turn rate wants something like seven degrees of "
+              "twist - the number the canopy-torsion level has to be measured "
+              "against, and it comes from flying the aircraft rather than "
+              "from dividing two moments");
+
+        // THE TURNS ARE SKIDDING, and by a constant fraction. Every stable
+        // point banks about 38% of what its own turn rate and speed imply for
+        // a coordinated turn, from half a degree of twist to three. A ratio
+        // that holds while the input varies sixfold is a missing mechanism
+        // rather than a tuning error: the aircraft is yawing round without
+        // the bank following, so it holds a steady sideslip in every turn.
+        // Bounded rather than fixed, and unowned by any existing item.
+        for (const TwistPoint& point : sweep)
+        {
+            if (point.turnRadps < 1.0e-3) continue;
+            Check(point.bankDeg > 0.25 * coordinatedBankDeg(point)
+                  && point.bankDeg < 0.55 * coordinatedBankDeg(point),
+                  "KNOWN GAP: the wing banks well under the coordinated bank "
+                  "for its own turn rate, by the same fraction at every twist "
+                  "- so every turn it flies carries a steady skid");
+        }
+    }
+
+    // THE SPIRAL ARRIVES BEFORE THE TURN DOES, which is what actually decides
+    // whether canopy torsion is worth building.
+    //
+    // The sweep above is stable and settled to three degrees of twist. At
+    // four the aircraft does not settle: incidence falls steadily from 4.7
+    // degrees to below zero, speed climbs from 10.7 m/s past 21, and at about
+    // 35 seconds it snaps into a spiral beyond 1.3 rad/s. Nothing numerical is
+    // happening - the aerodynamic safety envelope never engages, and the solve
+    // is no less converged than it is in straight flight.
+    //
+    // So the ceiling on this aircraft's turn is NOT the twist a canopy can
+    // find. A stable turn tops out near 0.09 rad/s, and a real EN-B's 0.2-0.3
+    // is on the far side of a spiral departure. Perfect canopy torsion would
+    // not reach it. Item 21 is therefore no longer only waiting on a
+    // structural level - it is behind a stability problem that can be
+    // measured today, and that is unowned.
+    {
+        CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+        CoupledState state;
+        Fly(wing, handsOff, 60.0, &state);
+        constexpr double Degree = 3.14159265358979 / 180.0;
+        wing.SetImposedSpanwiseTwistRad(4.0 * Degree);
+        // The peak over the run, not the endpoint. A wind-up is what the
+        // aircraft DOES, and by 40 seconds it is already through the spiral
+        // and into whatever lies past it - reading only the last step would
+        // be measuring the aftermath.
+        double peakTurnRadps = 0.0;
+        double peakSpeedMps = 0.0;
+        bool envelopeEngaged = false;
+        const CoupledAtmosphere air;
+        const int steps =
+            static_cast<int>(40.0 / wing.Schedule().timeStepS);
+        for (int step = 0; step < steps; ++step)
+        {
+            wing.Step(state, handsOff, air);
+            const CoupledDiagnostics& step_d = wing.Diagnostics();
+            peakTurnRadps =
+                std::max(peakTurnRadps, std::fabs(step_d.turnRateRadps));
+            peakSpeedMps = std::max(peakSpeedMps, step_d.airspeedMps);
+            envelopeEngaged = envelopeEngaged || step_d.aerodynamicsRejected;
+        }
+        const CoupledDiagnostics& d = wing.Diagnostics();
+        std::printf("Four degrees of twist over 40 s: peak turn %.3f rad/s, "
+                    "peak speed %.2f m/s, envelope %s\n"
+                    "  and it does not come back: ends at %+.2f deg "
+                    "incidence, %.2f m/s\n",
+                    peakTurnRadps, peakSpeedMps,
+                    envelopeEngaged ? "ENGAGED" : "never engaged",
+                    d.angleOfAttackRad / Degree, d.airspeedMps);
+
+        Check(peakTurnRadps > 0.5,
+              "four degrees of twist does not settle into a turn - it winds "
+              "up into a spiral, at many times the rate three degrees holds "
+              "steadily");
+        Check(peakSpeedMps > 14.0,
+              "and the spiral is a real one: the aircraft accelerates well "
+              "past trim rather than mushing");
+        Check(!envelopeEngaged,
+              "and it is the model's own behaviour, not the numerical safety "
+              "envelope - which never engages through any of it");
+        // Where it ends up is a SEPARATE and weaker claim. The wing settles
+        // at an incidence past 70 degrees and sits there, which is the deep
+        // stall the plan already says has no steady state to find (Level 11).
+        // Bounded, not trusted: what this test is evidence for is the wind-up
+        // above, which happens entirely at ordinary incidence.
+        Check(d.angleOfAttackRad / Degree > 45.0,
+              "and what it leaves behind is the known separated-regime "
+              "blocker: a wing parked past 70 degrees of incidence, which is "
+              "Level 11's to represent and is not evidence for anything here");
+    }
+
         // Brake pumping. The plan's gate is that brake only reaches a collapse
         // when the brake line has tension, and this wing has 120 mm of slack
         // sewn into a 620 mm travel - so the first 19% of the handle's travel

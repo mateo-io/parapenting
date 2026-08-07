@@ -33,7 +33,7 @@ never reached:
 | Camp | Levels | What you have | Status |
 |---|---|---|---|
 | **Base camp** | 0–2 | One authoritative geometry, real suspension graph, no duplicated meshes | **Reached** |
-| **Camp I** | 3–5 | Emergent trim and turns from local aero and cell pressure | **Reached** |
+| **Camp I** | 3–5 | Emergent trim and turns from local aero and cell pressure | **Reached for trim, not for turns** — see Level 7 |
 | **Camp II** | 6–8 | Emergent collapse, stall, and reopening from membrane mechanics | **Reached, at reduced scope** — Level 6 is 1-D strips, no cravat in flight |
 | **Camp III** | 9–11 | Calibrated, unsteady-wake, validated against certification maneuvers | **Camped on the approach.** 9 done bar pilot review and under-settled; 10 blocked on the envelope; 11 specified but unstarted |
 | **Death zone** | 12–15 | Resolved turbulence, real-time two-way FSI, instrumented-flight identification | Beyond current published real-time state of the art |
@@ -72,18 +72,28 @@ where the physics work currently stands. The engine as built is documented in
 | 4 VSM and polars | **Done** | CL_α 0.2%, CDi 3.6%; polars now solved on the section, not stated (item 1) |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim; mirror-exact to 0.000e+00 (§67) |
 | 6 Membrane | **Core done, 1-D** | sagitta 26.32 mm vs analytic 25.99; strips, not a mesh |
-| 7 Coupled solver | **Done** | turns mirror to 2e-8, books balance |
+| 7 Coupled solver | **REOPENED** | books balance and mirrors to 2e-8, but its gate says weight-shift turns must *emerge* and they do not — 0.014 rad/s (§71). See "the geometric channel" |
 | 8 Emergent collapse | **Done, with gaps** | fold from a pressure balance; no cravat in flight (item 4) |
 | 9 Calibration | **Done bar pilot review** | trim 39.4 vs 39.0 km/h — but see item 18, every number under-settled |
 | 10 Performance and legacy removal | **Strands 1–2 done, exit gate BLOCKED** | `SOLVER_PROFILE.md`, `SOLVER_LOD.md`; 15× real time full, 36× reduced; visualisation strand unstarted; legacy path still flies the game |
 | 11 Unsteady wake | **Not started — and now specified by measurement** | §68: the separated solve is not short of iterations, it has nothing to converge to |
 | 12+ | Not started | — |
 
-**Camp I is complete. Camp II is built but not closed**, and the distinction is
-the whole of the current position: Levels 6–8 pass their quantitative gates,
-Level 10's exit gate does not, and **nothing geometry-driven flies the game**
-(item 7). Levels 1–8 have been exercised by their own suites and by nobody who
-flies.
+**Camp II is built but not closed**, and the distinction is the whole of the
+current position: Levels 6–8 pass their quantitative gates, Level 10's exit gate
+does not, and **nothing geometry-driven flies the game** (item 7). Levels 1–8
+have been exercised by their own suites and by nobody who flies.
+
+**And Level 7 is reopened, which changes the shape of the ladder.** Its exit
+gate reads *"weight shift and brake turns emerge without direct turn moments"*.
+That has two halves. The absence of a direct turn moment was verified. The
+emergence was not, and §71 measured it: full weight shift turns the wing at
+**0.014 rad/s**. The cause is one interface — the suspension solve computes
+every node's position and publishes a single root-chord scalar, so nothing
+spanwise reaches the aerodynamics. **The geometry-driven stack is
+geometry-driven everywhere except the interface where it matters most.** The
+design is below, under "the geometric channel", and it is now the head of the
+queue.
 
 ### The one structural finding this plan did not anticipate
 
@@ -226,12 +236,26 @@ paid for with unvalidated numbers and no feedback.
    player. The seam itself turned out not to be the obstacle — the pawn makes
    17 calls into the legacy model and only one is the `Step`.
 
-5. **Weight shift (item 21) is the new head of this queue.** It is the cheapest
-   thing standing between the stack and a pilot, it is a *control* rather than
-   a coefficient, and it is unowned — no item covered it and no gate caught it,
-   because it is neither a departure nor a disagreement with a published
-   number. Then the speed bar (item 22). Only with those does step 4 become a
-   real option.
+5. **Build the geometric channel — Level 7's reopened half, and now the head
+   of the queue.** §71 diagnosed weight shift: the chain works as far as the
+   lines, transferring a real 34% of load between the carabiners, and then
+   stops, because `VsmSolveInput` has no channel from the suspension solve.
+   The fix is not a coefficient — no value of `hipTravelM` closes a 0.6°
+   geometric bank — it is to let the canopy's per-section pose be **read off
+   the solved line geometry** instead of assumed. The full design is under
+   "the geometric channel" above.
+
+   It is the head of the queue for four reasons, in order of how much they
+   matter:
+   - it is the only item here that **removes** a guiding-rule violation rather
+     than adding a capability — brake's scalar path into the aerodynamic solve
+     is exactly the control-to-aero shortcut rule 4 forbids;
+   - it is Level 7's own gate, unmet;
+   - it is expected to reach item 0b (turn rate) by the same mechanism, so two
+     items close on one channel;
+   - and it is arithmetic on numbers the line solver **already computes and
+     throws away**, which is a smaller change than its consequences suggest.
+
 6. **Level 11, the unsteady wake.** Confirmed on the critical path by step 2.
    It is specified by measurement rather than by ambition: the entry criterion
    is a separated solve that is single-valued, and `coupled_tests` already
@@ -817,6 +841,127 @@ line in the original budget)*
 - Weight shift and brake turns emerge without direct turn moments.
 - Coupling iteration count can be reduced by one without a qualitative change
   in behavior — i.e. the solve is genuinely converged, not iteration-tuned.
+
+---
+
+## The geometric channel — Level 7's unfinished half
+
+**Reopened, with evidence.** Level 7 was marked done and every exit gate was
+recorded as passing. One of them is:
+
+> Weight shift and brake turns **emerge** without direct turn moments.
+
+That gate has two halves and only one was ever checked. *No direct turn moment
+exists* — true, verified, and worth having. *A turn emerges* — false. Measured
+(§71), full weight shift produces **0.014 rad/s**, against 0.20 in the legacy
+model and something like 0.2–0.3 on a real EN-B. The absence of a shortcut was
+confirmed; the presence of the physics that was supposed to replace it was not.
+
+### What is actually missing
+
+The suspension solve computes the 3-D position of every node in the line
+network — `SuspensionSolution::nodePositionM`, one entry per attachment — and
+then publishes this:
+
+```cpp
+// Change in root-chord incidence from the unloaded design pose. This is
+// the only path bar and brake have to the canopy.
+double incidenceChangeRad = 0.0;
+```
+
+**One scalar, at the root.** Everything spanwise in the solved geometry is
+computed and discarded. `VsmSolveInput` correspondingly has no channel for it:
+it carries airspeed, angular velocity, density, per-cell internal pressure,
+left/right brake and a per-section gust, and nothing from the suspension at all.
+
+So the consequences follow directly and all three are measured:
+
+- **Weight shift does nothing** (item 21). Its only surviving path is
+  translating the pilot's CG 7.1 cm on a 6.6 m hang, which is 0.6° of bank from
+  geometry. The 34% riser load asymmetry it genuinely produces has nowhere to go.
+- **Brake works, badly** (item 0b). Brake has a *second* path — it is passed
+  into the aerodynamic solve as a scalar pair. That is why brake turns at all.
+- **And that second path is the thing this plan exists to remove.** Guiding
+  rule 4 says brake input changes brake-line rest length and does not directly
+  command a turn. The rest length does change, and then a control scalar is
+  handed to the aerodynamics anyway. The geometry-driven stack is
+  geometry-driven everywhere except the one interface where it matters most.
+
+### The design
+
+**One idea: the canopy's per-section pose is read off the solved line geometry
+rather than assumed.** That is guiding rule 1 applied to the interface that
+currently violates it.
+
+1. **The suspension solve publishes a per-station pose.** For each span station
+   the VSM solves, read from the already-solved node positions:
+   - the chord direction, from that station's front (A/A′) attachment to its
+     rear (C) attachment, projected into the section plane;
+   - hence a **per-section incidence offset** from the unloaded design pose;
+   - the station's position and normal, giving the **deformed arc** — which is
+     what converts sideslip into roll on a real wing.
+
+   Nothing here is new physics or a new solve. It is arithmetic on numbers the
+   line solver already produces and currently throws away.
+
+2. **`VsmSolveInput` gains `sectionIncidenceOffsetRad`**, on exactly the
+   pattern `internalPressureCoefficient` and `sectionGustBodyMps` already set:
+   **empty means the design pose**, so every existing caller is unchanged and
+   the change is additive rather than a migration.
+
+3. **Brake's scalar path retires into it.** Pulling a brake shortens a line,
+   which moves a trailing edge, which changes the camber and incidence of the
+   stations that line reaches. Once the channel exists, `leftBrake`/`rightBrake`
+   no longer need to be handed to an aerodynamic solver as controls. That closes
+   guiding rule 4 for real, and it is the same mechanism that gives weight shift
+   its authority — one channel, three controls.
+
+4. **Weight shift then works without being given anything of its own**, which
+   is the test of whether the design is right. If it needs its own term, the
+   channel is wrong.
+
+### What this is expected to fix, and what it is not
+
+| | |
+|---|---|
+| item 21, weight shift authority | directly — this is its diagnosis |
+| item 0b, turn rate several times too slow | expected, same mechanism, not assumed |
+| guiding rule 4's control-to-aero shortcut | retires it |
+| item 12, the drag deficit | **no** |
+| the separated-regime blocker (Level 11) | **no** |
+
+**Explicitly not claimed:** that this produces the right *magnitude*. The
+design says the channel exists and carries the right sign; whether 34% of riser
+asymmetry becomes 0.2 rad/s of turn is a measurement, and the first milestone
+is that measurement rather than a finished turn rate.
+
+### Risks, named rather than discovered later
+
+- **It closes a feedback loop.** Aerodynamic load → line tension → canopy
+  geometry → aerodynamic load. Level 7's staggered coupling already exists and
+  this rides it, but the loop is new and may need more iterations or more
+  relaxation. Level 7's own convergence gate — *one fewer iteration changes
+  nothing qualitative* — is the test, and it must be re-run rather than
+  inherited.
+- **Level 6 is one-dimensional.** The membrane is strips at chord stations, so
+  arc deformation is under-resolved. The incidence offset does not depend on
+  the membrane and should land regardless; the arc/sideslip half may not.
+- **Cost.** More coupling iterations against a solver that runs 15× real time
+  at full fidelity — headroom exists and is measured (`SOLVER_PROFILE.md`).
+- **It may not be enough.** If the channel carries the right sign and an order
+  too little authority, the next suspect is the harness geometry the CG
+  translation rests on, and that is a different item.
+
+### Exit gate
+
+- Weight shift produces a turn that **emerges from the riser asymmetry** — the
+  gated 34% split drives it, and no weight-shift term appears anywhere in the
+  aerodynamic solve.
+- `leftBrake` and `rightBrake` are gone from `VsmSolveInput`, and brake turns
+  are at least as good as they are today.
+- The mirror-symmetry gates still hold to round-off (§65–§71).
+- Level 7's convergence gate passes again, re-run rather than inherited.
+- Turn rate against a pilot's number, not against a coefficient.
 
 ---
 

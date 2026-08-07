@@ -518,6 +518,34 @@ between sections; a wing in deep stall has no stable steady state to find.
 
 ## Integration debt
 
+**23. Level 7 is reopened: its turn gate was passed on half of its text.** The
+gate is *"weight shift and brake turns EMERGE without direct turn moments"*. The
+absence of a direct turn moment was verified and is real. The emergence was
+never checked, and §71 measures it at **0.014 rad/s** for full weight shift.
+
+- Not a regression: it was never true. The level was closed on the half of the
+  sentence that was testable at the time.
+- **The lesson is about the gate's grammar rather than the wing.** "X emerges
+  without Y" is two claims, and the negative one is much easier to check - no
+  term named `weightShiftBank` appears anywhere, which is a grep. The positive
+  one needs a manoeuvre and a number, and it was not written.
+- **Swept, and the shape is common.** Sixteen exit-gate bullets across the
+  ladder are two-claim sentences. Most are safe because the positive half is
+  the easy half - "hands-up trim converges without a speed controller" (Level
+  4) is verified by the trim existing. The ones worth re-checking are those
+  where the *positive* half needs a manoeuvre:
+  - **Level 8, "asymmetric separation produces spin/spiral behaviour, not
+    barrel rolls."** Directly downstream of the same missing roll authority:
+    with weight shift at 0.014 rad/s and brake turns 6x slow (item 0b), a
+    spiral emerging properly is doubtful. Highest-risk of the remaining set.
+  - **Level 2, "weight shift changes carabiner loads AND attachment
+    geometry."** The load half is now gated at a 34% split (§71); the
+    attachment-geometry half rides on the same anchor translation and is
+    probably fine, but it has not been asserted.
+  - This sweep checked the *grammar*, not each claim. Naming which halves are
+    unverified is what it delivers.
+- Closed by the geometric channel (item 21's design).
+
 **7. Nothing geometry-driven flies the wing.** `ParagliderDynamics` — one
 six-degree-of-freedom body with a fitted polar — is still what the game flies.
 Levels 1-7 are exercised only by their own suites and the debug views.
@@ -1696,6 +1724,26 @@ at 0.20 rad/s. Found by `parapenting_model_agreement` (§70).
   at all. Two symptoms, one asymmetry in what the aero solve is allowed to know.
 - Bounded in `coupled_tests`: the split is gated as WORKING and proportional,
   the bank is bounded under 3 degrees and the turn under 0.05 rad/s.
+- **THE FIX IS DESIGNED, and it reopens Level 7.** That level's exit gate
+  reads *"weight shift and brake turns EMERGE without direct turn moments"*.
+  Only the negative half was ever checked. The design is in the master plan
+  under "the geometric channel"; the short form:
+  - `SuspensionSolution` computes `nodePositionM` for every attachment and
+    then publishes one scalar, `incidenceChangeRad`, whose own comment says it
+    is "the only path bar and brake have to the canopy". Everything spanwise is
+    computed and discarded.
+  - Publish a **per-station pose** instead: chord direction from each station's
+    front (A/A') to rear (C) attachment, hence a per-section incidence offset
+    from the design pose, plus the deformed arc.
+  - `VsmSolveInput` gains `sectionIncidenceOffsetRad`, on the same pattern as
+    `internalPressureCoefficient` and `sectionGustBodyMps` - **empty means the
+    design pose**, so the change is additive and no existing caller moves.
+  - **Brake's scalar path then retires into it**, which is the part that
+    matters beyond this item: passing `leftBrake`/`rightBrake` into an
+    aerodynamic solve is the control-to-aero shortcut guiding rule 4 forbids,
+    and it is currently the only reason brake turns at all.
+  - Weight shift then works **without being given a term of its own**, and if
+    it needs one the design is wrong.
 - **Cheapest thing standing between the stack and a pilot**, on current
   evidence, and unowned by any other item.
 

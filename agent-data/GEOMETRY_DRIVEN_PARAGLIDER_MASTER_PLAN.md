@@ -32,10 +32,10 @@ never reached:
 
 | Camp | Levels | What you have | Status |
 |---|---|---|---|
-| **Base camp** | 0–2 | One authoritative geometry, real suspension graph, no duplicated meshes | Achievable |
-| **Camp I** | 3–5 | Emergent trim and turns from local aero and cell pressure | Achievable, hard |
-| **Camp II** | 6–8 | Emergent collapse, stall, and reopening from membrane mechanics | Research-grade |
-| **Camp III** | 9–11 | Calibrated, unsteady-wake, validated against certification maneuvers | At the edge |
+| **Base camp** | 0–2 | One authoritative geometry, real suspension graph, no duplicated meshes | **Reached** |
+| **Camp I** | 3–5 | Emergent trim and turns from local aero and cell pressure | **Reached** |
+| **Camp II** | 6–8 | Emergent collapse, stall, and reopening from membrane mechanics | **Reached, at reduced scope** — Level 6 is 1-D strips, no cravat in flight |
+| **Camp III** | 9–11 | Calibrated, unsteady-wake, validated against certification maneuvers | **Camped on the approach.** 9 done bar pilot review and under-settled; 10 blocked on the envelope; 11 specified but unstarted |
 | **Death zone** | 12–15 | Resolved turbulence, real-time two-way FSI, instrumented-flight identification | Beyond current published real-time state of the art |
 
 Levels 12–15 are not padding. They are written out in full because knowing the
@@ -43,154 +43,163 @@ shape of the unreachable work changes how the reachable work is designed. Do
 not treat failure to reach them as project failure. Treat reaching Camp II as
 an outstanding result.
 
+**That bar has been met: Camp II is reached.** What Camp III has taught so far
+is that the remaining distance is not measured in levels. The three items
+standing between here and a validated simulator — the envelope, the drag, and
+the pilot review — are each *older* than the level that was supposed to contain
+them, and none of them is the level's own work. That is the single most useful
+thing to know before planning the next one.
+
 ## Build status
 
-Updated at the end of the Level 9 work. The engine as built is documented in
+Updated at the end of the collapse-symmetry investigation (§64–§68), which is
+where the physics work currently stands. The engine as built is documented in
 `docs/PHYSICS_ENGINE.md`; what it cost to build is in
-`docs/PHYSICS_LEARNINGS.md`.
+`docs/PHYSICS_LEARNINGS.md`; the live item list is `docs/PHYSICS_TODO.md`.
+
+> **Naming, because it has already cost one reader a wrong conclusion.** Two
+> different things have been called "Level 11". **Level 11 in this plan is the
+> unsteady wake, and it is unstarted.** The *pitch-axis programme* — the
+> eigenmode work in `PHYSICS_TODO` — was also called Level 11 while it ran, and
+> it is finished. Where this document says Level 11 it always means the wake.
 
 | Level | Status | Evidence |
 |---|---|---|
 | 0 Baseline and determinism | **Done** | state hash identical at 30/60/144/uncapped; registry live |
 | 1 Manufactured geometry | **Done** | unfold residual 2.4e-15; flat span, area, projected span exact |
-| 2 Suspension graph | **Done** | 254.8 m against published 254; rows A 36 / A' 11 / B 37 / C 16 |
+| 2 Suspension graph | **Done** | 254.8 m against published 254; mirror-symmetric to 6.2e-15 m (§65) |
 | 3 Payload and harness | **Done** | carabiner split exact to W(1/2 ± e/s); pendulum period 2π√(L/g) |
-| 4 VSM and polars | **Done, with gaps** | CL_α 0.2%, CDi 3.6%, glide 9.46 vs published 9.5 |
-| 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim, 0.89 bar |
-| 6 Membrane | **Core done** | sagitta 26.32 mm vs analytic 25.99; strain 0.060% vs 0.064% |
-| 7 Coupled solver | **Done** | turns mirror to 2e-8, books balance, suite green; trim gap closed at Level 9 |
-| 8 Emergent collapse | **Done, with gaps** | fold 0.669 vs 0.018 across the span on a 4 m/s half-span gust, turns toward the fold, full recovery, safety envelope idle |
-| 9 Calibration | **Done, pilot review outstanding** | trim 39.4 km/h vs published 39.0, sink 1.15 vs 1.14, glide 9.43 vs 9.5, incidence 5.02 vs 5.30 - one parameter identified, three not fitted; three disagreements bounded; `docs/CALIBRATION_REPORT.md` |
-| 10 Performance and legacy removal | Not started | — |
-| 11+ | Not started | — |
+| 4 VSM and polars | **Done** | CL_α 0.2%, CDi 3.6%; polars now solved on the section, not stated (item 1) |
+| 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim; mirror-exact to 0.000e+00 (§67) |
+| 6 Membrane | **Core done, 1-D** | sagitta 26.32 mm vs analytic 25.99; strips, not a mesh |
+| 7 Coupled solver | **Done** | turns mirror to 2e-8, books balance |
+| 8 Emergent collapse | **Done, with gaps** | fold from a pressure balance; no cravat in flight (item 4) |
+| 9 Calibration | **Done bar pilot review** | trim 39.4 vs 39.0 km/h — but see item 18, every number under-settled |
+| 10 Performance and legacy removal | **Strands 1–2 done, exit gate BLOCKED** | `SOLVER_PROFILE.md`, `SOLVER_LOD.md`; 15× real time full, 36× reduced; visualisation strand unstarted; legacy path still flies the game |
+| 11 Unsteady wake | **Not started — and now specified by measurement** | §68: the separated solve is not short of iterations, it has nothing to converge to |
+| 12+ | Not started | — |
 
-**Camp I is complete. Camp II is one level short**, with Levels 7, 8 and 9
-passing their quantitative gates and Level 6 delivered at a reduced scope —
-strips rather than a full mesh. Self-collision turned out not to be Level 8's
-blocker: it was built, measured to be incapable of firing on a one-dimensional
-strip, and removed, and cravats were built instead from fabric-to-*line*
-contact, which is what a cravat physically is.
+**Camp I is complete. Camp II is built but not closed**, and the distinction is
+the whole of the current position: Levels 6–8 pass their quantitative gates,
+Level 10's exit gate does not, and **nothing geometry-driven flies the game**
+(item 7). Levels 1–8 have been exercised by their own suites and by nobody who
+flies.
 
-**The wing and the pilot are two bodies, and the pitch axis is now measured
-end to end.** The payload is a link with its own direction in world axes; the
-canopy carries its own inertia; the line spring is probed off the built graph
-at four loads because it is **geometric rather than elastic** — 3306, 6317,
-11512 and 15393 Nm/rad at ½, 1, 2 and 4 g, the lines stretching 0.2% while the
-canopy's origin moves 0.13 m about a virtual hinge 6.62 m below itself. Roll
-got the same treatment, 8204 Nm/rad, replacing a `W L sin` term referenced to
-the world vertical that a coordinated turn should never have had.
+### The one structural finding this plan did not anticipate
 
-That closed the trim gap. **39.4 km/h against a published 39.0**, at the
-published 105 kg all-up, with sink, glide and incidence following from one
-identified parameter — the line plan's design incidence, which the line plan
-file has always named as the quantity to fit. The old 18% shortfall was the
-doubled pitch stiffness, exactly as the gap description predicted, and the
-lift curve it was first blamed on tests out close to right.
+The original ladder puts Level 10 before Level 11 and treats the wake as
+Camp III polish. **The measured dependency runs the other way**, and four
+sessions of work established it:
 
-**What that exposed is a narrow envelope**, and both ends of it are measured:
+1. Level 10's exit gate is "no legacy direct-control force remains active"
+   (item 17). It is blocked because the geometry-driven stack departs at 40%
+   brake and is statically pitch-divergent at its published top speed — the
+   usable envelope is hands-up to about a quarter brake (item 11).
+2. The drag deficit (item 12, glide **10.96 against a published 9.5**) is the
+   largest disagreement left, and closing it is expected to make the pitch axis
+   *worse*, not better: the same drag applied at the canopy **costs** stability
+   and only the moment arm reverses it (§55, §56). So items 11 and 12 have to
+   be closed **together**. Closing 11 against a wing carrying a sixth too
+   little drag would fix it against the wrong aircraft.
+3. One candidate for item 12 — the line-drag shielding correction, which is
+   measured rather than fitted and takes glide error from 19% to 4.3% — is
+   blocked by a symmetry gate (§64).
+4. That gate is blocked by the separated aerodynamic solve having no
+   single-valued solution, **which is what Level 11 is** (§68). It is not a
+   defect, not an instability, and not short of iterations: 40, 200 and 600
+   iteration caps break on the same tick.
 
-- 40% brake is unholdable. This used to be the analytic section polars, which
-  peaked at CL 0.866 at 11 degrees where this wing's profile carries 1.32;
-  those are now solved on the section and carry 2.40 at 40% brake, so the
-  ceiling is closed and the reason is pitch instead - the section's nose-down
-  moment under brake rotates the canopy faster than the camber buys lift back,
-  and brake makes this wing FASTER over the first fifth of its travel;
-- the pitch loop gain `a c Cm / (k CL^2)` passes one at CL 0.35 and full bar is
-  a CL 0.31 condition, so the wing is statically pitch-divergent at its
-  published top speed.
+So on that route the wake sits upstream of Level 10's exit gate, upstream of
+the largest calibration disagreement, and upstream of the envelope that decides
+whether the stack can fly the game at all.
 
-The usable envelope is hands-up to about a quarter brake. Both limits point at
-gap 1 below, which is now the highest-value item in the plan and the one thing
-holding Level 10 back — swapping the geometry-driven stack in for the legacy
-polar while it cannot hold ordinary brake would be a regression a pilot feels
-in the first minute.
-
-**Level 9's remaining deliverable is people.** The quantitative half of its
-exit gate is closed; the qualitative half — experienced pilots confirming
-direction, control progression, pitch timing, pendulum timing and stall
-approach — is written up as `docs/PILOT_REVIEW_PROTOCOL.md` and has not been
-run. Until it has, the handling is unvalidated in the registry's sense: self
-consistent, agreeing with four published numbers, and never flown by anyone
-who flies.
+**But the route is not the only one, and the alternative has not been tested.**
+§56 found that the same deficit applied at the **harness** lands glide, trim
+speed and sink together — 9.51 / 10.64 / 1.113 against a published 9.50 / 10.83
+/ 1.140 — where a section-side offset lands glide alone. A harness-side
+correction does not obviously drive the canopy deeper into collapse, so **it may
+close item 12 without the wake at all.** Nobody has run the symmetry gate
+against it. That single cheap test decides whether Level 11 is on the critical
+path or off it, and it should be run before any wake work is scheduled.
 
 ### Carried gaps, by priority
 
-1. **Section polars are analytic.** Thin-airfoil plus Viterna, no XFOIL, no
-   measurement. Every flight number in Level 4 rests on theory. The plan calls
-   for this work to begin during Level 1; it has not begun.
-2. **Level 6 is one-dimensional.** Strips at chord stations, ribs as fixed
-   endpoints. Not the blocker on cravats it was thought to be — a strip cannot
-   self-intersect, measured, and a cravat is fabric on a line — but it is why
-   no cravat has yet formed in the coupled solve: the strip's fold depth stays
-   short of the 0.178 m gap to the nearest line. The 2-D mesh is what would
+1. **Nothing geometry-driven flies the wing (items 7, 17).** `ParagliderDynamics`
+   — one 6-DOF body with a fitted polar — is still what the game flies. This is
+   guiding rule 11 working as intended, but it means the entire ladder is
+   validated by its own test suites and by no pilot. It is the largest
+   validation gap in the project and it has been open since Level 1.
+2. **The envelope is hands-up to a quarter brake (item 11).** 40% brake is
+   unholdable and the pitch loop gain passes one at CL 0.35 where full bar is a
+   CL 0.31 condition. This is what blocks gap 1. The eigenmode programme ran to
+   the end of what linearisation can say; the live lead is the **moment arm**
+   (§56), the first mechanism in three levels to move the boundary the right
+   way.
+3. **The largest calibration disagreement is open and its cause is contested
+   (item 12).** Glide 10.96 against 9.5. Two candidates: a section-side deficit
+   (the historical assumption, lands glide only) and an installed/harness-side
+   deficit (lands all three). Likely a combination. Must be closed with gap 2,
+   not before it.
+4. **Every calibration number was measured after too short a settle (item 18).**
+   The harness allows 90 s where hands-up needs 410 s and 25% brake needs 1080.
+   This is not a small correction: glide read 11.33 unsettled and 10.96
+   settled. **Every number Level 9 published, and every conclusion drawn from
+   one, is provisional until re-measured.**
+5. **The wing turns several times too slowly (item 0b).** 0.045 rad/s at 1.5°
+   of bank on 35% brake, where an EN-B wing does about 0.3 rad/s at 20–30°.
+   §54 found the disturbance-limit boundary is **nose-down**, the same low-CL
+   loop-gain path as full bar and 40% brake, so this may share one cause with
+   gap 2 rather than being its own problem.
+6. **Level 6 is one-dimensional.** Strips at chord stations. It is why no
+   cravat has formed in the coupled solve (item 4): the strip's fold depth
+   stays short of the 0.178 m gap to the nearest line. A 2-D mesh is what would
    say whether that is the wing or the model.
-3. **Deep stall does not converge** in the VSM solved cold, and will not: the
-   separated branch has a negative lift slope, which inverts the downwash
-   feedback between sections. Level 11's unsteady wake is the honest treatment.
-   Locked as a known-failure check. Inside the coupled solve, with the
-   separation state carried between steps, the wing does reach a fully
-   separated 46-degree stall at 4.65 m/s of sink without the solve failing.
-4. **Apparent-mass rotational terms are disputed** — leading coefficients
-   unverified against the source paper, and 14× the existing estimate in roll.
-   Registered `Disputed`; nothing uses their magnitude.
-5. **Grindelwald First's anchor is 50 m above its surveyed ground.**
-   Published 2123 m is the top station; the WGS84 pair is on the launch slope
-   below it, which swissALTI3D puts at 2073 m. Every other site agrees within
-   12 m. Recorded rather than fitted away - the terrain is the measurement.
-6. **Nothing geometry-driven flies the wing.** The legacy polar still does, which
-   is guiding rule 11 working as intended, but it means none of Levels 1-7 has
-   been exercised by a pilot.
+7. **Coefficient registry: 96 coefficients, 26 tuned, 82 unvalidated** (item 8).
+   The tuned ones are concentrated in the legacy model, so gap 1 is what
+   retires them — with one loud exception inside the geometry-driven stack,
+   `swingDampingRatio`, which is gap 2.
+8. **Apparent-mass rotational terms are disputed** (item 2). Registered
+   `Disputed`; nothing uses their magnitude. Blocked on source access.
+9. **Grindelwald First's anchor is 50 m above its surveyed ground** (item 9).
+   Recorded rather than fitted away — the terrain is the measurement.
 
 ### Recommended next steps, in order
 
-**Level 7 is closed.** Trim was fixed first — the pressure state started packed
-while the flight state started flying, and installed drag was missing from the
-coupled solve — and the last failing check is now fixed too. It was in the
-solver, not the harness: rotational damping integrated explicitly at eleven
-times its stability limit, a damping derivative measured by dividing by whatever
-rate the wing happened to have, and an aerodynamic validity gate that bounded
-the force it accepted but not the moment. `docs/PHYSICS_ENGINE.md` has the
-diagnosis and `docs/PHYSICS_LEARNINGS.md` sections 7, 13 and 14 have what it
-teaches.
+The ordering principle has changed with the evidence. It used to be "close the
+gaps below a level before starting it". Four sessions of chasing a symmetry
+residual to the bottom of the stack suggest a better one: **re-establish the
+validity of the numbers, then get the stack in front of a pilot, and only then
+spend a research level.** A research level bought before either of those is
+paid for with unvalidated numbers and no feedback.
 
-**The terrain/flight frame disagreement is also closed**, and had been for 25
-commits before anyone noticed. `da9f998` flipped `RouteFrame`, the heightfield
-generator, `RouteCatalogue` and the content placement together and regenerated
-the surveyed grid in the same change, and TerrainSurveyTests' handedness section
-has gated both halves — turn direction and Lake Thun's real position — ever
-since. The gap list kept carrying it because the measurement offered as its
-evidence, foehn rotor at 0.82 route-left against 0.15 route-right, was never
-re-taken. It does not survive re-taking: local z is relative to the Lehn field,
-so the fixed altitude those two samples shared put one of them thirty metres
-inside a hillside. Sampled at a common height above ground, rotor sits on the
-flanks of both sides, because it is computed from the terrain gradient.
+1. **Re-measure everything at a proper settle (item 18).** Cheapest item on the
+   list with the widest blast radius: it decides what the other numbers *are*.
+   Glide moved 11.33 → 10.96 on settling alone, which is a quarter of the
+   deficit item 12 exists to explain. Do this before drawing another conclusion
+   from a calibration number.
+2. **Run the symmetry gate against a harness-side drag correction.** One test,
+   and it decides whether Level 11 is on the critical path or off it. If the
+   harness-side correction passes, item 12 has a route that does not need the
+   wake and the whole ladder reorders.
+3. **Close items 11 and 12 together**, against the re-settled numbers, with the
+   moment-arm lead (§56) as the mechanism and the harness/section split (§56)
+   as the drag question. Do not close either alone — §55 measured that closing
+   12 alone *costs* pitch stability.
+4. **Then get it flying, in its measured envelope.** Rather than holding gap 1
+   until the stack is perfect, define Level 10's exit gate as *the
+   geometry-driven stack flies the game across its stated and gated envelope,
+   with the legacy path retained and visible outside it*. That is guiding rule
+   11 honoured rather than bypassed — both paths running side by side, with the
+   boundary published instead of implied — and it is the only thing that starts
+   the pilot review Level 9 has been owed since it closed.
+5. **Then Level 11, if step 2 says it is still needed.** It is now specified by
+   measurement rather than by ambition: the entry criterion is a separated solve
+   that is single-valued, and `coupled_tests` already contains the gate that
+   would show it — the symmetric frontal must not lose mirror symmetry on an
+   aerodynamic tick.
 
-**Grindelwald is on real ground.** Its own swissALTI3D region — 50 tiles, x
-[4500, 11500], y [-18500, -14000] in the same route frame — replaced the
-invented y = -8500 lane. All ten routes now launch and land on surveyed terrain,
-the Grund field reads 948 m against a published 950 m where the analytic proxy
-said 4683 m, and the region carries its own thermal triggers and authored
-weather instead of flying through dead air. `TerrainModel` holds regions
-additively; the renderer draws one at a time and rebuilds on a route change that
-crosses between them.
-
-**Level 8 is closed.** Collapse comes from a pressure balance across the nose
-skin, cravats from a contact test against the built line geometry, and the fold
-reaches the flight by taking its cell's pressure out on the way to the
-aerodynamics — there is no collapse-to-yaw term anywhere. The exit gates are
-incident benchmarks in `coupled_tests` whose only input is air arriving at part
-of the wing. They found three defects in the levels below: crossport flow that
-depended on loop direction, brake reaching the trailing edge through slack
-line, and a load reference that read every healthy tip as half unloaded.
-
-1. **Start the polar acquisition.** It is a data problem with a long lead time,
-   it needs XFOIL or equivalent tooling, it can run in parallel with anything,
-   and it is what turns Level 4's numbers from plausible into defensible. It is
-   now the only thing standing between here and Level 9.
-
-Levels 9 and 10 should not start before the gaps above close: calibrating an
-uncoupled model, or deleting the legacy path while the geometry-driven one
-cannot fly, would both be premature.
+**Levels 12–15 remain out of scope**, and the reason is now empirical rather
+than budgetary: Level 11 alone has taken four sessions to *specify*.
 
 ## Guiding rules
 

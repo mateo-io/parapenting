@@ -1,6 +1,6 @@
 # Parapenting master plan
 
-Last reviewed: 2026-07-30
+Last reviewed: 2026-08-07
 
 ## North star
 
@@ -220,7 +220,20 @@ not silently improve one manoeuvre while breaking another.
 
 ## Delivery stages
 
-### V0 — flight laboratory
+**Status, 2026-08-07.** V0 through V0.3 are delivered. V0.4 is delivered except
+for its one external dependency, manufacturer permission. **V0.5 is the
+interesting case and the one to read carefully: its physics is built and its
+game is not wired to it.** Levels 5–8 of the geometry-driven stack — pressure,
+membrane, coupled solve, emergent collapse — pass their own suites, but
+`ParagliderDynamics`, the legacy fitted-polar body, is still what the game
+flies. The canopy incidents a player sees today are the legacy model's, not the
+physical ones. Closing that is `PHYSICS_TODO` items 7 and 17, and it is blocked
+on the geometry-driven stack's flight envelope rather than on any product work.
+
+The detailed product checklist is `docs/V1_V4_ROADMAP.md`; the physics ladder
+and its current ordering are `agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md`.
+
+### V0 — flight laboratory *(delivered)*
 
 - Stable Play with no crash
 - Primitive visible canopy/pilot and landing marker
@@ -233,7 +246,7 @@ not silently improve one manoeuvre while breaking another.
 Exit gate: ten consecutive complete sessions without crash; automated startup,
 physics and input tests pass.
 
-### V0.1 — credible glider
+### V0.1 — credible glider *(delivered)*
 
 - 8-DOF wing/harness dynamics
 - Data-driven generic low-B profile at 102–106 kg all-up
@@ -241,7 +254,7 @@ physics and input tests pass.
 - CSV/JSON telemetry and deterministic replay
 - Ground collision and flare
 
-### V0.2 — Amisbühl–Lehn
+### V0.2 — Amisbühl–Lehn *(delivered)*
 
 - Licensed real terrain and local metric georeferencing
 - Verified launch/landing polygons
@@ -249,14 +262,14 @@ physics and input tests pass.
 - Calm and light-wind presets
 - Performance presets for baseline Macs
 
-### V0.3 — living air
+### V0.3 — living air *(delivered)*
 
 - Boundary layer, ridge lift, thermals, gusts and localized rotor
 - Weather-selection screen and debug airflow visualization
 - Vario audio
 - Scenario seeds and recorded-day playback
 
-### V0.4 — real-wing candidate
+### V0.4 — real-wing candidate *(delivered bar manufacturer permission)*
 
 - Manufacturer permission/partnership
 - Wing-specific geometry, line and brake model
@@ -264,14 +277,14 @@ physics and input tests pass.
 - Seated harness model and selectable all-up mass
 - Speed bar and active piloting
 
-### V0.5 — canopy incidents
+### V0.5 — canopy incidents *(physics built, not wired to the game)*
 
 - Reduced-order pressure/deformation model
 - Asymmetric/frontal collapses, stalls, spins and reinflation
 - Certification-inspired test suite
 - Visual canopy driven by physical modes
 
-### V1 — Switzerland early access
+### V1 — Switzerland early access *(two regions of several)*
 
 - Several fully reviewed Swiss regions
 - Launch, landing and flight modes
@@ -282,21 +295,50 @@ physics and input tests pass.
 
 ## Immediate backlog
 
-1. Confirm Play crash is gone on the user's interactive editor.
-2. Add automated runtime test that reaches `BeginPlay`.
-3. Add reset and landing/touchdown detection.
-4. Add input-unit tests for five keyboard steps and controller response curves.
-5. Add controller connection/calibration UI and PS controller smoke test.
-6. Replace primitive coefficient model with tabulated generic low-B polar.
-7. Implement separate canopy and harness states.
-8. Add telemetry recording and deterministic replay.
-9. Obtain exact Amisbühl/Lehn polygons and terrain tiles.
-10. Approach BGD and ADVANCE about simulation data and trademark/visual use.
+Items 1-9 of the original backlog are delivered; the list below replaces them.
+Only item 5 here is a product task, and that is the point — the project's
+critical path has been physics for some time.
+
+1. **Re-measure the calibration numbers at a proper settle.** `PHYSICS_TODO`
+   item 18: the harness allows 90 s where hands-up needs 410 s. Glide read
+   11.33 unsettled and 10.96 settled, which is a quarter of the deficit item 12
+   exists to explain. Cheapest item with the widest blast radius, and it
+   decides what the other numbers are.
+2. **Run the collapse symmetry gate against a harness-side drag correction.**
+   One test. It decides whether the unsteady wake is on the critical path to
+   everything else or off it. See the master plan's "one structural finding".
+3. **Close the drag deficit and the pitch envelope together.** `PHYSICS_TODO`
+   items 12 and 11. Not sequentially: closing the drag alone was measured to
+   *cost* pitch stability, so a pitch fix made first would be fitted to a wing
+   carrying a sixth too little drag.
+4. **Fly the geometry-driven stack across a stated envelope.** Items 7 and 17.
+   The physical canopy model does not reach the player today, and until it does
+   the pilot review that is half of Level 9's exit gate cannot start. The wing
+   has never been flown by anyone who flies.
+5. **Approach BGD and ADVANCE** about simulation data and trademark/visual use.
+   Unchanged, still open, and still the only external dependency in V0.4.
 
 ## Context and project tracking
 
-Keep durable decisions in this file, route data in `Data/Sites`, wing data in a
-future `Data/Wings`, and short active work in `docs/V0_PLAN.md`. Chat context is
-not the source of truth. At each milestone, update these files, tests, and data
-provenance so future work can resume from the repository without replaying the
-entire conversation.
+Keep durable decisions in this file, route data in `Data/Sites` and wing data in
+`Data/Wings`. Chat context is not the source of truth. At each milestone, update
+these files, tests, and data provenance so future work can resume from the
+repository without replaying the entire conversation.
+
+Where the live detail actually lives, since this file is the product view and
+not the working one:
+
+| | |
+|---|---|
+| the physics ladder, its status and its ordering | `agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md` |
+| every open physics item, with blocker and definition of done | `docs/PHYSICS_TODO.md` |
+| what is built and how it works | `docs/PHYSICS_ENGINE.md` |
+| what it cost to build, and every retraction | `docs/PHYSICS_LEARNINGS.md` |
+| the product checklist | `docs/V1_V4_ROADMAP.md` |
+| the restart point for a new session | `docs/CURRENT_STATE_HANDOFF.md` |
+
+The gate for any change is `Tools/check-build.sh` — the Unreal module **and**
+the twelve suites, in that order. The CMake suites compile each `Physics/*.cpp`
+as its own translation unit, which is exactly the configuration where a
+unity-build collision in the module stays invisible. Suites alone are not the
+gate.

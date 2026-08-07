@@ -5,10 +5,20 @@ like. The specification and per-level detail live in
 `agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md`; what is built lives in
 `docs/PHYSICS_ENGINE.md`; what it cost is in `docs/PHYSICS_LEARNINGS.md`.
 
-Status as of Level 9 substantially complete. Levels 0-8 are done, Level 9's
-manoeuvre runner, still-air gates, calibration report and pilot review protocol
-are in, all twelve test suites green, and nothing geometry-driven flies the wing
-yet.
+Status as of the collapse-symmetry investigation closing (§64-§68). Levels 0-8
+are done, Level 9 is done bar its pilot review, Level 10's first two strands are
+done and its exit gate is blocked, Level 11 (the unsteady wake) is unstarted but
+now **specified by measurement** rather than by ambition, all twelve test suites
+are green, and nothing geometry-driven flies the wing yet.
+
+**The ordering has changed and the master plan carries the reasoning.** The
+short form: re-measure the calibration numbers at a proper settle (item 18)
+before drawing another conclusion from one; run the symmetry gate against a
+**harness-side** drag correction, because that single test decides whether the
+unsteady wake is on the critical path or off it; close items 11 and 12
+**together**, since §55 measured that closing 12 alone costs pitch stability;
+then get the stack flying across a stated envelope so the pilot review can
+finally start.
 
 **Item 10 is closed and it closed item 0 with it.** The rigid motion no longer
 counts gravity's restoring torque twice. Hands-up trim is 39.4 km/h against a
@@ -325,11 +335,12 @@ survive the drag becoming a consequence.
     better-iterated steady one. Gated in `coupled_tests`.
   - Still open, and much narrower: *why* single-valuedness is lost at that
     particular tick and not at any of the fourteen before it.
-  - **Naming collision, flagged not fixed (§68):** the "Level 11" these gates
-    name is the **unsteady wake**, which is unstarted. The §"What Level 11
-    closed" section below is the **pitch axis by linearisation**, which is
-    done. Following the gate to that section reads as "the fix already
-    shipped". Whoever starts the wake work should rename it.
+  - **Naming collision, now fixed (§68):** the "Level 11" these gates name is
+    the **unsteady wake**, which is unstarted. The section below that used to
+    be headed "What Level 11 closed" is the **pitch axis by linearisation**,
+    which is done, and is now headed "What the pitch-axis programme closed" —
+    following the gate to it no longer reads as "the fix already shipped".
+    Level numbers themselves are unchanged.
   - Not tuned around: a shielding value picked as the largest that keeps the
     symmetry gate green would be the coefficient-chosen-to-put-it-there this
     item objects to. 0.394 stays, labelled measured-wrong.
@@ -1011,9 +1022,17 @@ not a lever. It is registered *Validated*, measured off the built graph at four
 loads, and is not an input to the solver — `LineStiffnessAt` interpolates the
 measured curve and 6.13 is that curve's slope written down afterwards.
 
-### What Level 11 closed, and what it did not
+### What the pitch-axis programme closed, and what it did not
 
-Level 11 was the pitch axis by linearisation. It is finished in the sense that
+> **Renamed to end a collision (§68).** This section used to be headed "What
+> Level 11 closed", and Level 11 in the master plan is the **unsteady wake**,
+> which is unstarted. A reader following "the fix is Level 11" from the
+> collapse-symmetry gate landed here, found a level marked finished, and would
+> reasonably conclude the fix had shipped. Level numbers are unchanged; only
+> this heading and the sentence below it are.
+
+The pitch-axis programme was the pitch axis by linearisation, run under the
+name "Level 11" while it went. It is finished in the sense that
 every *observation* on this axis is now accounted for; it is not finished in the
 sense item 11 asks for, and the two are worth keeping apart.
 
@@ -1317,7 +1336,8 @@ aircraft's pitch diverges and it is fully separated inside a minute.
   effectiveness a second time), and the take-up comes off the geometry. So
   this item is down to ONE unmeasured number: the specific stiffness of
   6.13 m.
-- Registered Tuned/Unvalidated, superseded-by Level 11, and bounded by the
+- Registered Tuned/Unvalidated, superseded-by the pitch-axis programme (item
+  11, not the master plan's Level 11), and bounded by the
   full-bar, deep-brake and brake-incidence gates in `calibration_tests` and
   the 25% brake and surge gates in `coupled_tests`.
 

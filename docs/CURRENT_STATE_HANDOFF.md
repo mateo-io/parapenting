@@ -1,9 +1,25 @@
 # Parapenting current-state handoff
 
-Last updated: 2026-07-30, Europe/Amsterdam.
+Last updated: 2026-08-07, Europe/Amsterdam.
 
 This is the restart point for future work. Treat the worktree and test output
 as authoritative if this document ever disagrees with source.
+
+**Where the work stands, and what to do next.** Levels 0-9 of the
+geometry-driven stack are built, Level 10's first two strands are done and its
+exit gate is blocked, and Level 11 — the unsteady wake — is unstarted but is now
+specified by measurement rather than by ambition (`PHYSICS_LEARNINGS` §64-§68).
+The next four steps, in order, with the reasoning in
+`agent-data/GEOMETRY_DRIVEN_PARAGLIDER_MASTER_PLAN.md`:
+
+1. re-measure the calibration numbers at a proper settle (`PHYSICS_TODO` item
+   18) — the cheapest item on the list and the one that decides what the others
+   are;
+2. run the collapse symmetry gate against a **harness-side** drag correction —
+   one test, and it decides whether the unsteady wake is on the critical path;
+3. close items 12 and 11 **together**, never separately;
+4. fly the geometry-driven stack across a stated envelope, so the pilot review
+   that is half of Level 9's exit gate can finally start.
 
 ## Product direction
 
@@ -334,9 +350,15 @@ than the conclusions:
   operating point it was validated at and anti-correlated as a function of the
   parameter. `PHYSICS_LEARNINGS` §40.
 
-**That eigenvector programme has since run to the end, and Level 11 is wrapped
-up: the pitch axis has no unexplained observations left, and no mechanism
-either.** `PHYSICS_TODO` §"What Level 11 closed" is the summary; the short form:
+**That eigenvector programme has since run to the end, and the pitch-axis
+programme is wrapped up: the pitch axis has no unexplained observations left,
+and no mechanism either.** `PHYSICS_TODO` §"What the pitch-axis programme
+closed" is the summary; the short form:
+
+> Note the programme was called "Level 11" while it ran, which collided with
+> the master plan's Level 11, the **unsteady wake** — a different and unstarted
+> piece of work. The headings were separated in the §68 pass; level numbers
+> were not changed.
 
 - **How the coefficient reaches the mode is answered.** The phugoid's left
   eigenvector is 0.78 on the link's two rows at conditioning 0.10 — it looks

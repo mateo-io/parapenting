@@ -21,6 +21,17 @@ The next four steps, in order, with the reasoning in
 4. fly the geometry-driven stack across a stated envelope, so the pilot review
    that is half of Level 9's exit gate can finally start.
 
+**The geometric channel is half built and its other half is blocked**
+(`PHYSICS_LEARNINGS` §72). `VsmSolveInput::sectionIncidenceOffsetRad` exists,
+is gated, and carries 8543 N·m/rad of roll, linear to 0.03%. Nothing can drive
+it: the line solve places every canopy attachment on one rigid body, so the
+per-station pose it was to be read from is bit-identical left to right even at
+full weight shift. The missing ingredient is **canopy torsional compliance**,
+which exists nowhere in the stack, and the requirement is now a number —
+**about 10° of antisymmetric twist** to match today's full-brake roll. So the
+next question on that thread is structural rather than an interface, and it is
+no longer the cheapest item on the list.
+
 ## Product direction
 
 Parapenting is an Unreal Engine 5.8 paraglider simulator targeting Apple

@@ -71,8 +71,8 @@ where the physics work currently stands. The engine as built is documented in
 | 3 Payload and harness | **Done** | carabiner split exact to W(1/2 ± e/s); pendulum period 2π√(L/g) |
 | 4 VSM and polars | **Done** | CL_α 0.2%, CDi 3.6%; polars now solved on the section, not stated (item 1) |
 | 5 Cell pressure | **Done** | stagnation 5.2/9.7/14.3 deg; inlet Cp 0.97 trim; mirror-exact to 0.000e+00 (§67) |
-| 6 Membrane | **Core done, 1-D** | sagitta 26.32 mm vs analytic 25.99; strips, not a mesh |
-| 7 Coupled solver | **REOPENED** | books balance and mirrors to 2e-8, but its gate says weight-shift turns must *emerge* and they do not — 0.014 rad/s (§71). See "the geometric channel" |
+| 6 Membrane | **Core done, 1-D** | sagitta 26.32 mm vs analytic 25.99; strips, not a mesh — and **no torsion**, which is what the geometric channel now waits on (§72) |
+| 7 Coupled solver | **REOPENED, blocked on canopy torsion** | books balance and mirrors to 2e-8, but its gate says weight-shift turns must *emerge* and they do not — 0.014 rad/s (§71). The channel's aerodynamic half is built and linear at 8543 N·m/rad; its structural half is identically zero because the canopy is rigid (§72). See "the geometric channel" |
 | 8 Emergent collapse | **Done, with gaps** | fold from a pressure balance; no cravat in flight (item 4) |
 | 9 Calibration | **Done bar pilot review** | trim 39.4 vs 39.0 km/h — but see item 18, every number under-settled |
 | 10 Performance and legacy removal | **Strands 1–2 done, exit gate BLOCKED** | `SOLVER_PROFILE.md`, `SOLVER_LOD.md`; 15× real time full, 36× reduced; visualisation strand unstarted; legacy path still flies the game |
@@ -94,6 +94,12 @@ spanwise reaches the aerodynamics. **The geometry-driven stack is
 geometry-driven everywhere except the interface where it matters most.** The
 design is below, under "the geometric channel", and it is now the head of the
 queue.
+
+**Since built, and half of it landed** (§72). The aerodynamic channel exists
+and is linear at 8543 N·m/rad; the per-station pose it was to be driven from is
+identically zero, because the canopy is a rigid body in the line solve. What
+the interface was missing turned out to be upstream of the interface: canopy
+torsional compliance, which the stack does not have anywhere.
 
 ### The one structural finding this plan did not anticipate
 
@@ -255,6 +261,24 @@ paid for with unvalidated numbers and no feedback.
      items close on one channel;
    - and it is arithmetic on numbers the line solver **already computes and
      throws away**, which is a smaller change than its consequences suggest.
+
+   **Half of it is now built, and the last reason above was wrong** (§72). The
+   aerodynamic half exists and is gated: `sectionIncidenceOffsetRad` carries
+   **8543 N·m/rad** of roll, linear to 0.03% over sixteen times the range,
+   mirror-exact, and lift-preserving. The structural half is **identically
+   zero** — every canopy attachment is placed as one rigid body, so the
+   per-station pose is the root scalar again, bit-identical left to right at
+   full weight shift while the A row carries 51 N one side and 349 N the
+   other. The arithmetic was available; what was not available was anything
+   for it to vary with.
+
+   So this **leaves the head of the queue**. What replaces it is not a bigger
+   version of it: because the gain is linear, the requirement divides out to
+   **about 10° of antisymmetric twist to match today's full-brake roll**, and
+   the question in front of the channel is now structural and well posed —
+   *does a canopy on its lines twist that far under a 300 N row-tension
+   difference?* That is answerable against the rib and membrane structure, and
+   it settles item 21 and item 0b together in whichever direction it falls.
 
 6. **Level 11, the unsteady wake.** Confirmed on the critical path by step 2.
    It is specified by measurement rather than by ambition: the entry criterion
@@ -952,6 +976,40 @@ is that measurement rather than a finished turn rate.
   too little authority, the next suspect is the harness geometry the CG
   translation rests on, and that is a different item.
 
+### What was built, and the risk none of the above named (§72)
+
+**Step 2 is done.** `VsmSolveInput::sectionIncidenceOffsetRad` exists, empty is
+the design pose bit for bit, and it is gated in `aerodynamics_tests`: the sign
+is right, the gain is **8543 N·m/rad and linear to 0.03%** across sixteen times
+the range, four degrees of twist changes lift by 0.7% so it is a couple, and
+left and right mirror to 1e-9.
+
+**Step 1 cannot be built, and the reason is upstream of it.** Every canopy
+attachment in `TensionCableSolver` is placed as
+`canopyOrigin + canopyAttitude.Rotate(node.canopyLocalM)` — one rigid body — so
+the chord direction from A to C at any station differs from the design pose by
+a single global rotation. The per-station pose *is* `incidenceChangeRad`, with
+a longer derivation. Measured at full weight shift, the offsets are identical
+to eight decimals across the span and bit-identical between left and right,
+while the same solve puts the A row at 51 N left against 349 N right.
+
+**The risk the list above missed is not in this design's mechanism but in its
+premise:** it was derived from what the line solver *publishes*, and blocked by
+what the line solver *represents*. Every node position is computed, so reading
+a pose off them looked like arithmetic on available numbers — and it is, and it
+returns a constant, because the rigidity sits upstream of the publishing.
+Checking what a proposed input can actually *vary* is the cheap version of the
+whole exercise, and it is a general check rather than this design's mistake.
+
+**What it leaves is better posed than what it started with.** The missing
+ingredient is canopy torsional compliance, which exists nowhere: Level 2's
+canopy is rigid and Level 6's membrane is 1-D chordwise strips. And because the
+gain is linear, the requirement divides out — **about 10° of antisymmetric
+twist to match today's full-brake roll**, which is itself several times slow.
+So the next question is structural, has a number attached, and settles item 21
+and item 0b in whichever direction it falls: *does a canopy on its lines twist
+several degrees under a 300 N row-tension difference?*
+
 ### Exit gate
 
 - Weight shift produces a turn that **emerges from the riser asymmetry** — the
@@ -962,6 +1020,14 @@ is that measurement rather than a finished turn rate.
 - The mirror-symmetry gates still hold to round-off (§65–§71).
 - Level 7's convergence gate passes again, re-run rather than inherited.
 - Turn rate against a pilot's number, not against a coefficient.
+
+**Split by §72, because the two halves now fail for different reasons.** The
+aerodynamic gates are met: the channel exists, carries the right sign, is
+linear, and mirrors to round-off. The rest are unmet and are all downstream of
+the same missing thing — nothing can supply a twist, so weight shift cannot
+emerge from riser asymmetry, brake's scalar path cannot retire, and there is
+no turn rate to hold against a pilot's number. **Level 7 stays reopened, and
+what it is now blocked on is canopy torsion rather than an interface.**
 
 ---
 

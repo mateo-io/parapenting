@@ -96,6 +96,25 @@ struct VsmSolveInput
     // is the same term the rotation already contributes, so it costs nothing
     // but the lookup.
     std::vector<Vec3> sectionGustBodyMps;
+    // Per-section incidence offset from the design pose, radians, nose-up
+    // positive. Empty means the design pose, which is what every caller
+    // before the geometric channel had.
+    //
+    // This is the channel the suspension is meant to reach the canopy
+    // through. Today the lines publish ONE scalar - a root-chord incidence
+    // change - and the aerodynamic solve is handed brake as a control scalar
+    // instead, which is the control-to-aero shortcut guiding rule 4 forbids.
+    // A per-section pose is what retires that: an asymmetric line load twists
+    // the wing, the twisted wing rolls, and the roll is an outcome rather
+    // than a command.
+    //
+    // The offset rotates the section's INCIDENCE and not its force axes. The
+    // section's own lift and drag directions still come from the design-pose
+    // chord and normal, so this is a first-order statement, exact in the
+    // limit of small offsets and wrong by O(offset) in the force direction.
+    // At the magnitudes a line network can twist a canopy through - under a
+    // degree - that is far below the polar's own uncertainty.
+    std::vector<double> sectionIncidenceOffsetRad;
 };
 
 // Per-section separation, carried between solves. This is the attached and

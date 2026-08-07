@@ -1744,8 +1744,30 @@ at 0.20 rad/s. Found by `parapenting_model_agreement` (§70).
     and it is currently the only reason brake turns at all.
   - Weight shift then works **without being given a term of its own**, and if
     it needs one the design is wrong.
-- **Cheapest thing standing between the stack and a pilot**, on current
-  evidence, and unowned by any other item.
+- **BUILT: the aerodynamic half. BLOCKED: the structural half** (§72).
+  - `sectionIncidenceOffsetRad` exists and is gated. Empty is the design pose
+    bit for bit, so no caller moved. **Twist buys 8543 N·m/rad of roll, flat
+    to 0.03% over sixteen times the range**, mirror-exact, and it is a couple:
+    four degrees changes lift by 0.7%.
+  - **The per-station pose is identically zero and always will be.** Every
+    canopy attachment is placed as `canopyOrigin + canopyAttitude.Rotate(...)`
+    — one rigid body — so the offsets differ from the design pose by a single
+    global rotation. Measured at full weight shift: identical to eight
+    decimals across the span and **bit-identical left to right**, while the
+    same solve puts the A row at 51 N left against 349 N right.
+  - **The missing ingredient is canopy torsional compliance**, and nothing in
+    the stack has it: Level 2's canopy is rigid, Level 6's membrane is 1-D
+    chordwise strips with no torsion.
+  - Because the gain is linear the requirement divides out: **matching today's
+    full-brake roll takes about 10° of antisymmetric twist**, and brake is
+    itself several times slow. So the open question is now well posed and
+    structural — *does a canopy on its lines twist several degrees under a
+    300 N row-tension difference?* — and it settles the item either way.
+- Brake's scalar path **cannot retire yet**, because the channel that was to
+  replace it carries nothing. Guiding rule 4's violation stands, now with a
+  measured reason rather than an unexamined one.
+- **No longer the cheapest thing standing between the stack and a pilot**: its
+  remaining half needs canopy torsion, which is a level and not an afternoon.
 
 **22. The geometry-driven stack departs at 22% of speed bar, not at full bar.**
 The record says full bar is the pitch-divergent condition because

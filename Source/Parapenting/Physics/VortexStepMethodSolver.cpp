@@ -371,6 +371,14 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             ? input.sectionGustBodyMps[i] : Vec3{};
     };
 
+    // How far this section's chord has been twisted away from the design
+    // pose by the lines. Empty means the design pose.
+    const auto sectionIncidenceOffset = [&input](std::size_t i)
+    {
+        return i < input.sectionIncidenceOffsetRad.size()
+            ? input.sectionIncidenceOffsetRad[i] : 0.0;
+    };
+
     // Angle of attack and speed a section sees for a given circulation of its
     // own, with every other section's contribution held fixed.
     const auto sectionFlow = [&](std::size_t i, const Vec3& external,
@@ -384,8 +392,11 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
         speedOut = Length(inPlane);
         if (speedOut < 1.0e-6) return 0.0;
         const Vec3 sectionVelocity = -inPlane;
+        // Twisting the chord nose-up raises the incidence the section sees by
+        // exactly that angle: the flow has not moved, the wing has.
         return std::atan2(-Dot(sectionVelocity, section.normal),
-                          Dot(sectionVelocity, section.chordDirection));
+                          Dot(sectionVelocity, section.chordDirection))
+            + sectionIncidenceOffset(i);
     };
 
     // Under-relaxation, adapted as it goes. Away from stall the polar is
@@ -491,9 +502,13 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             const Vec3 freeInPlane = -(freestream
                 - section.spanDirection
                     * Dot(freestream, section.spanDirection));
+            // Both terms carry the same twist, so it cancels: the induced
+            // angle is what the wake did to this section, not where the
+            // section is pointing.
             solution.sections[i].inducedAngleRad = alpha - std::atan2(
                 -Dot(freeInPlane, section.normal),
-                Dot(freeInPlane, section.chordDirection));
+                Dot(freeInPlane, section.chordDirection))
+                - sectionIncidenceOffset(i);
         }
 
         for (std::size_t i = 0; i < count; ++i)

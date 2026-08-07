@@ -580,6 +580,92 @@ int main()
                         + asymmetric.momentBodyNm.z) < 1.0e-6,
               "and in yaw");
 
+        // THE GEOMETRIC CHANNEL. `sectionIncidenceOffsetRad` is the path the
+        // suspension is meant to reach the canopy through: an asymmetric line
+        // load twists the wing, the twisted wing rolls, and the roll is an
+        // outcome rather than a command. This gates the aerodynamic half of
+        // it - what a given twist is worth - which is the half that can be
+        // measured before anything is able to supply the twist.
+        //
+        // Empty means the design pose, so every caller above is unchanged.
+        VsmSolveInput untwisted = Inflow(0.06, 11.0);
+        untwisted.sectionIncidenceOffsetRad.assign(wing.Sections().size(), 0.0);
+        const VsmSolution zeroTwist = wing.Solve(untwisted);
+        Check(std::fabs(zeroTwist.liftCoefficient - trim.liftCoefficient)
+                  < 1.0e-12,
+              "a zero offset is the design pose, bit for bit - the channel is "
+              "additive and costs nothing to callers that do not use it");
+
+        // Antisymmetric twist, linear in span. Positive twists the RIGHT tip
+        // nose-up, which must roll the right tip up.
+        const auto twisted = [&](double twistRad)
+        {
+            VsmSolveInput in = Inflow(0.06, 11.0);
+            in.sectionIncidenceOffsetRad.resize(wing.Sections().size());
+            for (std::size_t i = 0; i < wing.Sections().size(); ++i)
+                in.sectionIncidenceOffsetRad[i] =
+                    twistRad * wing.Sections()[i].spanFraction;
+            return wing.Solve(in);
+        };
+        constexpr double Degree = 3.14159265358979 / 180.0;
+        const VsmSolution smallTwist = twisted(0.25 * Degree);
+        const VsmSolution largeTwist = twisted(4.0 * Degree);
+        const double smallGain =
+            smallTwist.momentBodyNm.x / (0.25 * Degree);
+        const double largeGain = largeTwist.momentBodyNm.x / (4.0 * Degree);
+        std::printf("  antisymmetric twist: 0.25 deg -> %+.1f Nm, "
+                    "4 deg -> %+.1f Nm, gain %.0f vs %.0f Nm/rad\n",
+                    smallTwist.momentBodyNm.x, largeTwist.momentBodyNm.x,
+                    smallGain, largeGain);
+        Check(smallTwist.converged && largeTwist.converged,
+              "the twisted cases converge");
+        Check(smallTwist.momentBodyNm.x > 0.0,
+              "twisting the right tip nose-up rolls the right tip up - the "
+              "channel carries the right sign");
+        // Sixteen times the input over sixteen times the range, and the gain
+        // moves by well under a percent. The channel is a clean linear
+        // aerodynamic gain, which is what makes the twist a REQUIREMENT that
+        // can be stated rather than a number that has to be swept.
+        Check(std::fabs(largeGain - smallGain) < 0.01 * smallGain,
+              "and it is linear across sixteen times the range, so the twist "
+              "a given roll moment needs is one division");
+        Check(std::fabs(largeTwist.forceBodyN.z - trim.forceBodyN.z)
+                  < 0.01 * std::fabs(trim.forceBodyN.z),
+              "twist is a couple: four degrees of it changes total lift by "
+              "under a percent, so it rolls the wing without re-trimming it");
+
+        // Mirror, to round-off. Same gate the brake cases above get, because
+        // a new spanwise input is a new way to break the wing's symmetry.
+        const VsmSolution mirroredTwist = twisted(-1.0 * Degree);
+        const VsmSolution rightTwist = twisted(1.0 * Degree);
+        Check(std::fabs(mirroredTwist.momentBodyNm.x
+                        + rightTwist.momentBodyNm.x) < 1.0e-9,
+              "left and right twist mirror exactly in roll");
+        Check(std::fabs(mirroredTwist.forceBodyN.z
+                        - rightTwist.forceBodyN.z) < 1.0e-9,
+              "and carry identical lift");
+
+        // What the twist is worth against the control that already works.
+        // Full one-side brake makes about 1500 N.m of roll on this wing, so
+        // matching it takes something like ten degrees of antisymmetric
+        // twist - and brake itself is several times slower than a real wing
+        // (PHYSICS_TODO item 0b). Recorded rather than gated tightly: it is
+        // the number that says whether a canopy can twist far enough to be
+        // the mechanism, and that question is open.
+        VsmSolveInput fullBrake = Inflow(0.06, 11.0);
+        fullBrake.rightBrake = 1.0;
+        const VsmSolution braked1 = wing.Solve(fullBrake);
+        std::printf("  full right brake rolls %+.1f Nm = %.1f deg of "
+                    "antisymmetric twist\n",
+                    braked1.momentBodyNm.x,
+                    braked1.momentBodyNm.x / smallGain / Degree);
+        Check(braked1.momentBodyNm.x / smallGain / Degree > 3.0,
+              "matching today's full-brake roll takes SEVERAL DEGREES of "
+              "twist, not a fraction of one. The channel is linear and its "
+              "gain is known, so what is unresolved is whether a canopy on "
+              "its lines twists that far - and that is a structural question "
+              "about the canopy, not an aerodynamic one");
+
         // Installed drag. A canopy polar on its own glides far better than
         // the wing it belongs to, because on a paraglider the lines, risers,
         // harness and pilot are a large fraction of the total. The published

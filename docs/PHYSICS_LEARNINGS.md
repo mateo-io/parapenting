@@ -3268,6 +3268,97 @@ split is produced and proportional (the half that works), and the resulting
 bank stays under 3° with turn under 0.05 rad/s (the half that does not, bounded
 rather than fixed).
 
+## 72. The geometric channel's aerodynamic half is exact and linear; its structural half does not exist, because the canopy is rigid
+
+§71 diagnosed the missing channel and the master plan designed it: read a
+per-station pose off the solved line geometry, publish it as a per-section
+incidence offset, and let the roll emerge. Building it turned up that the
+design has two halves with very different standing, and only one of them can
+be built against the stack as it is.
+
+### The aerodynamic half works, and it is a clean linear gain
+
+`VsmSolveInput::sectionIncidenceOffsetRad` exists, empty means the design
+pose, and no existing caller moved. Measured on the EPIC 2 canopy with an
+antisymmetric twist linear in span:
+
+| twist | roll moment | gain | lift |
+|---|---|---|---|
+| 0.1° | 14.9 N·m | 8545 N·m/rad | 463.8 N |
+| 1.0° | 149.1 N·m | 8543 N·m/rad | 463.5 N |
+| 4.0° | 596.6 N·m | 8546 N·m/rad | 460.5 N |
+
+**8543 N·m/rad, flat to 0.03% over sixteen times the range.** Mirror-exact to
+2e-12. Lift changes by 0.7% at four degrees, so the twist is a couple: it
+rolls the wing without re-trimming it. Nothing here needed a coefficient — it
+is the integral of the section forces, the same way roll damping is.
+
+Being linear is the useful part, because it turns the twist into a
+**requirement that can be divided out** rather than a number to sweep. Full
+one-side brake makes ~1530 N·m of roll on this wing, so **matching today's
+brake authority takes about 10° of antisymmetric twist** — and brake itself is
+several times slower than a real wing (item 0b), so matching a real wing takes
+considerably more.
+
+### The structural half is identically zero, and that is provable rather than measured
+
+The design says to read the chord direction from each station's front (A/A′)
+attachment to its rear (C) attachment. Every canopy attachment in
+`TensionCableSolver` is placed as
+
+```cpp
+position[i] = canopyOrigin + canopyAttitude.Rotate(node.canopyLocalM);
+```
+
+**One rigid body.** So station-to-station chord directions differ from the
+design pose by a single global rotation, identical for every station, and the
+per-station offset the design asks for is exactly `incidenceChangeRad` again
+with a longer derivation. Measured to confirm, at full weight shift:
+
+| side | span | offset from design |
+|---|---|---|
+| left | −0.72 | +0.00263863 |
+| left | −0.45 | +0.00263827 |
+| right | +0.45 | +0.00263827 |
+| right | +0.72 | +0.00263863 |
+
+Identical to eight decimals across the span, and **bit-identical between left
+and right under full weight shift**. The asymmetry is real and it is nowhere
+near the attachment positions — it is in the tensions, where the same solve
+puts the A row at **51 N left against 349 N right**, and the right A′ row at
+0.27 N, essentially slack.
+
+### What this actually means
+
+**The missing ingredient is canopy torsional compliance, and it exists nowhere
+in the stack.** Level 2's canopy is a rigid body; Level 6's membrane is 1-D
+chordwise strips with no torsion. A differential row tension of 51 against 349
+newtons has nothing to twist.
+
+So the design's step 2 is done and its step 1 is blocked on a level that has
+not been built. That reorders the work rather than only delaying it: the
+question in front of the channel is no longer "wire it up" but **"does a
+canopy on its lines twist several degrees under a 300 N row-tension
+difference?"** — a structural question with a number attached, which is a far
+better-posed thing to go and answer than the one this started with.
+
+And the gain being linear means that answer settles it either way. A canopy
+that twists a degree cannot be the mechanism, whatever else is built on top;
+one that twists ten degrees closes item 21 and item 0b together.
+
+**The general lesson, and it is the same shape as §71's:** a design derived
+from what a solver *publishes* can be blocked by what that solver *represents*.
+The line network computes every node position, so reading a pose off it looks
+like arithmetic on available numbers — and it is, and the arithmetic returns a
+constant, because the rigidity is upstream of the publishing. Checking what a
+proposed input can vary, before building the thing that consumes it, is the
+cheap version of this whole section.
+
+Gated in `aerodynamics_tests`: zero offset is bit-identical to the design
+pose, the sign is right, the gain is linear to under a percent across
+sixteen times the range, twist is a couple, left and right mirror to 1e-9, and
+full brake is worth several degrees of it.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3298,6 +3389,8 @@ rather than fixed).
 | section CLmax, computed | 1.81 hands up, 2.48 at 40% brake | it moves because the flap is real |
 | leading-edge bubble limit | 3% of chord | a turbulent separation forward of this reattaches |
 | section Cd at trim | 0.0157 | published paraglider sections: 0.018-0.025 |
+| twist-to-roll gain | 8543 N·m/rad | linear to 0.03%; divides a roll requirement into a twist |
+| twist worth of full brake | ~10 deg | the twist the canopy would have to find - §72 |
 | section Cm per rad of brake | -0.61 | theory -0.55; the analytic table had -0.34 |
 | usable envelope | hands-up to 25% brake | now BOTH ends are the pitch axis |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |

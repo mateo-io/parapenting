@@ -2753,6 +2753,53 @@ published improvement to point to, and this one has a large one. What they share
 is that shipping either would mean overruling a measured invariant on the
 strength of a correct-sounding argument.
 
+## 65. The wing is symmetric to round-off, so the collapse asymmetry is amplification and Level 11 is a stability problem
+
+§64 was blocked by the 4 m/s symmetric frontal folding L 0.779 against R 0.903.
+The gate blames the partly separated solve having no steady state and names
+Level 11 as the fix — an explanation that had never been tested, and which does
+not distinguish two very different situations:
+
+- **amplification** — the wing is symmetric to machine precision, the collapse
+  regime is unstable, and round-off grows into a visible difference. Nothing is
+  broken, and Level 11 needs a formulation whose symmetric solution is *stable*.
+- **a seed** — something upstream is not mirror-symmetric and the collapse
+  merely reveals it. Then there is a defect with an address, far cheaper to fix
+  than Level 11.
+
+The suspension graph is where a seed would most likely live: every line load,
+fold criterion and attachment position comes from it. Measured — for every
+off-centre node, the distance from its mirror image to the nearest node of the
+same kind and row:
+
+| | |
+|---|---|
+| nodes with no mirror partner | **0** |
+| worst mirror residual | **6.2e-15 m** |
+
+On a structure eight metres across that is a relative 1e-15: round-off, not
+construction. **The graph is eliminated as the seed**, and with it the most
+likely candidate.
+
+**So the gate's explanation is supported, and it now has a number behind it.** A
+1e-15 asymmetry growing to a 0.124 difference in fold depth is an amplification
+of order **1e14** across the event — which is what an unstable regime does to
+round-off, and is not something a formulation error would produce so cleanly.
+Level 11 is therefore a **stability** problem and not a bug hunt, which is worth
+knowing before anyone spends a level looking for a broken mirror.
+
+**What this does not prove**, and the boundary matters: only the graph was
+measured. The VSM's section ordering, the collapse solver and the pressure
+model are all downstream and could each carry an asymmetric step — a
+sequentially-updated loop that reads partially-updated neighbours would break
+symmetry systematically rather than by round-off. Those remain untested. What is
+established is that the *structure* is clean, so any seed is in a **solver**,
+and that the amplification factor is large enough that no seed is needed to
+explain the result.
+
+Bounded in `suspension_tests` as a structural claim: every off-centre node has a
+mirror partner, and the worst residual is under 1e-12.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

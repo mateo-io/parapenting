@@ -224,6 +224,63 @@ int main(int argc, char** argv)
               "the median line has no neighbour within fifty diameters");
     }
 
+    // -- is the wing exactly mirror-symmetric? -----------------------------
+    //
+    // §64 could not ship the corrected line drag because the 4 m/s SYMMETRIC
+    // frontal stopped folding symmetrically: L 0.779 against R 0.903, where it
+    // had matched to three decimals. The gate's own text blames the partly
+    // separated solve having no steady state to find, and names Level 11 as
+    // the fix. That explanation has never been tested, and there are two
+    // candidates it does not distinguish:
+    //
+    //   (a) AMPLIFICATION. The wing is symmetric to machine precision, the
+    //       collapse regime is unstable, and round-off at 1e-16 grows into a
+    //       visible fold difference. Then the gate is right, nothing is
+    //       broken, and Level 11 needs a formulation whose symmetric solution
+    //       is STABLE - not a bug hunt.
+    //   (b) A SEED. Something in the pipeline is not mirror-symmetric to begin
+    //       with, and the collapse merely reveals it. Then there is a defect
+    //       with an address, and it is cheap to find compared to Level 11.
+    //
+    // The graph is where a seed would most likely live, because every line
+    // load, every fold criterion and every attachment position comes from it.
+    // This measures its mirror residual directly: for every node, the distance
+    // from its mirror image to the nearest node on the other side. Exactly
+    // zero, or at round-off, eliminates (b) HERE and moves the search on.
+    {
+        double worstResidualM = 0.0;
+        int unmatched = 0;
+        for (const SuspensionNode& node : graph.nodes)
+        {
+            if (std::fabs(node.designM.y) < 1.0e-12) continue;  // centreline
+            const Vec3 mirrored{node.designM.x, -node.designM.y,
+                                node.designM.z};
+            double nearest = 1.0e30;
+            for (const SuspensionNode& other : graph.nodes)
+            {
+                if (other.kind != node.kind || other.row != node.row) continue;
+                const Vec3 d{other.designM.x - mirrored.x,
+                             other.designM.y - mirrored.y,
+                             other.designM.z - mirrored.z};
+                nearest = std::min(nearest,
+                    std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z));
+            }
+            if (nearest > 1.0e29) { ++unmatched; continue; }
+            worstResidualM = std::max(worstResidualM, nearest);
+        }
+        std::printf("\n  Mirror symmetry of the built graph (section 65)\n");
+        std::printf("    nodes with no mirror partner  %6d\n", unmatched);
+        std::printf("    worst mirror residual         %.3e m\n",
+                    worstResidualM);
+        Check(unmatched == 0, "every off-centre node has a mirror partner");
+        // A structural mirror, not a near one. Anything above round-off here
+        // would be a SEED for the collapse asymmetry rather than amplification
+        // of one, and would be worth far more than it costs to find.
+        Check(worstResidualM < 1.0e-12,
+              "the graph is mirror-symmetric to round-off, so it cannot seed "
+              "the collapse asymmetry");
+    }
+
     // -- topology ---------------------------------------------------------
     {
         Check(graph.leftCarabiner >= 0 && graph.rightCarabiner >= 0,

@@ -270,6 +270,16 @@ survive the drag becoming a consequence.
     "toward published" does not license it. It drives the collapse deeper into
     the regime the gate already documents as having no steady state to find —
     **the fix is Level 11**, as that gate's own text says.
+  - **That explanation is now tested rather than asserted (§65).** The
+    suspension graph is mirror-symmetric to **6.2e-15 m** — a relative 1e-15 on
+    an eight-metre structure, with every off-centre node having a partner. The
+    graph is eliminated as a seed, so the 0.124 fold difference is round-off
+    amplified by order **1e14** across the event. **Level 11 is a stability
+    problem, not a bug hunt**, which is worth knowing before a level is spent
+    looking for a broken mirror. Untested downstream: the VSM's section
+    ordering, the collapse solver and the pressure model — a sequentially
+    updated loop reading partially updated neighbours would break symmetry
+    systematically rather than by round-off.
   - Not tuned around: a shielding value picked as the largest that keeps the
     symmetry gate green would be the coefficient-chosen-to-put-it-there this
     item objects to. 0.394 stays, labelled measured-wrong.

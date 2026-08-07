@@ -253,7 +253,27 @@ survive the drag becoming a consequence.
     one number is what is left of this part of item 12**, and it is now a
     question that can be answered from literature instead of from the glide it
     has to produce.
-  - **Lead, not a result, and it must not be fitted:** §56 needed 0.199 m² of
+  - **THE SHIELDING NUMBER IS NOW MEASURED WRONG, AND THE FIX IS BLOCKED BY A
+    SYMMETRY FAILURE (§64).** Line-to-line spacing at the design pose: closest
+    pair **158 diameters**, median 534. Wake interference is a near-field
+    effect and dies out by twenty or thirty diameters, so **no wake argument
+    reaches the asserted 60% shielding.** Removing it moves every published
+    number toward its reference — at shielding 1.0, glide 11.33 → **9.91**
+    against 9.5, sink 0.97 → **1.100** against 1.14, incidence 5.14° → 5.35°
+    against the 5.30 the published CL needs. **Glide error 19% → 4.3% by
+    deleting a coefficient rather than fitting one**, which is this item's
+    stated criterion.
+  - **Blocked, and not by evidence against it.** At 1.0 the 4 m/s symmetric
+    frontal folds L 0.779 R 0.903 where it folded 0.710/0.710, failing the gate
+    *"symmetrically — the two halves are the same wing"*. That is a
+    solver-integrity failure rather than a calibration disagreement, so
+    "toward published" does not license it. It drives the collapse deeper into
+    the regime the gate already documents as having no steady state to find —
+    **the fix is Level 11**, as that gate's own text says.
+  - Not tuned around: a shielding value picked as the largest that keeps the
+    symmetry gate green would be the coefficient-chosen-to-put-it-there this
+    item objects to. 0.394 stays, labelled measured-wrong.
+  - **Lead, now supported rather than speculative:** §56 needed 0.199 m² of
     Cd·A at the harness end to land glide, speed and sink together. A defensible
     shielding allowance of 0.9 would restore (0.993−0.35)/0.993 × 0.237 × 1.05 ≈
     **0.16 m²**, at a moment arm half way down the lines. Same order, same end

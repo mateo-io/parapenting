@@ -148,6 +148,82 @@ int main(int argc, char** argv)
               "graph line length is near the manufactured 254 m");
     }
 
+    // -- is 60% shielding even geometrically possible? ---------------------
+    //
+    // §62 isolated `lineShieldingFactor` as the one stated number left in line
+    // drag: 0.394, meaning the cascade is asserted to hide 60% of its own
+    // frontal area from the flow. That is a large claim and it was never
+    // checked against the one thing that decides it - HOW FAR APART THE LINES
+    // ARE.
+    //
+    // Wake interference between cylinders is a function of spacing in
+    // DIAMETERS. A cylinder sitting a few diameters behind another is in a
+    // genuine velocity deficit; by twenty or thirty diameters the wake has
+    // spread and slowed and the deficit is small; at hundreds it is nothing.
+    // Paraglider lines are about a millimetre thick and spaced in centimetres
+    // to metres, so the ratio is the whole question and it is pure geometry.
+    //
+    // This measures the nearest-neighbour distance for every cable, at the
+    // design pose, in units of its own diameter. It does not compute a
+    // shielding factor - that needs a wake model - but it bounds one: if the
+    // typical line has no neighbour within tens of diameters, no wake argument
+    // reaches 60%.
+    {
+        std::vector<double> spacingInDiameters;
+        const auto midpoint = [&](const CableElement& c)
+        {
+            const Vec3 a = graph.nodes[c.nodeA].designM;
+            const Vec3 b = graph.nodes[c.nodeB].designM;
+            return Vec3{0.5 * (a.x + b.x), 0.5 * (a.y + b.y),
+                        0.5 * (a.z + b.z)};
+        };
+        for (std::size_t i = 0; i < graph.elements.size(); ++i)
+        {
+            const CableElement& ci = graph.elements[i];
+            if (ci.nodeA < 0 || ci.nodeB < 0 || ci.diameterM <= 0.0) continue;
+            const Vec3 mi = midpoint(ci);
+            double nearest = 1.0e30;
+            for (std::size_t j = 0; j < graph.elements.size(); ++j)
+            {
+                if (i == j) continue;
+                const CableElement& cj = graph.elements[j];
+                if (cj.nodeA < 0 || cj.nodeB < 0) continue;
+                const Vec3 mj = midpoint(cj);
+                const Vec3 d{mj.x - mi.x, mj.y - mi.y, mj.z - mi.z};
+                const double distance =
+                    std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+                if (distance > 1.0e-9) nearest = std::min(nearest, distance);
+            }
+            if (nearest < 1.0e29)
+                spacingInDiameters.push_back(nearest / ci.diameterM);
+        }
+        std::sort(spacingInDiameters.begin(), spacingInDiameters.end());
+        const auto quantile = [&](double q)
+        {
+            if (spacingInDiameters.empty()) return 0.0;
+            const std::size_t index = static_cast<std::size_t>(
+                q * static_cast<double>(spacingInDiameters.size() - 1));
+            return spacingInDiameters[index];
+        };
+        std::printf("\n  Line-to-line spacing at the design pose, in "
+                    "DIAMETERS (section 64)\n");
+        std::printf("    closest pair            %8.0f d\n", quantile(0.0));
+        std::printf("    lower quartile          %8.0f d\n", quantile(0.25));
+        std::printf("    median                  %8.0f d\n", quantile(0.50));
+        std::printf("    upper quartile          %8.0f d\n", quantile(0.75));
+        std::printf("    shielding factor stated %8.3f  (so 60%% of the "
+                    "frontal area\n                                      is "
+                    "asserted to be hidden)\n",
+                    InstalledDragSpec{}.lineShieldingFactor);
+        // A bound, not a fit. Cylinder wake deficits are a near-field effect;
+        // a cascade whose CLOSEST pair is already tens of diameters apart
+        // cannot hide most of itself, whatever wake model is used.
+        Check(quantile(0.0) > 5.0,
+              "even the closest pair of lines is clear of the near wake");
+        Check(quantile(0.5) > 50.0,
+              "the median line has no neighbour within fifty diameters");
+    }
+
     // -- topology ---------------------------------------------------------
     {
         Check(graph.leftCarabiner >= 0 && graph.rightCarabiner >= 0,

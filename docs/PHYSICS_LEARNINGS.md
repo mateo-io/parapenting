@@ -2683,6 +2683,76 @@ Both terms default off, for the reason §61 gave: they change what the aircraft
 does, and that is a decision to take on evidence rather than as a side effect of
 a measurement.
 
+## 64. The correct line drag passes every published gate and is still not shipped — this time the blocker is symmetry
+
+§62 isolated `lineShieldingFactor` as the last stated number in line drag, at
+0.394: the cascade is asserted to hide 60% of its own frontal area. That was
+never checked against the one thing that decides it — **how far apart the lines
+are.** Wake interference between cylinders is a function of spacing in
+*diameters*, and paraglider lines are a millimetre thick.
+
+**Measured off the graph at the design pose:**
+
+| | spacing |
+|---|---|
+| closest pair | **158 d** |
+| lower quartile | 233 d |
+| median | 534 d |
+| upper quartile | 628 d |
+
+Cylinder wake deficits are near-field: real a few diameters behind, largely
+recovered by twenty or thirty. **The closest pair on this wing is 158 diameters
+apart.** No wake argument reaches 60% shielding at those spacings. The measure
+uses midpoint-to-midpoint distance, which *overstates* separation for lines
+converging at a cascade junction — a bias toward the model's defence, and it
+still fails by an order of magnitude.
+
+**Removing the coefficient moves every published number toward its reference:**
+
+| | shipped 0.394 | 0.9 | 1.0 | published |
+|---|---|---|---|---|
+| trim speed | 11.06 | 10.99 | 10.955 | 10.83 |
+| sink | 0.97 | 1.086 | 1.100 | 1.14 |
+| glide | 11.33 | 10.07 | **9.91** | 9.5 |
+| incidence | 5.14° | 5.29° | 5.35° | 5.30 needed |
+
+At 1.0 — no chosen number anywhere, just geometry times a subcritical cylinder
+Cd — **glide error falls from 19% to 4.3%, sink from 15% to 3.5%**, and the
+incidence lands on what the published lift coefficient needs. This is item 12's
+own criterion met by *deleting* a coefficient rather than fitting one, on the
+largest disagreement in the model.
+
+**And it cannot ship, because it breaks a symmetry.** The 4 m/s symmetric
+frontal folds **L 0.779 R 0.903** where it folded 0.710/0.710 identical to three
+decimals, and the gate that fails is *"symmetrically — the two halves are the
+same wing"*. Turn rate while folded goes 2.06 to 4.04 rad/s.
+
+**That is not a gate encoding an old number, and the distinction is the whole
+decision.** Every other failure this session was a calibration disagreement,
+where "toward published" settles it. This is a mirror-symmetric wing answering a
+mirror-symmetric input differently on its two halves — a solver-integrity
+failure. No amount of agreement with published glide licenses it.
+
+**What it exposes was already written down.** The gate's own text says the deep
+symmetric frontal has no steady state to find and that *the peak folds still
+match; the path there does not*. Higher line drag drives the collapse deeper
+into that regime until the peaks stop matching too. **The correction is blocked
+by a known solver limitation rather than by evidence against it**, and the gate
+names the fix: Level 11.
+
+**Deliberately not tuned to fit.** A shielding value chosen to be the largest
+that keeps the symmetry gate green would be exactly the coefficient-chosen-to-
+put-it-there this section exists to remove. 0.394 stays, now labelled as
+*measured wrong* rather than merely unjustified, with the correction and its
+blocker both recorded.
+
+**This is the second time in this session** that a well-justified change passed
+its published references and was held back by a benchmark with no published
+arbiter (§61 was the first). The two are not symmetric: §61's change had no
+published improvement to point to, and this one has a large one. What they share
+is that shipping either would mean overruling a measured invariant on the
+strength of a correct-sounding argument.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

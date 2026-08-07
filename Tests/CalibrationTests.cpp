@@ -587,6 +587,158 @@ int main()
               "with enough rows to identify anything from");
     }
 
+    // -- wing loading across the certified range ---------------------------
+    //
+    // A wing is a different aircraft at each end of its weight range, and this
+    // file has been ASSUMING that rather than measuring it. The square-root law
+    // appears in three places already - this file's own header, the coupled
+    // suite's published-trim comparison, the master plan - and it is used to
+    // CORRECT comparisons between a 94.3 kg solver and a 105 kg published
+    // number. A correction nobody has verified on the model is a second
+    // published number in disguise.
+    //
+    // So fly it. The EPIC 2 ML is certified 90-110 kg all-up; this sweeps that
+    // range and one point either side of the middle, and checks the three
+    // things the physics says must happen:
+    //
+    //   * TRIM SPEED goes as sqrt(wing loading). Steady flight is
+    //     W = 1/2 rho V^2 S CL, so at a fixed trim CL, V scales with sqrt(W).
+    //   * SINK goes as sqrt(wing loading) too, for the same reason and by the
+    //     same factor - which is why a heavier wing arrives sooner and lower
+    //     rather than just sooner.
+    //   * GLIDE RATIO DOES NOT CHANGE. This is the strong claim and the one
+    //     worth gating: L/D at a given angle of attack is a property of the
+    //     shape, not of what is hanging under it. A model that gets speed and
+    //     sink right but glide wrong is one that has put the extra weight into
+    //     drag somewhere it does not belong.
+    //
+    // The third is what makes this a test rather than three restatements of
+    // one number: speed and sink are allowed to move together, and the ratio
+    // between them is not.
+    {
+        struct LoadingPoint
+        {
+            double allUpKg;
+            double airspeed;
+            double sink;
+            double glide;
+            double incidence;
+            bool settled;
+        };
+        std::vector<LoadingPoint> sweep;
+        for (const double massKg : {90.0, 97.0, 105.0, 110.0})
+        {
+            CalibrationSettings loaded = settings;
+            loaded.allUpMassKg = massKg;
+            const ManeuverResult point = RunCalibrationManeuver(
+                CalibrationManeuver::HandsUpTrim, canopy, linePlan, loaded);
+            sweep.push_back({massKg, point.settledAirspeedMps,
+                             point.settledSinkMps, point.settledGlideRatio,
+                             point.settledIncidenceRad, point.settled});
+        }
+
+        std::printf("Wing loading across the certified 90-110 kg range:\n");
+        const LoadingPoint& base = sweep.front();
+        for (const LoadingPoint& point : sweep)
+        {
+            const double expected = base.airspeed
+                * std::sqrt(point.allUpKg / base.allUpKg);
+            std::printf("  %5.0f kg: %.2f m/s (sqrt law says %.2f, %+.1f%%), "
+                        "sink %.3f, glide %.2f, incidence %.2f deg%s\n",
+                        point.allUpKg, point.airspeed, expected,
+                        100.0 * (point.airspeed - expected) / expected,
+                        point.sink, point.glide,
+                        point.incidence * Degrees,
+                        point.settled ? "" : "  NOT SETTLED");
+        }
+
+        bool allSettled = true;
+        for (const LoadingPoint& point : sweep)
+            allSettled = allSettled && point.settled;
+        Check(allSettled,
+              "every loading in the certified range settles to a trim - a wing "
+              "that will not settle at one end of its range has not been "
+              "measured there");
+
+        // Heavier is faster and heavier sinks more, monotonically. This is the
+        // part that is unambiguous and it is what a pilot means by loading a
+        // wing up.
+        bool monotonic = true;
+        for (std::size_t i = 1; i < sweep.size(); ++i)
+            monotonic = monotonic
+                && sweep[i].airspeed > sweep[i - 1].airspeed;
+        Check(monotonic,
+              "trim speed rises with every step up the certified range");
+        Check(sweep.back().airspeed > sweep.front().airspeed * 1.04,
+              "and the top of the range is meaningfully faster than the "
+              "bottom - a 22% weight change is not a rounding error");
+
+        // -- and the square root law is an APPROXIMATION here, measured -----
+        //
+        // The interesting result, and the reason this block is worth its time.
+        // V = sqrt(2W / rho S CL) only scales as sqrt(W) IF CL IS FIXED, and on
+        // this aircraft it is not: trim incidence climbs 5.03 -> 5.23 degrees
+        // across the certified range, because the line network's pitch spring
+        // is geometric and stiffens with load, so the pitch balance settles
+        // slightly nose-up as the wing is loaded. More CL, less speed than the
+        // fixed-CL law predicts - and the departure is monotonic in weight,
+        // 0.0, -2.4, -2.9, -3.3%, which is what a systematic effect looks like
+        // rather than scatter.
+        //
+        // THIS MATTERS BEYOND THIS BLOCK. Three places in the repo apply the
+        // square root law as a CORRECTION when comparing a 94.3 kg solver
+        // against a 105 kg published number - this file's header, the coupled
+        // suite's published-trim gate, the master plan. That correction is now
+        // measured rather than assumed, and it is good to about 3%, not exact.
+        // Bounded here so nobody has to rediscover it, and so it cannot grow.
+        double worstSpeedError = 0.0;
+        double worstSinkError = 0.0;
+        for (const LoadingPoint& point : sweep)
+        {
+            const double ratio = std::sqrt(point.allUpKg / base.allUpKg);
+            worstSpeedError = std::max(worstSpeedError,
+                std::fabs(point.airspeed - base.airspeed * ratio)
+                    / (base.airspeed * ratio));
+            worstSinkError = std::max(worstSinkError,
+                std::fabs(point.sink - base.sink * ratio)
+                    / (base.sink * ratio));
+        }
+        std::printf("  worst departure from the sqrt law: speed %.2f%%, "
+                    "sink %.2f%%\n",
+                    100.0 * worstSpeedError, 100.0 * worstSinkError);
+
+        bool incidenceRises = true;
+        for (std::size_t i = 1; i < sweep.size(); ++i)
+            incidenceRises = incidenceRises
+                && sweep[i].incidence >= sweep[i - 1].incidence - 1.0e-4;
+        Check(incidenceRises,
+              "trim incidence rises with load rather than holding - which is "
+              "the mechanism, and is why the square root law is approximate on "
+              "this aircraft rather than exact");
+        Check(worstSpeedError < 0.05,
+              "KNOWN APPROXIMATION: trim speed follows the square root of wing "
+              "loading to within 3.3% across the certified range, not exactly, "
+              "because trim CL is not constant with load. Bounded so the "
+              "correction three call sites apply cannot silently drift");
+        Check(worstSinkError < 0.08,
+              "and sink follows it to within 6.4%, for the same reason");
+
+        // The invariant, and it very nearly holds. Loading changes where on
+        // the polar the wing sits; it does not change the shape's lift-to-drag
+        // by much. What movement there is follows the incidence above.
+        double worstGlideSpread = 0.0;
+        for (const LoadingPoint& point : sweep)
+            worstGlideSpread = std::max(worstGlideSpread,
+                std::fabs(point.glide - base.glide) / base.glide);
+        std::printf("  glide spread across the whole range: %.2f%%\n",
+                    100.0 * worstGlideSpread);
+        Check(worstGlideSpread < 0.05,
+              "glide ratio is nearly the same at both ends of the certified "
+              "range - weight moves the speed the wing flies a given glide AT, "
+              "not the glide itself, and the 3% that does move tracks the trim "
+              "incidence rather than being loose");
+    }
+
     if (Failures == 0) std::printf("\nAll calibration checks passed.\n");
     else std::printf("\n%d calibration check(s) failed.\n", Failures);
     return Failures == 0 ? 0 : 1;

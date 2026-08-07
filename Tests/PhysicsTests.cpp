@@ -2884,5 +2884,102 @@ int main()
         assert(recoveryState.deepStall < 0.05);
     }
 
+    // A stall recovery has to convert the descent back into forward flight.
+    //
+    // Reported by a pilot flying the game: "after a stall the recovery is fast,
+    // but the heading is still pretty much going down - it stabilises as if it
+    // was on the moon's gravity. If I touch the brake or weight shift it works
+    // correctly." That is a precise description of a real defect and this is it
+    // measured.
+    //
+    // The distinction the old deep-stall test missed is between the stall
+    // STATE and the FLIGHT PATH. `state.deepStall` clears in about two seconds
+    // and the existing gate is satisfied by that alone. The aircraft is then
+    // still falling: descent goes on INCREASING after the wing has started
+    // flying again, and the trajectory needs the better part of a minute to
+    // come back to the glide it left.
+    //
+    // What a wing does instead: the pilot's weight hangs seven metres under the
+    // canopy, so a wing that has stopped being stalled is a pendulum with lift
+    // on it. It pitches down, converts height into speed, and is flying within
+    // a few seconds. Gravity does that work whether or not the pilot touches
+    // anything - which is exactly the part the report says is missing.
+    {
+        constexpr double dt = 1.0 / 120.0;
+        ParagliderDynamics dynamics;
+        FlightState state;
+        StepFor(dynamics, state, {}, 20.0);
+        const double trimH = std::hypot(state.velocityWorldMps.x,
+                                        state.velocityWorldMps.y);
+        const double trimGlide = trimH / std::max(0.01,
+                                                  -state.velocityWorldMps.z);
+
+        StepFor(dynamics, state, ControlInput{1.0, 1.0, 0.0}, 3.0);
+        const double stalledSink = -state.velocityWorldMps.z;
+
+        double peakSink = stalledSink;
+        double stallClearedAt = -1.0;
+        double flyingAgainAt = -1.0;
+        double settledAt = -1.0;
+        const int steps = static_cast<int>(60.0 / dt);
+        for (int i = 0; i < steps; ++i)
+        {
+            dynamics.Step(state, ControlInput{}, Atmosphere{}, dt);
+            const double t = (i + 1) * dt;
+            const double h = std::hypot(state.velocityWorldMps.x,
+                                        state.velocityWorldMps.y);
+            const double sink = -state.velocityWorldMps.z;
+            peakSink = std::max(peakSink, sink);
+            const double glide = sink > 0.01 ? h / sink : 1000.0;
+            if (stallClearedAt < 0.0 && state.deepStall < 0.05)
+                stallClearedAt = t;
+            if (flyingAgainAt < 0.0 && stallClearedAt >= 0.0 && glide > 1.0)
+                flyingAgainAt = t;
+            // Settled means back inside a tenth of the glide it left and
+            // staying there - so the last excursion outside the band is what
+            // sets it, not the first entry into it.
+            if (std::fabs(glide - trimGlide) > 0.10 * trimGlide)
+                settledAt = t;
+        }
+
+        std::cout << "Stall recovery: trim glide " << trimGlide
+                  << ", stalled sink " << stalledSink
+                  << ", peak sink after release " << peakSink
+                  << " (x" << (peakSink / stalledSink) << ")\n"
+                  << "  stall state cleared at " << stallClearedAt
+                  << " s, flying forward again at " << flyingAgainAt
+                  << " s, glide settled at " << settledAt << " s\n";
+
+        // KNOWN DEFECT, bounded at what it measures today so it cannot
+        // quietly get worse while the fix is decided.
+        //
+        // The cause is one line of `ParagliderDynamics`, and its own comment
+        // gives it away: `pitchStiffness` is documented as the
+        // "aerodynamic/pendular restoring moment toward the configured trim
+        // INCIDENCE". The aerodynamic weathercock and the pendulum are folded
+        // into a single spring that measures incidence error - and a wing
+        // diving vertically is already AT trim incidence, so that spring reads
+        // zero and does nothing. Nothing else in the pitch axis references
+        // gravity. The recovery that does happen is the slow speed-for-height
+        // phugoid exchange, which is why it takes half a minute.
+        //
+        // A real pendulum is referenced to gravity, not to incidence: the
+        // pilot's weight hangs under the canopy and pulls the nose up out of a
+        // dive whatever the incidence happens to be. The geometry-driven stack
+        // has this by construction and measures the line network's pitch
+        // spring at 6317 N.m/rad at 1 g, against the 165 N.m/rad this whole
+        // axis runs on. That is the "moon gravity" a pilot reported, and the
+        // ratio is roughly what it feels like.
+        //
+        // Not fixed here, deliberately. Adding a gravity-referenced pendulum
+        // term to the legacy path changes an axis that eleven calibration
+        // gates are written against, and the target numbers want a pilot's
+        // judgement rather than a plausible-looking constant. `PHYSICS_TODO`
+        // item 19.
+        assert(peakSink < 2.3 * stalledSink);
+        assert(flyingAgainAt > 0.0 && flyingAgainAt - stallClearedAt < 3.0);
+        assert(settledAt > 0.0 && settledAt < 40.0);
+    }
+
     std::cout << "All paraglider physics tests passed.\n";
 }

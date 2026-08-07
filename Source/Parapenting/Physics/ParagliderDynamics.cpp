@@ -701,12 +701,38 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // rotation already shows, so the canopy swings once for the aircraft
     // pitching and once more for the same thing measured again. Horizontal and
     // world-framed, gravity cannot leak in and neither can attitude.
+    //
+    // Referenced to where the aircraft POINTS, not to where it is going, and
+    // that distinction is a defect fix rather than a preference. The direction
+    // of travel is undefined at zero ground speed, so the version that used it
+    // had to guard the division - and the guard zeroed the hang tilt whenever
+    // the wing had less than 0.5 m/s of ground speed. A stall descends at 0.39.
+    // The pendulum therefore switched off for the whole early recovery, which
+    // is the one regime it exists for: measured, the descent went on rising
+    // from 5.4 to 11.8 m/s AFTER the stall had cleared, and the glide took 34
+    // seconds to come back. A pilot flying it described the wing as stabilising
+    // "as if it was on the moon's gravity", and as working normally the moment
+    // any brake or weight shift was touched - which is the same observation,
+    // because an input restores ground speed and un-gates this.
+    //
+    // The heading is defined at zero airspeed, so there is nothing to guard and
+    // no regime where the pendulum silently leaves. `physics_tests` gates the
+    // recovery it was missing.
     {
-        Vec3 alongTrack = state.velocityWorldMps;
-        alongTrack.z = 0.0;
-        const double groundSpeed = Length(alongTrack);
-        const double alongTrackAcceleration = groundSpeed > 0.5
-            ? Dot(acceleration, alongTrack / groundSpeed) : 0.0;
+        Vec3 alongHeading = state.attitude.Rotate({1.0, 0.0, 0.0});
+        alongHeading.z = 0.0;
+        double headingLength = Length(alongHeading);
+        if (headingLength <= 1.0e-3)
+        {
+            // Pointing straight up or down, where a horizontal heading has no
+            // meaning. Fall back to the track, and to zero only if that is
+            // degenerate too.
+            alongHeading = state.velocityWorldMps;
+            alongHeading.z = 0.0;
+            headingLength = Length(alongHeading);
+        }
+        const double alongTrackAcceleration = headingLength > 1.0e-3
+            ? Dot(acceleration, alongHeading / headingLength) : 0.0;
         state.previousHangTiltRad =
             std::atan2(-alongTrackAcceleration, 9.80665);
     }

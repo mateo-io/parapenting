@@ -1548,6 +1548,83 @@ the oscillation, not a measurement of it.
 
 ## Data gaps
 
+**19. The legacy pitch axis has no gravity-referenced pendulum, and a pilot
+felt it.** Reported from flying the game: "after a stall the recovery is fast,
+but the heading is still pretty much going down - it stabilises as if it was on
+the moon's gravity. If I touch the brake or weight shift it works correctly."
+
+Measured in `physics_tests`, full brake to a stall then hands off:
+
+| | |
+|---|---|
+| trim glide before | 9.39 |
+| stalled sink | 5.41 m/s |
+| peak sink AFTER release | **11.75 m/s (x2.17)** |
+| stall state cleared at | 1.91 s |
+| flying forward again at | 4.39 s |
+| glide back to trim at | **34.05 s** |
+
+- **The stall STATE clears in under two seconds and the FLIGHT PATH takes half
+  a minute.** The pre-existing deep-stall gate only checked the former, which
+  is why this was invisible to the suite while being obvious to a pilot.
+- **The cause is that `pitchStiffness` is referenced to incidence.** Its own
+  comment calls it the "aerodynamic/pendular restoring moment toward the
+  configured trim INCIDENCE" - the weathercock and the pendulum folded into one
+  spring that measures incidence error. A wing diving vertically is already at
+  trim incidence, so the spring reads zero and does nothing. Nothing else in
+  the pitch axis references gravity. What recovery there is comes from the slow
+  speed-for-height exchange.
+- **Why brake and weight shift "work correctly":** both inject moments
+  directly, so they bypass the missing term entirely. The pilot's own
+  observation is the cleanest evidence for the diagnosis.
+- **Scale.** The whole axis runs on 165 N.m/rad. The geometry-driven stack
+  *measures* the line network's pitch spring at **6317 N.m/rad at 1 g** and
+  carries the pendulum as a real degree of freedom. Different definitions, but
+  the gap is roughly what "moon gravity" describes.
+- **One latent bug found and fixed on the way, which was NOT the cause.** The
+  hang-tilt pendulum input was gated to zero below 0.5 m/s of ground speed - a
+  guard against dividing by an undefined track direction - and a stall descends
+  at 0.39, so the pendulum switched off for the whole early recovery. Now
+  referenced to the aircraft's heading, which is defined at zero airspeed, so
+  there is nothing to guard. Measured effect on the numbers above: **none**
+  (11.7547 to 11.7532). Kept because it is correct, reported because assuming
+  it was the fix would have been wrong.
+- **Not fixed, and the reason is a decision rather than difficulty.** Adding a
+  gravity-referenced pendulum term changes an axis eleven calibration gates are
+  written against, and the target numbers - how fast *should* a stall recovery
+  convert descent into forward flight? - want a pilot's judgement rather than a
+  plausible constant. Bounded at today's values in `physics_tests` so it cannot
+  quietly worsen while that is decided.
+- Note this is the legacy path, which is what the game flies (item 7). The
+  geometry-driven stack has the right structure by construction, so this is one
+  more argument for item 17 - but that stack departs at 40% brake today and
+  cannot fly a stall recovery either, so it is not a swap-in fix.
+
+**20. Wing loading: the square root law is an approximation here, now
+measured.** The suite corrects between a 94.3 kg solver and a 105 kg published
+number using V proportional to sqrt(W) in three places. Swept across the EPIC 2
+ML's certified 90-110 kg range in `calibration_tests`:
+
+| all-up | trim speed | vs sqrt law | sink | glide | incidence |
+|---|---|---|---|---|---|
+| 90 kg | 10.54 m/s | — | 0.934 | 11.25 | 5.03 deg |
+| 97 kg | 10.68 | -2.4% | 0.949 | 11.22 | 5.05 |
+| 105 kg | 11.06 | -2.9% | 0.973 | 11.32 | 5.14 |
+| 110 kg | 11.27 | **-3.3%** | 0.967 | 11.61 | 5.23 |
+
+- **The departure is monotonic in weight**, which is a systematic effect rather
+  than scatter, and **the mechanism is in the last column**: trim incidence
+  climbs 0.20 degrees across the range, because the line network's pitch spring
+  is geometric and stiffens with load, so the pitch balance settles slightly
+  nose-up as the wing is loaded. V goes as sqrt(W/CL) and CL is not constant,
+  so the fixed-CL law over-predicts.
+- **Consequence beyond this block:** the correction applied at three call sites
+  is good to about 3%, not exact. Bounded rather than corrected, because the
+  fix is to compare at the same weight rather than to scale between weights.
+- Glide is nearly loading-invariant as it should be - 3.25% across the whole
+  range - and what movement there is tracks the incidence rather than being
+  loose.
+
 **9. Grindelwald First's anchor is 50 m above its surveyed ground.** Published
 2123 m is the top station; its WGS84 pair is on the launch slope below, which
 swissALTI3D puts at 2073 m. Every other site agrees within 12 m.

@@ -2800,6 +2800,39 @@ explain the result.
 Bounded in `suspension_tests` as a structural claim: every off-centre node has a
 mirror partner, and the worst residual is under 1e-12.
 
+## 66. The VSM's section loop is symmetric too, and the amplification case is now the strong one
+
+§65 eliminated the suspension graph as a seed for the collapse asymmetry and
+named three untested downstream candidates: the VSM's section ordering, the
+collapse solver, the pressure model. This tests the first and most likely — the
+circulation solve is iterative over sections, and a loop reading partially
+updated neighbours breaks symmetry *systematically* rather than by round-off.
+
+The two signatures are far apart, which is what makes the test cheap and
+decisive. Round-off gives a relative mirror residual near 1e-16; a
+Gauss-Seidel-style sweep over a symmetric wing at symmetric incidence gives
+something orders larger, biased toward the end the sweep finishes at.
+
+**Measured on a symmetric flat wing at symmetric incidence: worst relative
+left-right circulation difference 9.3e-15.** Round-off. The VSM's section loop
+preserves mirror symmetry, and is eliminated.
+
+**Two eliminations in a row make the amplification case the strong one.** The
+structure is symmetric to 1e-15 (§65) and the aerodynamic solve is symmetric to
+1e-14 — so a symmetric frontal enters the collapse regime symmetric to
+round-off, and leaves it with a 0.124 difference in fold depth. That is
+amplification of order 1e14 with the two most likely seeds now ruled out
+individually rather than by argument.
+
+**What is left, and it is a shorter list than it was:** the collapse solver and
+the pressure model. Both are worth the same cheap probe, and until one of them
+fails it, the gate's own explanation — no steady state to find in the partly
+separated regime — stands as the best account of §64's blocker, and Level 11
+remains a stability problem rather than a defect hunt.
+
+Bounded in `aerodynamics_tests` at 1e-9, which is six orders above the measured
+value and far below any systematic asymmetry.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

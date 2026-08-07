@@ -280,6 +280,12 @@ survive the drag becoming a consequence.
     ordering, the collapse solver and the pressure model — a sequentially
     updated loop reading partially updated neighbours would break symmetry
     systematically rather than by round-off.
+  - **The VSM is eliminated too (§66):** worst relative left-right circulation
+    difference **9.3e-15** on a symmetric wing at symmetric incidence, bounded
+    in `aerodynamics_tests`. Two of the three downstream candidates are now
+    ruled out individually, so a symmetric frontal *enters* the collapse regime
+    symmetric to round-off and leaves it 0.124 apart. **The collapse solver and
+    the pressure model are what remain**, and both take the same cheap probe.
   - Not tuned around: a shielding value picked as the largest that keeps the
     symmetry gate green would be the coefficient-chosen-to-put-it-there this
     item objects to. 0.394 stays, labelled measured-wrong.

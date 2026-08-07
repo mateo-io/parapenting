@@ -323,6 +323,50 @@ int main()
     {
         // An elliptical wing with thin flat-plate sections must reproduce
         // lifting-line theory. This is the load-bearing test in this file.
+        // -- does the section loop itself break mirror symmetry? -----------
+        //
+        // §65 eliminated the suspension graph as a seed for the collapse
+        // asymmetry that blocks §64's line-drag correction, and named the
+        // untested downstream candidates: the VSM's section ordering, the
+        // collapse solver, the pressure model. This is the first of them, and
+        // it is the most likely - the circulation solve is iterative over
+        // sections, and a loop that reads partially updated neighbours breaks
+        // symmetry SYSTEMATICALLY rather than by round-off.
+        //
+        // The two signatures are far apart and that is what makes this cheap
+        // and decisive. Round-off gives a mirror residual near 1e-16 relative;
+        // a Gauss-Seidel-style sweep over a symmetric wing at symmetric
+        // incidence gives something many orders larger, and biased toward the
+        // end the sweep finishes at.
+        {
+            const VortexStepMethodSolver mirror =
+                VortexStepMethodSolver::FlatWing(
+                    12.0, 1.5, true, ThinFlatPlatePolar(), 80);
+            const VsmSolution symmetric =
+                mirror.Solve(Inflow(4.0 * Pi / 180.0));
+            const std::size_t count = symmetric.sections.size();
+            double worstRelative = 0.0;
+            double largest = 0.0;
+            for (const VsmSectionResult& section : symmetric.sections)
+                largest = std::max(largest, std::fabs(section.circulation));
+            for (std::size_t i = 0; i < count / 2; ++i)
+            {
+                const double a = symmetric.sections[i].circulation;
+                const double b = symmetric.sections[count - 1 - i].circulation;
+                if (largest > 0.0)
+                    worstRelative = std::max(worstRelative,
+                                             std::fabs(a - b) / largest);
+            }
+            std::printf("VSM mirror symmetry: worst relative left-right "
+                        "circulation difference %.3e\n", worstRelative);
+            // A bound, not a fit. Anything above 1e-9 on a symmetric wing at
+            // symmetric incidence is a systematic asymmetry in the solve, not
+            // arithmetic - and would be the seed §65 went looking for.
+            Check(worstRelative < 1.0e-9,
+                  "the VSM's section loop is mirror-symmetric, so it does not "
+                  "seed the collapse asymmetry");
+        }
+
         const double span = 12.0;
         const double rootChord = 1.5;
         const VortexStepMethodSolver ellipse =

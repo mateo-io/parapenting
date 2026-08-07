@@ -1675,6 +1675,27 @@ at 0.20 rad/s. Found by `parapenting_model_agreement` (§70).
 - Related to item 0b and possibly the same cause, but not assumed to be:
   0b is a brake-driven turn-rate deficit, this is a weight-shift authority of
   approximately zero.
+- **DIAGNOSED (§71), and it is a structural gap rather than a weak number.**
+  Traced link by link: full weight shift transfers **34% of the load** between
+  the carabiners, correctly signed and proportional to the input, so the pilot
+  moves and the lines feel it. Then it stops. `VsmSolveInput` carries airspeed,
+  angular velocity, density, per-cell pressure, left/right brake and a
+  per-section gust - and **nothing from the suspension solve**, so a 34% riser
+  asymmetry has no channel through which to change the spanwise lift.
+- **The surviving path cannot do the job arithmetically.** Weight shift
+  translates the CG **7.1 cm** (`hipTravelM` 0.075 m x a 0.95 strap factor) on a
+  **6.6 m** hang: atan(0.071/6.6) = 0.6 degrees of bank, 1.5 measured once the
+  line network responds. Even 20 cm of hip travel gives 1.7. A real wing banks
+  ten to fifteen. **No value of `hipTravelM` fixes this** - the fix is a
+  channel from the suspension into the aerodynamic solve, so that differential
+  riser load changes local incidence across the span, which is the mechanism
+  that actually banks a paraglider.
+- **It explains the shape of item 0b too.** Brake reaches the wing
+  (`aero.leftBrake`/`rightBrake` are in the input struct), so brake turns work
+  and are merely too slow. Weight shift has no equivalent, so it does not work
+  at all. Two symptoms, one asymmetry in what the aero solve is allowed to know.
+- Bounded in `coupled_tests`: the split is gated as WORKING and proportional,
+  the bank is bounded under 3 degrees and the turn under 0.05 rad/s.
 - **Cheapest thing standing between the stack and a pilot**, on current
   evidence, and unowned by any other item.
 

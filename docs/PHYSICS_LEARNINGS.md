@@ -3201,6 +3201,73 @@ legacy model in ordinary glide and not enough to give a player.
 the list that stands between the stack and a pilot, and it is untouched: no
 item owns it, no gate covers it, and it is a control rather than a coefficient.
 
+## 71. Weight shift reaches the lines and stops there, because the aerodynamic solve has no input from the suspension
+
+§70 found weight shift producing **0.01 rad/s** of turn where the legacy model
+gives 0.20 and a real EN-B gives something like 0.2–0.3. "Weak" and "missing a
+mechanism" want different fixes, so this traces the chain link by link.
+
+### Everything up to the line network works
+
+| shift | left carabiner | right carabiner | split | bank | turn |
+|---|---|---|---|---|---|
+| 0.00 | 437.4 N | 437.4 N | 0.0% | 0.00° | 0.0000 rad/s |
+| 0.50 | 363.0 N | 511.8 N | 17.0% | 0.75° | 0.0070 rad/s |
+| 1.00 | 288.6 N | 586.1 N | **34.0%** | 1.50° | 0.0140 rad/s |
+
+**A 34% load transfer between the carabiners at full shift is a real
+asymmetry**, correctly signed and exactly proportional to the input. The pilot
+moves, the harness rolls, the line anchor translates, and the lines feel it.
+None of that is broken, and gating it as working is half of what this section
+adds.
+
+### The chain stops at the lines
+
+`VsmSolveInput` carries airspeed, angular velocity, air density, per-cell
+internal pressure coefficient, left and right brake, and a per-section gust.
+**It carries nothing from the suspension solve.** There is no channel through
+which a 34% difference in riser load can change the wing's spanwise lift
+distribution, so it does not.
+
+What is left is the one path that does exist: weight shift translates the
+pilot's centre of gravity, the anchor moves with it, and the aircraft banks
+geometrically. **That path is intact and arithmetically incapable of the
+authority a real wing has.**
+
+Full shift moves the CG **7.1 cm** — `hipTravelM` 0.075 m times a 0.95 strap
+factor for a seatboard harness — on a **6.6 m** hang. That is
+atan(0.071/6.6) = **0.6°** of bank from geometry alone; the solver reaches 1.5°
+once the line network's own response is included. Even at a generous 20 cm of
+hip travel it would be 1.7°. A real wing banks ten to fifteen degrees on weight
+shift.
+
+**So the mechanism that does the work on a real paraglider is not CG
+translation.** It is the differential riser load changing the local incidence
+across the span — the loaded half flying at higher lift — and that is precisely
+the path with no channel here.
+
+### Why this matters more than its size
+
+**It is a structural gap, not a coefficient**, and that is the useful part: no
+value of `hipTravelM` closes it. Sweeping the harness geometry would produce a
+better-looking number and the same missing physics.
+
+**It also explains the shape of item 0b.** Brake reaches the wing —
+`aero.leftBrake` and `aero.rightBrake` are in the input struct — so brake-driven
+turns work, just too slowly. Weight shift has no equivalent, so it does not
+work at all. Two symptoms, one asymmetry in what the aerodynamic solve is
+allowed to know.
+
+**And it is the same class of finding as §70's stall pendulum (item 19):** a
+mechanism referenced to the wrong thing, surviving because it sat between two
+kinds of gate. It is not a departure, so the envelope checks missed it; it is
+not a disagreement with a published number, so calibration missed it.
+
+Bounded in `coupled_tests` as two claims that fail independently: the carabiner
+split is produced and proportional (the half that works), and the resulting
+bank stays under 3° with turn under 0.05 rad/s (the half that does not, bounded
+rather than fixed).
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

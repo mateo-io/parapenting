@@ -1508,6 +1508,109 @@ int main()
                   "unchanged break time mean something");
         }
 
+
+    // -- weight shift: where the chain works, and where it stops ----------
+    //
+    // §70 found weight shift produces 0.01 rad/s of turn, against 0.20 in the
+    // legacy model and something like 0.2-0.3 on a real EN-B. This is that
+    // traced link by link, because "weight shift is weak" and "weight shift is
+    // missing a mechanism" want different fixes and the difference is
+    // measurable.
+    //
+    // Everything up to the line network works, and works linearly:
+    //
+    //   shift   left N   right N   split   bank    turn rad/s
+    //   0.00     437.4    437.4    0.0%    0.00d    0.0000
+    //   0.50     363.0    511.8   17.0%    0.74d    0.0069
+    //   1.00     288.6    586.1   34.0%    1.49d    0.0138
+    //
+    // A 34% load transfer between the carabiners at full shift is a real
+    // asymmetry, correctly signed, and proportional to the input. The pilot IS
+    // moving and the lines DO feel it.
+    //
+    // THE CHAIN STOPS AT THE LINES. `VsmSolveInput` carries airspeed, angular
+    // velocity, density, per-cell internal pressure, left and right brake, and
+    // a per-section gust. It carries NOTHING from the suspension solve. So a
+    // 34% difference in riser load cannot change the wing's spanwise lift
+    // distribution, because there is no channel for it to arrive through.
+    //
+    // What is left is the one path that does exist: weight shift translates
+    // the pilot's centre of gravity, the line anchor moves with it, and the
+    // aircraft banks geometrically. That path is intact and it is
+    // ARITHMETICALLY INCAPABLE of the authority a real wing has. Full shift
+    // moves the CG 7.1 cm (0.075 m of hip travel times a 0.95 strap factor) on
+    // a 6.6 m hang, which is atan(0.071/6.6) = 0.6 degrees of bank. Even at a
+    // generous 20 cm it is 1.7 degrees. A real wing banks ten to fifteen on
+    // weight shift, so the mechanism that does that work is not CG translation
+    // - it is the differential riser load changing the local incidence across
+    // the span, which is exactly the path that does not exist here.
+    //
+    // This is a structural gap rather than a coefficient, and that is the
+    // useful part: no value of `hipTravelM` fixes it. `PHYSICS_TODO` item 21.
+    {
+        struct ShiftPoint
+        {
+            double shift;
+            double split;
+            double bankRad;
+            double turnRadps;
+        };
+        std::vector<ShiftPoint> sweep;
+        for (const double shift : {0.0, 0.5, 1.0})
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, handsOff, 60.0, &state);
+            CoupledControls shifted;
+            shifted.weightShift = shift;
+            Fly(wing, shifted, 60.0, &state);
+            const CoupledDiagnostics& diag = wing.Diagnostics();
+            const double total =
+                diag.leftCarabinerLoadN + diag.rightCarabinerLoadN;
+            sweep.push_back({shift,
+                             total > 1.0
+                                 ? (diag.rightCarabinerLoadN
+                                    - diag.leftCarabinerLoadN) / total
+                                 : 0.0,
+                             diag.bankRad, diag.turnRateRadps});
+        }
+
+        std::printf("Weight shift, link by link:\n");
+        for (const ShiftPoint& point : sweep)
+            std::printf("  shift %.2f: carabiner split %5.1f%%, bank %.2f deg, "
+                        "turn %.4f rad/s\n",
+                        point.shift, 100.0 * point.split,
+                        point.bankRad * 180.0 / 3.14159265358979, point.turnRadps);
+
+        // The half of the chain that works, gated as working. If this ever
+        // fails, weight shift has stopped reaching the lines at all and the
+        // diagnosis below is no longer the right one.
+        Check(sweep.back().split > 0.25,
+              "weight shift transfers real load between the carabiners - a "
+              "third of it at full shift, so the pilot moves and the lines "
+              "feel it");
+        Check(sweep[1].split > 0.4 * sweep.back().split
+              && sweep[1].split < 0.6 * sweep.back().split,
+              "and it does so proportionally, so the input is not being "
+              "clipped or saturated on the way");
+
+        // The half that does not, bounded at what it measures. This is a
+        // KNOWN STRUCTURAL GAP: the aerodynamic solve takes no input from the
+        // suspension, so riser asymmetry cannot reach the lift distribution,
+        // and the only surviving path - CG translation on a 6.6 m hang -
+        // cannot produce the bank a real wing gets.
+        Check(sweep.back().bankRad * 180.0 / 3.14159265358979 < 3.0,
+              "KNOWN STRUCTURAL GAP: full weight shift banks the wing under "
+              "three degrees, because the only path it has to the wing is "
+              "translating the pilot 7 cm under a 6.6 m hang. The riser "
+              "asymmetry it also produces cannot reach the lift distribution - "
+              "VsmSolveInput has no channel from the suspension");
+        Check(sweep.back().turnRadps < 0.05,
+              "and turns it at under 0.05 rad/s, against 0.20 in the legacy "
+              "model. Bounded rather than fixed: no value of hipTravelM closes "
+              "this, so the fix is a channel and not a number");
+    }
+
         // Brake pumping. The plan's gate is that brake only reaches a collapse
         // when the brake line has tension, and this wing has 120 mm of slack
         // sewn into a 620 mm travel - so the first 19% of the handle's travel

@@ -11,6 +11,7 @@
 #include "TensionCableSolver.h"
 #include "VortexStepMethodSolver.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace Parapenting::Physics
@@ -504,6 +505,23 @@ public:
     void SetSectionDragOffset(double offset) { SectionDragOffsetValue = offset; }
     double SectionDragOffset() const { return SectionDragOffsetValue; }
 
+    // How many iterations the FLIGHT solve may take once it is warm. THIS IS
+    // AN INSTRUMENT, NOT PHYSICS, and it defaults to the shipped 40 so that
+    // nothing flies on a different number by accident.
+    //
+    // It exists to make one sentence testable. §67 measured the symmetric
+    // frontal losing its mirror symmetry on a single aerodynamic tick, and
+    // §68 traced that tick to the VSM residual jumping four orders - from
+    // 1.1e-06 to 2.2e-02 - at exactly the step the incidence field stops being
+    // symmetric. That is either a solve that ran out of iterations, or a solve
+    // with nothing to converge TO. The two need different fixes and the
+    // difference is worth more than an argument: raising this cap separates
+    // them, because iterations cure the first and cannot touch the second.
+    // `coupled_tests` is its only caller.
+    void SetFlightSolveIterationCap(int iterations)
+        { FlightSolveIterationCapValue = std::max(1, iterations); }
+    int FlightSolveIterationCap() const { return FlightSolveIterationCapValue; }
+
     // The same extra drag, moved to the pilot. Units are Cd times A, m2, added
     // to the harness. Zero by default; `pitch_eigenmodes --height` is its only
     // caller, and it is the other half of `SetSectionDragOffset` above.
@@ -638,6 +656,7 @@ private:
     ConstructionProbe ConstructionProbeSettings;
     double SwingDampingRatioValue = 0.35;
     double SectionDragOffsetValue = 0.0;
+    int FlightSolveIterationCapValue = 40;
     HarnessDragReference HarnessDragReferenceValue =
         HarnessDragReference::Aircraft;
     bool LineSweepDamping = false;

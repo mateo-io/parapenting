@@ -306,6 +306,30 @@ survive the drag becoming a consequence.
     fold, or the collapse solver would be making the asymmetry rather than
     revealing it. **Which upstream step produces the O(1) jump is the open
     question** — one 8.3 ms step, at a known time, on a reproducible run.
+  - **Answered, and Level 11 cannot be bought with compute (§68).** The jump is
+    one **aerodynamic tick**: the margin field is piecewise constant between
+    ticks, and both its sides break on the same one — incidence 1.6e-14 →
+    0.379, pressure 3.3e-15 → 0.112 — as the **VSM residual jumps four orders,
+    1.14e-06 → 2.22e-02**, after falling monotonically for a second and a half.
+    §67's 100 ms latency is exactly one aerodynamic interval (12 steps at
+    120 Hz), not a drift.
+  - **And iterations are not the lever, tested rather than argued.** Sweeping
+    the flight solve's cap via the new `SetFlightSolveIterationCap` instrument:
+    40 (shipped), 200 and 600 all break **on the same tick**, with the residual
+    at the break no better and not even monotone (2.22e-02 / 6.95e-02 /
+    2.05e-02) — while the residual *before* the break does improve (1.14e-06 →
+    8.03e-07), so the extra work is real. **The separated solve is not short of
+    iterations; it has nothing to converge to** — item 6's no-steady-state
+    branch, now demonstrated on the aircraft. Level 11 is an **unsteady wake
+    formulation whose separated solve is single-valued**, not a stabilised or
+    better-iterated steady one. Gated in `coupled_tests`.
+  - Still open, and much narrower: *why* single-valuedness is lost at that
+    particular tick and not at any of the fourteen before it.
+  - **Naming collision, flagged not fixed (§68):** the "Level 11" these gates
+    name is the **unsteady wake**, which is unstarted. The §"What Level 11
+    closed" section below is the **pitch axis by linearisation**, which is
+    done. Following the gate to that section reads as "the fix already
+    shipped". Whoever starts the wake work should rename it.
   - Not tuned around: a shielding value picked as the largest that keeps the
     symmetry gate green would be the coefficient-chosen-to-put-it-there this
     item objects to. 0.394 stays, labelled measured-wrong.

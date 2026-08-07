@@ -2932,6 +2932,122 @@ later than the fold does. If the fold ever broke first, the collapse solver
 would be manufacturing the asymmetry rather than revealing it, and this
 section's elimination of it would be wrong.
 
+## 68. The jump is a VSM tick with nothing to converge to, and fifteen times the iterations lands on the same step
+
+§67 closed the seed list and left one question: which upstream step produces
+the O(1) jump in the pressure-margin field at t=1.400. This answers it, and
+then tries to fix it — because the answer on its own does not say which of two
+very different fixes Level 11 needs.
+
+### Attribution: one aerodynamic tick, both sides of the margin at once
+
+The margin decomposes exactly,
+
+```
+margin = internalCp - externalNoseCp - 0.75(1-load) - 0.35 slack
+```
+
+and `externalNoseCp` is a function of the section's **incidence alone**. Tracing
+the two sides separately across the break — no source change needed, both are
+already in the diagnostics — says they move on the same step, and that step is
+an **aerodynamic tick**. The margin field is piecewise-constant between ticks
+because that is when it is recomputed.
+
+| at the breaking tick | |
+|---|---|
+| incidence side | 1.6e-14 → **3.79e-01** |
+| pressure side | 3.3e-15 → **1.12e-01** |
+| VSM residual | 1.14e-06 → **2.22e-02** |
+
+Both sides break on the *same step*, gated as such: the incidence field and the
+pressure-and-line field do not lose symmetry independently, they lose it
+together, because one solve feeds both.
+
+**The VSM residual had been falling monotonically for a second and a half** —
+2.40 at the gust, 9.3e-05 by t=0.7, 1.14e-06 at t=1.3 — with the wing
+mirror-symmetric to 1e-14 the whole way. Then it jumps four orders on one tick,
+and the incidence field stops being symmetric on that same tick.
+
+**§67's 100 ms latency is no longer mysterious either.** The aerodynamic
+interval is 12 steps at 120 Hz — exactly 0.1 s. The fold breaks one
+aerodynamic tick after the margin does, because that is when the next solve
+lands. Nothing drifts in between; both are single ticks.
+
+### The experiment: iterations cannot buy it
+
+That left two readings with different fixes, and an argument would not settle
+them:
+
+- the flight solve is **capped at 40 iterations** once warm, so it may simply
+  have run out before it landed. Cure: iterate more.
+- the separated branch has **nothing to converge to**, so the iterate wanders
+  and which half it wanders toward is arbitrary. Cure: an unsteady
+  formulation. Iterations cannot touch it.
+
+Raising the cap separates them. `SetFlightSolveIterationCap` was added for
+exactly this — an instrument, defaulted to the shipped 40, on the same pattern
+as `SetSectionDragOffset`.
+
+| cap | breaks at | on an aero tick | VSM residual before → at |
+|---|---|---|---|
+| 40 (shipped) | **t=1.400 s** | yes | 1.14e-06 → 2.22e-02 |
+| 200 | **t=1.400 s** | yes | 9.44e-07 → 6.95e-02 |
+| 600 (cold-start budget) | **t=1.400 s** | yes | 8.03e-07 → 2.05e-02 |
+
+**Fifteen times the budget lands on the same tick.** And the control is in the
+same table: the residual *before* the break does improve with iterations,
+1.14e-06 → 8.03e-07, so the extra work is real and the solve genuinely
+converges better everywhere it can converge at all. At the breaking tick it
+buys nothing — 2.22e-02, 6.95e-02, 2.05e-02, no better and not even monotone in
+the cap.
+
+**So the separated solve is not short of iterations. It has nothing to converge
+to.** That is the same negative-lift-slope, no-steady-state branch `PHYSICS_TODO`
+item 6 records, now demonstrated on the aircraft rather than argued from the
+section polar.
+
+### What this settles for Level 11
+
+**Level 11 cannot be bought with compute**, and that is worth a section on its
+own, because "raise the iteration cap" is the first thing a reader meeting this
+divergence will try. It has been tried, at fifteen times the budget, and it
+does not move the break by one step.
+
+The three readings this chain has passed through, in order: a **defect** with an
+address (§64-§65, refuted — every candidate mirror-symmetric); an
+**instability** amplifying round-off (§65-§66, refuted — no growth rate, two
+single-step discontinuities); and now a **non-convergent branch**, which is the
+one that survives its own test. The fix is an unsteady wake formulation whose
+separated solve is single-valued, not a stabilised or better-iterated steady
+one.
+
+**What is still not proven**, and it is a narrower gap than it was: *why* the
+solve loses single-valuedness at that particular tick rather than at any of the
+fourteen before it.
+
+### A naming collision worth fixing before someone trips on it
+
+**"Level 11" names two different things in this repo**, and one of them is
+finished. `PHYSICS_TODO` §"What Level 11 closed" is the **pitch axis by
+linearisation** — the eigenmode programme, done. The collapse gates, this
+section, `PHYSICS_ENGINE` item 1 and `PHYSICS_TODO` items 6 and 14 all say
+"Level 11's unsteady wake", which is a *different and unstarted* piece of work.
+
+A reader meeting "the fix is Level 11" in the symmetry gate and following it to
+the summary section will find a level marked closed and reasonably conclude the
+fix has shipped. It has not. Nothing in this section or §67 is blocked on the
+ambiguity, but the next person to pick up the unsteady wake should rename it
+rather than inherit the collision. What is established is that it does, that both sides of the
+margin follow it within the same step, that the fold follows exactly one
+aerodynamic interval later, and that iterations are not the lever.
+
+Gated in `coupled_tests`: the asymmetry must enter **on an aerodynamic tick**
+(the margin field is only written then, so a break between ticks would mean
+something other than the solve is writing into it); the residual must be below
+1e-4 on the tick before and above 1e-3 on the tick that breaks; and the three
+caps must break on the *same* tick with the pre-break residual improving — the
+last being what makes the unchanged break time mean anything.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

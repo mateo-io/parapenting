@@ -1071,6 +1071,8 @@ int main()
             double marginAtBreak = 0.0;
             double previousFold = 0.0;
             double previousMargin = 0.0;
+            double incidenceBreakTime = -1.0;
+            double internalBreakTime = -1.0;
             double peakResidual = 0.0;
 
             for (int step = 0; step < steps; ++step)
@@ -1089,6 +1091,8 @@ int main()
                 double residual = 0.0;
                 double marginResidual = 0.0;
                 double deepest = 0.0;
+                double incidenceResidual = 0.0;
+                double internalResidual = 0.0;
                 for (std::size_t i = 0; i < count; ++i)
                     deepest = std::max(deepest, fold.sections[i].collapse);
                 for (std::size_t i = 0; i < count / 2; ++i)
@@ -1102,6 +1106,26 @@ int main()
                                   - fold.sections[mirror].pressureMargin));
                 }
                 peakResidual = std::max(peakResidual, residual);
+
+                // The margin's two sides, tracked separately so §68's
+                // attribution has a gate here rather than only prose:
+                //   margin = internalCp - externalNoseCp
+                //            - 0.75(1-load) - 0.35 slack
+                // and externalNoseCp is a function of the section's INCIDENCE
+                // alone, so it isolates the aerodynamic side from the
+                // pressure-and-line side. They break on the same step.
+                for (std::size_t i = 0; i < count / 2; ++i)
+                {
+                    const std::size_t m = count - 1 - i;
+                    incidenceResidual = std::max(incidenceResidual,
+                        std::fabs(fold.sections[i].externalNoseCp
+                                  - fold.sections[m].externalNoseCp));
+                    internalResidual = std::max(internalResidual,
+                        std::fabs((fold.sections[i].pressureMargin
+                                   + fold.sections[i].externalNoseCp)
+                                  - (fold.sections[m].pressureMargin
+                                     + fold.sections[m].externalNoseCp)));
+                }
 
                 const double time = step * dt;
                 // The first moment the wing is genuinely folding. A seed
@@ -1120,6 +1144,12 @@ int main()
                     foldBeforeBreak = previousFold;
                     foldAtBreak = residual;
                 }
+                if (incidenceBreakTime < 0.0
+                    && incidenceResidual > BrokenSymmetry)
+                    incidenceBreakTime = time;
+                if (internalBreakTime < 0.0
+                    && internalResidual > BrokenSymmetry)
+                    internalBreakTime = time;
                 previousFold = residual;
                 previousMargin = marginResidual;
             }
@@ -1156,6 +1186,22 @@ int main()
                   "break is still at round-off, so there is no exponential "
                   "growth to assign a rate to");
 
+            // Both sides of the margin break on the same step, which is what
+            // makes §68's attribution to a single aerodynamic tick a
+            // measurement rather than a reading of the prose: the incidence
+            // field and the pressure-and-line field do not lose symmetry
+            // independently, they lose it together because one solve feeds
+            // both.
+            std::printf("  incidence side breaks at t=%.3f s, pressure side "
+                        "at t=%.3f s\n",
+                        incidenceBreakTime, internalBreakTime);
+            Check(incidenceBreakTime > 0.0
+                  && std::fabs(incidenceBreakTime - internalBreakTime) < 1.0e-9
+                  && std::fabs(incidenceBreakTime - marginBreakTime) < 1.0e-9,
+                  "the incidence side and the pressure side of the margin "
+                  "break on the same step - one solve feeds both, so they do "
+                  "not lose symmetry independently");
+
             // The causal claim, and the one that would overturn §67 if it
             // failed: the criterion loses symmetry BEFORE the fold does.
             Check(marginBreakTime <= foldBreakTime,
@@ -1163,6 +1209,175 @@ int main()
                   "before it appears in the fold - so it arrives from the "
                   "separated solve upstream, and the collapse solver reveals "
                   "it rather than making it");
+        }
+
+        // -- what produces the jump, and whether iterations can cure it -----
+        //
+        // §67 left one question: which upstream step produces the O(1) jump in
+        // the margin field. This answers it and then tries to fix it, because
+        // the answer alone does not say which fix Level 11 needs.
+        //
+        // ATTRIBUTION. The margin decomposes exactly:
+        //
+        //   margin = internalCp - externalNoseCp - 0.75(1-load) - 0.35 slack
+        //
+        // and `externalNoseCp` is a function of the section's INCIDENCE alone.
+        // Tracing the two sides separately across the break says both move on
+        // the same step, and that step is an AERODYNAMIC TICK - the margin
+        // field is piecewise constant between ticks, because that is when it
+        // is recomputed. Measured at the tick the symmetry breaks:
+        //
+        //   incidence side   1.6e-14 -> 3.79e-01
+        //   pressure side    3.3e-15 -> 1.12e-01
+        //   VSM residual     1.14e-06 -> 2.22e-02
+        //
+        // The VSM residual had been FALLING monotonically for a second and a
+        // half - 2.40 at the gust, 9.3e-05 by t=0.7, 1.14e-06 at t=1.3 - with
+        // the wing mirror-symmetric to 1e-14 throughout. Then it jumps four
+        // orders on one tick and the incidence field stops being symmetric on
+        // that same tick. The §67 latency is no longer mysterious either: the
+        // fold breaks exactly one aerodynamic interval later, 12 steps at
+        // 120 Hz, because that is when the next solve lands.
+        //
+        // THE EXPERIMENT. That leaves two readings with different fixes:
+        //
+        //   * the flight solve is capped at 40 iterations once warm, so it may
+        //     simply have RUN OUT before it landed. Cure: iterate more.
+        //   * the separated branch has NOTHING TO CONVERGE TO, so the iterate
+        //     wanders and which half it wanders toward is arbitrary. Cure: an
+        //     unsteady formulation. Iterations cannot touch it.
+        //
+        // Raising the cap separates them, which is what
+        // `SetFlightSolveIterationCap` is for. If the break moves later or
+        // goes away, it was iterations. If fifteen times the budget lands on
+        // the same tick, it is not, and Level 11 cannot be bought with compute.
+        {
+            const auto runAtCap = [&](int cap)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetFlightSolveIterationCap(cap);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(3.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+
+                struct Outcome
+                {
+                    double breakTime = -1.0;
+                    double residualAtBreak = 0.0;
+                    double residualBeforeBreak = 0.0;
+                    double worstResidualBeforeBreak = 0.0;
+                    bool brokeOnAeroTick = false;
+                };
+                Outcome out;
+                double previousTickResidual = 0.0;
+
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+
+                    const CoupledDiagnostics& diag = wing.Diagnostics();
+                    const CollapseResult& fold = diag.collapseState;
+                    const std::size_t count = fold.sections.size();
+                    double marginResidual = 0.0;
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                        marginResidual = std::max(marginResidual,
+                            std::fabs(fold.sections[i].pressureMargin
+                                      - fold.sections[count - 1 - i]
+                                            .pressureMargin));
+
+                    if (out.breakTime < 0.0)
+                    {
+                        if (marginResidual > 1.0e-9)
+                        {
+                            out.breakTime = step * dt;
+                            out.residualAtBreak = diag.vsmResidual;
+                            out.residualBeforeBreak = previousTickResidual;
+                            out.brokeOnAeroTick =
+                                diag.aerodynamicsSolvedThisStep;
+                        }
+                        else
+                        {
+                            out.worstResidualBeforeBreak = std::max(
+                                out.worstResidualBeforeBreak, marginResidual);
+                        }
+                    }
+                    if (diag.aerodynamicsSolvedThisStep && out.breakTime < 0.0)
+                        previousTickResidual = diag.vsmResidual;
+                }
+                return out;
+            };
+
+            // The shipped cap, and two much larger ones. 600 is the cold-start
+            // budget the same solver already uses on its first solve, so it is
+            // not an invented number.
+            const auto shipped = runAtCap(40);
+            const auto generous = runAtCap(200);
+            const auto cold = runAtCap(600);
+
+            std::printf("Symmetric frontal, VSM iteration cap sweep:\n");
+            const auto report = [](const char* name, int cap, const auto& r)
+            {
+                std::printf("  cap %3d (%s): breaks at t=%.3f s on an aero "
+                            "tick=%d, VSM residual %.2e -> %.2e, symmetric to "
+                            "%.1e until then\n",
+                            cap, name, r.breakTime,
+                            r.brokeOnAeroTick ? 1 : 0,
+                            r.residualBeforeBreak, r.residualAtBreak,
+                            r.worstResidualBeforeBreak);
+            };
+            report("shipped", 40, shipped);
+            report("generous", 200, generous);
+            report("cold-start budget", 600, cold);
+
+            // The attribution, and the claim that would send this back
+            // upstream if it failed: the asymmetry enters ON an aerodynamic
+            // tick. The margin field is only recomputed then, so if it ever
+            // broke between ticks something other than the aerodynamic solve
+            // would be writing into it.
+            Check(shipped.brokeOnAeroTick,
+                  "the asymmetry enters on an aerodynamic tick - the margin "
+                  "field is piecewise constant between them, so the solve is "
+                  "where it comes from");
+
+            // The wing is well converged right up to the tick that breaks it.
+            // This is what makes the jump a jump rather than a slow decay of
+            // solution quality that happened to cross a threshold.
+            Check(shipped.residualBeforeBreak < 1.0e-4
+                  && shipped.residualAtBreak > 1.0e-3,
+                  "and it enters on the tick the VSM residual jumps orders - "
+                  "the solve was converging cleanly until the step that lost "
+                  "the symmetry");
+
+            // The experiment's own result, and the reason it is a gate rather
+            // than a printout: "try more iterations" is exactly what a later
+            // reader will otherwise spend a level on.
+            //
+            // Fifteen times the budget lands on the SAME TICK. The residual
+            // before the break does improve with iterations - 1.14e-06 to
+            // 8.03e-07 - so the extra work is being done and the solve really
+            // is converging better everywhere it can converge at all. At the
+            // breaking tick it buys nothing: 2.22e-02 at 40, 6.95e-02 at 200,
+            // 2.05e-02 at 600, no better and not even monotone.
+            Check(std::fabs(generous.breakTime - shipped.breakTime) < 1.0e-9
+                  && std::fabs(cold.breakTime - shipped.breakTime) < 1.0e-9,
+                  "and fifteen times the iteration budget breaks on the SAME "
+                  "tick - the separated solve is not short of iterations, it "
+                  "has nothing to converge to, so Level 11 needs an unsteady "
+                  "formulation and cannot be bought with compute");
+            Check(cold.residualBeforeBreak < shipped.residualBeforeBreak,
+                  "the extra iterations are doing real work everywhere the "
+                  "solve can converge at all, which is what makes the "
+                  "unchanged break time mean something");
         }
 
         // Brake pumping. The plan's gate is that brake only reaches a collapse

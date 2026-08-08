@@ -1698,21 +1698,27 @@ int main()
               "against, and it comes from flying the aircraft rather than "
               "from dividing two moments");
 
-        // THE TURNS ARE SKIDDING, and by a constant fraction. Every stable
-        // point banks about 38% of what its own turn rate and speed imply for
-        // a coordinated turn, from half a degree of twist to three. A ratio
-        // that holds while the input varies sixfold is a missing mechanism
-        // rather than a tuning error: the aircraft is yawing round without
-        // the bank following, so it holds a steady sideslip in every turn.
-        // Bounded rather than fixed, and unowned by any existing item.
+        // THE CANOPY BANKS ABOUT 38% OF COORDINATED, and this section used to
+        // read that as a skid. IT IS NOT ONE - see the budget block below,
+        // which measures the sideslip directly (under 0.1 degree) and finds
+        // the PAYLOAD LINK at the coordinated bank within 2%. The canopy sits
+        // inboard of the link because the line roll spring is carrying the
+        // twist's steady roll moment, and 95 of the 105 kg hangs on the link,
+        // not on the canopy.
+        //
+        // The fraction is kept as a gate because it is a real, reproducible
+        // property of the aircraft, and because a ratio holding constant over
+        // a sixfold input turned out to be the signature of two linear terms
+        // being differenced rather than of a missing mechanism. That is the
+        // reading error this pair of blocks exists to prevent repeating.
         for (const TwistPoint& point : sweep)
         {
             if (point.turnRadps < 1.0e-3) continue;
             Check(point.bankDeg > 0.25 * coordinatedBankDeg(point)
                   && point.bankDeg < 0.55 * coordinatedBankDeg(point),
-                  "KNOWN GAP: the wing banks well under the coordinated bank "
-                  "for its own turn rate, by the same fraction at every twist "
-                  "- so every turn it flies carries a steady skid");
+                  "the CANOPY banks well under the coordinated bank for its "
+                  "own turn rate, by the same fraction at every twist - which "
+                  "is the roll spring's deflection, not a skid");
         }
     }
 
@@ -1785,6 +1791,221 @@ int main()
               "and what it leaves behind is the known separated-regime "
               "blocker: a wing parked past 70 degrees of incidence, which is "
               "Level 11's to represent and is not evidence for anything here");
+    }
+
+    // THERE IS NO SKID. §73 measured that every stable turn banks 38-40% of
+    // its own coordinated bank, called the constant fraction "a missing
+    // mechanism" and concluded the aircraft holds a steady sideslip in every
+    // turn. The fraction is real and the conclusion drawn from it is wrong,
+    // and the clue §73 did not follow is that a ratio holding constant while
+    // the input varies sixfold is what DIFFERENCING TWO LINEAR TERMS looks
+    // like - not what a missing mechanism looks like.
+    //
+    // What this closes, by measurement rather than by inference from the bank:
+    //
+    // 1. The roll-moment budget. The imposed twist puts a steady aerodynamic
+    //    roll moment on the canopy, and the line roll spring is the only thing
+    //    of comparable size balancing it. That spring acts on the angle
+    //    BETWEEN the canopy and the payload link, so carrying a steady moment
+    //    REQUIRES a steady canopy-to-link offset. The bank shortfall is that
+    //    offset, exactly.
+    //
+    // 2. Where the aircraft's mass actually is. 95 of the 105 kg hangs on the
+    //    link, and the link's lean is what turns that mass - the canopy's own
+    //    bank turns 5 kg of canopy. So the angle the coordinated-bank formula
+    //    is about is the LINK's, and `bankRad` is the canopy's. Comparing the
+    //    second against the formula was comparing the wrong angle.
+    //
+    // 3. The sideslip, which until now could only be inferred from the bank
+    //    falling short. Measured directly it is under a tenth of a degree.
+    //
+    // 4. The track's own turn rate in the world, rather than the body yaw rate
+    //    `turnRateRadps` reports - because assuming those equal is assuming
+    //    the coordination that is under test.
+    {
+        constexpr double Degree = 3.14159265358979 / 180.0;
+        struct TurnBudget
+        {
+            double twistDeg;
+            double bankDeg;
+            double coordinatedBankDeg;
+            double aeroRollNm;
+            double lineRollNm;
+            double lateralSwingDeg;
+            double rollStiffnessNmPerRad;
+            double sideslipDeg;
+            double sideForceN;
+            double speedMps;
+            double trackTurnRadps;
+        };
+        std::vector<TurnBudget> budgets;
+        std::vector<double> trackTurns;
+        std::vector<double> yawRates;
+        for (const double twistDeg : {1.0, 2.0, 3.0})
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, handsOff, 60.0, &state);
+            wing.SetImposedSpanwiseTwistRad(twistDeg * Degree);
+            Fly(wing, handsOff, 60.0, &state);
+            // What the FLIGHT PATH does, measured in the world rather than
+            // read off the body yaw rate. `turnRateRadps` is the canopy's
+            // angular velocity about its own z, and the coordinated-bank
+            // formula wants the rate the velocity vector's heading sweeps.
+            // Those are the same number only for an aircraft that is not
+            // slipping and not accelerating sideways, which is the thing under
+            // test - so assuming them equal would beg the question.
+            const CoupledAtmosphere budgetAir;
+            const double headingBefore = std::atan2(
+                state.velocityWorldMps.y, state.velocityWorldMps.x);
+            const int headingSteps =
+                static_cast<int>(4.0 / wing.Schedule().timeStepS);
+            for (int step = 0; step < headingSteps; ++step)
+                wing.Step(state, handsOff, budgetAir);
+            double headingAfter = std::atan2(
+                state.velocityWorldMps.y, state.velocityWorldMps.x);
+            while (headingAfter - headingBefore > 3.14159265358979)
+                headingAfter -= 2.0 * 3.14159265358979;
+            while (headingAfter - headingBefore < -3.14159265358979)
+                headingAfter += 2.0 * 3.14159265358979;
+            const double trackTurnRadps = (headingAfter - headingBefore)
+                / (headingSteps * wing.Schedule().timeStepS);
+
+            const CoupledDiagnostics& d = wing.Diagnostics();
+            trackTurns.push_back(trackTurnRadps);
+            yawRates.push_back(d.turnRateRadps);
+            budgets.push_back({
+                twistDeg,
+                d.bankRad / Degree,
+                std::atan(d.airspeedMps * trackTurnRadps / 9.80665) / Degree,
+                d.aeroRollMomentNm,
+                d.lineRollMomentNm,
+                d.payloadSwingLateralRad / Degree,
+                d.lineRollStiffnessNmPerRad,
+                d.sideslipRad / Degree,
+                d.aeroSideForceN,
+                d.airspeedMps,
+                trackTurnRadps});
+        }
+
+        std::printf("The steady turn: is the flight path even turning at the "
+                    "yaw rate?\n");
+        for (std::size_t i = 0; i < budgets.size(); ++i)
+            std::printf("  twist %.1f deg: body yaw %+.4f rad/s, TRACK "
+                        "%+.4f rad/s (%.0f%% of it)\n",
+                        budgets[i].twistDeg, yawRates[i], trackTurns[i],
+                        std::fabs(yawRates[i]) > 1.0e-9
+                            ? 100.0 * trackTurns[i] / yawRates[i] : 0.0);
+
+        std::printf("The steady turn's roll-moment budget:\n");
+        for (const TurnBudget& b : budgets)
+            std::printf("  twist %.1f deg: aero roll %+8.1f Nm, line roll "
+                        "%+8.1f Nm, sum %+7.1f\n"
+                        "                 lateral swing %+5.2f deg at %.0f "
+                        "Nm/rad; bank %.2f of %.2f coordinated; "
+                        "sideslip %+.2f deg, side force %+.1f N\n",
+                        b.twistDeg, b.aeroRollNm, b.lineRollNm,
+                        b.aeroRollNm + b.lineRollNm,
+                        b.lateralSwingDeg, b.rollStiffnessNmPerRad,
+                        b.bankDeg, b.coordinatedBankDeg, b.sideslipDeg,
+                        b.sideForceN);
+        std::printf("The angle that turns the aircraft is the LINK's:\n");
+        for (const TurnBudget& b : budgets)
+            std::printf("  twist %.1f deg: canopy %.2f + offset %.2f = link "
+                        "%.2f deg, against %.2f coordinated\n",
+                        b.twistDeg, b.bankDeg, -b.lateralSwingDeg,
+                        b.bankDeg - b.lateralSwingDeg, b.coordinatedBankDeg);
+        std::printf("And the lateral force budget, at zero sideslip:\n");
+        for (const TurnBudget& b : budgets)
+            std::printf("  twist %.1f deg: needs %.1f N; side force %.1f + "
+                        "banked lift %.1f = %.1f N\n",
+                        b.twistDeg, 105.0 * b.speedMps * b.trackTurnRadps,
+                        b.sideForceN,
+                        105.0 * 9.80665 * std::tan(b.bankDeg * Degree),
+                        b.sideForceN
+                            + 105.0 * 9.80665 * std::tan(b.bankDeg * Degree));
+
+        for (const TurnBudget& b : budgets)
+        {
+            // 1. The two roll moments really are each other's balance. If they
+            //    are, the wing is not "failing to bank" - it is sitting exactly
+            //    where a steady applied roll moment must put it against a
+            //    spring measured on the angle to the pilot.
+            const double scale = std::max(std::fabs(b.aeroRollNm), 1.0);
+            Check(std::fabs(b.aeroRollNm + b.lineRollNm) < 0.25 * scale,
+                  "the twist's aerodynamic roll moment is balanced by the line "
+                  "roll spring and by nothing else of comparable size - so the "
+                  "steady turn's roll equilibrium is a two-term one");
+
+            // 2. And the shortfall in bank IS that spring's deflection. This
+            //    is the whole claim: the bank does not fall short by some
+            //    unidentified amount, it falls short by the angle the spring
+            //    needs to carry the moment.
+            const double shortfallDeg = b.coordinatedBankDeg - b.bankDeg;
+            Check(std::fabs(shortfallDeg + b.lateralSwingDeg)
+                      < 0.20 * std::max(std::fabs(shortfallDeg), 0.2),
+                  "and the bank falls short of coordinated by exactly the "
+                  "canopy-to-pilot angle that spring is holding - the shortfall "
+                  "is the deflection, not a missing mechanism");
+
+            // 3. And the angle that actually turns the aircraft - the LINK's,
+            //    which is the canopy's bank plus the offset above - IS the
+            //    coordinated bank. Ninety-five of the 105 kg hangs on that
+            //    link. This is the check that says §73's conclusion was wrong
+            //    rather than only unexplained.
+            const double linkBankDeg = b.bankDeg - b.lateralSwingDeg;
+            Check(std::fabs(linkBankDeg - b.coordinatedBankDeg)
+                      < 0.05 * b.coordinatedBankDeg,
+                  "and the LINK - which is where 95 of the 105 kg hangs, and so "
+                  "the angle that turns the aircraft - sits at the coordinated "
+                  "bank for the turn it is flying, within 5%");
+
+            // 4. Confirmed independently and without reference to any bank at
+            //    all: a wing flying down its own centreline is not skidding.
+            Check(std::fabs(b.sideslipDeg) < 0.25,
+                  "and the wing is flying down its own centreline to under a "
+                  "quarter of a degree, so there is no steady sideslip - the "
+                  "skid §73 inferred from the bank shortfall is not there");
+
+            // 5. The lateral force budget closes, and it takes TWO terms. The
+            //    aircraft does carry a real aerodynamic side force - 71 N at
+            //    3 degrees, 7% of its weight - and the canopy's small bank
+            //    tilts its lift for the rest. Together they are the m V omega
+            //    the turn needs.
+            //
+            //    That side force is NOT a slip force: the sideslip above is
+            //    under a tenth of a degree. It is the twist acting on an
+            //    ARCHED canopy, whose sections' lift vectors do not cancel
+            //    laterally once they are loaded antisymmetrically. Worth
+            //    naming, because "there is a side force" and "the wing is
+            //    slipping" are the same sentence about a flat wing and
+            //    different sentences about this one.
+            const double requiredN = 105.0 * b.speedMps * b.trackTurnRadps;
+            const double bankedLiftN =
+                105.0 * 9.80665 * std::tan(b.bankDeg * Degree);
+            Check(std::fabs(b.sideForceN + bankedLiftN - requiredN)
+                      < 0.25 * requiredN,
+                  "and the lateral force budget closes on the aerodynamic side "
+                  "force plus the canopy's banked lift - so the turn is being "
+                  "pulled round by forces that are accounted for, at a sideslip "
+                  "of essentially zero");
+        }
+
+        // The ratio §73 reported is therefore ARITHMETIC, not a measurement of
+        // a mechanism: the aero roll moment is linear in twist and so is the
+        // coordinated bank, so the ratio between them cannot vary. Reproduced
+        // here so the record says why it was constant.
+        const double firstRatio = budgets.front().bankDeg
+            / budgets.front().coordinatedBankDeg;
+        const double lastRatio = budgets.back().bankDeg
+            / budgets.back().coordinatedBankDeg;
+        std::printf("  -> the 38-40%% is two linear terms differenced: "
+                    "%.0f%% at 1 deg, %.0f%% at 3 deg\n",
+                    100.0 * firstRatio, 100.0 * lastRatio);
+        Check(std::fabs(firstRatio - lastRatio) < 0.06,
+              "and the constant fraction across the sweep follows from both "
+              "terms being linear in twist, so it was never evidence for a "
+              "mechanism at all");
     }
 
         // Brake pumping. The plan's gate is that brake only reaches a collapse

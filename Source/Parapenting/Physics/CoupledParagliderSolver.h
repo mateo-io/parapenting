@@ -329,6 +329,19 @@ struct CoupledDiagnostics
     // claim worth measuring rather than asserting.
     double pendulumWeightMomentNm = 0.0;
     double aeroPitchMomentNm = 0.0;
+    // Its roll counterpart, and the aerodynamic side force. Added to close a
+    // steady turn's two budgets by measurement rather than by argument: the
+    // roll moment budget says what holds the canopy off apparent gravity, and
+    // the lateral force budget says what supplies the turn's centripetal
+    // acceleration when the bank is too small to. See `PHYSICS_LEARNINGS` §74.
+    double aeroRollMomentNm = 0.0;
+    double aeroSideForceN = 0.0;
+    // The angle between the relative wind and the canopy's plane of symmetry,
+    // positive with the air coming from the RIGHT. Zero is a wing flying
+    // straight down its own centreline; a steady non-zero value in a turn is a
+    // skid, and until this existed the skid could only be inferred from the
+    // bank falling short of the coordinated one.
+    double sideslipRad = 0.0;
     // The nose-up rotation the shortened brake line commands geometrically,
     // before the section's nose-down couple has argued with it. Item 11 is the
     // gap between this and `payloadSwingRad`.

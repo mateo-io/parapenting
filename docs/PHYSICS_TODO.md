@@ -1794,21 +1794,28 @@ tolerance and is not trying to; the flag compares against it anyway.
   aiming at. Either makes the flag mean something.
 - Nothing currently gates on it, which is the only reason this is small.
 
-**25. The aircraft has almost no stable turn envelope, and every turn it flies
-skids.** Both measured in §73, both unowned, and item 21 is now behind them.
+**25. The aircraft has almost no stable turn envelope.** Halved by §74: the
+skid half was a false finding and is closed, the spiral half stands and is
+unowned. Item 21 is still behind it.
 
 - **Spiral departure between 3° and 4° of imposed twist**, i.e. between 0.086
   and 0.19 rad/s of turn. A real EN-B holds 0.2–0.3 rad/s as an ordinary,
   sustainable turn. This one departs before reaching it.
-- **Every stable turn banks 38–40% of its own coordinated bank**, and the
-  fraction is constant while the input varies sixfold — 39%, 39%, 38%, 40%
-  across the sweep. That is a missing mechanism, not a tuning error: the wing
-  yaws round without the bank following, holding a steady sideslip.
-- Whether these are one fault or two is **not established**. They are
-  consistent with one — a wing that will not bank into its own turn is a wing
-  whose roll is not doing the work — but that is a hypothesis.
-- **Why this outranks item 21's remaining half**: it needs no new level to
-  measure, it is upstream of the turn authority the geometric channel was
+- **The skid is closed and was never there (§74).** Sideslip measured directly
+  is under 0.1°, and the payload link — where 95 of the 105 kg hangs, so the
+  angle that actually turns the aircraft — sits at the coordinated bank within
+  2%. `bankRad` reports the CANOPY's bank, which sits inboard by exactly the
+  deflection the line roll spring needs to carry the twist's steady roll
+  moment (+433 against -443 N·m at 3°, closing to 2%). §73 compared the canopy
+  angle against a formula about the link angle. Gated in `coupled_tests`.
+- The lateral force budget closes on the aerodynamic side force plus the
+  canopy's banked lift, to 10%. The side force is real and large — 71 N at 3°,
+  two thirds of the turn — and it appears **at zero sideslip**, because an
+  arched canopy loaded antisymmetrically produces side force without slip.
+- The "one fault or two" hypothesis is closed with it: there is no second
+  fault. **The spiral is item 25 entire.**
+- **Why this still outranks item 21's remaining half**: it needs no new level
+  to measure, it is upstream of the turn authority the geometric channel was
   meant to supply, and building canopy torsion without it would deliver a
   channel whose output the aircraft cannot use.
 - It is also the most likely thing standing behind Level 8's unverified gate

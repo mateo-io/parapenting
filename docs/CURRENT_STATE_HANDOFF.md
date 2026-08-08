@@ -35,11 +35,18 @@ the list.
 **And the structural question is not the first one either** (§73). Imposing the
 twist and flying the aircraft gives 0.0272 rad/s per degree, linear, so a real
 wing's 0.20 rad/s wants about **seven degrees** — but **the aircraft spirally
-departs at four**, and every stable turn it flies banks only 38–40% of its own
-coordinated bank. A stable turn tops out near 0.09 rad/s. **Perfect canopy
-torsion would not reach a real wing's turn**, so item 25 — the turn envelope
-and the skid — is in front of item 21, and neither needs a new level to work
-on. That is the recommended next thread.
+departs at four**. A stable turn tops out near 0.09 rad/s. **Perfect canopy
+torsion would not reach a real wing's turn**, so item 25 — the turn envelope —
+is in front of item 21, and it needs no new level to work on. That is the
+recommended next thread.
+
+§73 also reported that every stable turn banks only 38–40% of its own
+coordinated bank and read that as a skid. **§74 measured it and there is no
+skid**: sideslip is under 0.1°, and the payload link — where 95 of the 105 kg
+hangs — sits at the coordinated bank within 2%. The canopy sits inboard by
+exactly the deflection the line roll spring needs to carry the twist's steady
+roll moment. `bankRad` is the canopy's angle and the coordinated-bank formula
+is about the link's. Item 25 is the spiral alone.
 
 ## Product direction
 

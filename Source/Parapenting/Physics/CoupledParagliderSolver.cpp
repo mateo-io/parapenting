@@ -622,6 +622,8 @@ void CoupledParagliderSolver::Step(
     diagnostics.airspeedMps = airspeed;
     diagnostics.angleOfAttackRad = airspeed > 1.0e-6
         ? std::atan2(-airspeedBody.z, airspeedBody.x) : 0.0;
+    diagnostics.sideslipRad = airspeed > 1.0e-6
+        ? std::asin(std::clamp(airspeedBody.y / airspeed, -1.0, 1.0)) : 0.0;
 
     // The staggered loop. Aero, then the structure it loads, then back again
     // with the load relaxed - which is what keeps a light structure in dense
@@ -1552,6 +1554,8 @@ structureSolve:
     diagnostics.lineRollMomentNm = lineMomentBody.x;
     diagnostics.pendulumWeightMomentNm = pendulumMoment.y;
     diagnostics.aeroPitchMomentNm = exchangedMomentBody.y;
+    diagnostics.aeroRollMomentNm = exchangedMomentBody.x;
+    diagnostics.aeroSideForceN = exchangedForceBody.y;
     diagnostics.payloadSwingRad = swing;
     diagnostics.payloadSwingLateralRad = lateralSwing;
     // The rate a pilot feels as the surge is the fore-aft one, and it is read

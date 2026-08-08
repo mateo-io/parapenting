@@ -3409,17 +3409,23 @@ itself.
 
 ### And every turn it does fly is skidding, by a constant fraction
 
-The right-hand columns above are the finding within the finding. Each stable
-point banks **38–40% of the coordinated bank** for its own turn rate and speed.
-A ratio that holds while the input varies sixfold is a missing mechanism rather
-than a tuning error: the aircraft yaws round without the bank following, so it
-holds a steady sideslip in every turn. Bounded rather than fixed, and it is
-also unowned.
+**WRONG, and §74 measures why — kept because the reading error is the useful
+part.** Each stable point banks 38–40% of the coordinated bank for its own turn
+rate and speed, and this section read the constancy of that fraction as a
+missing mechanism: the aircraft yawing round without the bank following,
+holding a steady sideslip in every turn.
 
-Whether the skid and the spiral are one fault or two is not established here.
-They are consistent with one — a wing that will not bank into its own turn is a
-wing whose roll is not doing the work — but that is a hypothesis and this
-section does not test it.
+The fraction is real and reproduces. The inference does not. `bankRad` is the
+**canopy's** bank; the aircraft's 95 kg hangs on the payload link, and the
+link sits at the coordinated bank within 2%. The sideslip, measured directly
+rather than inferred, is under a tenth of a degree. The canopy sits inboard of
+the link by exactly the angle the line roll spring needs to carry the twist's
+steady roll moment — and both that moment and the coordinated bank are linear
+in twist, which is why their ratio could not have varied. **The constancy was
+arithmetic, not evidence.** See §74.
+
+The hypothesis below is therefore closed too: the skid and the spiral are not
+one fault, because there is no skid.
 
 ### `vsmConverged` reads false in straight flight, so it gates nothing
 
@@ -3437,6 +3443,91 @@ adjacent question rather than the one asked. §72 divided two moments when the
 question was about a flight path; the flag above compares against a tolerance
 nothing is trying to meet. Flying the aircraft cost one instrument and forty
 seconds of simulation, and it changed the plan.
+
+## 74. There is no skid: the wing hangs at the coordinated bank, and §73 was reading the wrong angle
+
+§73 measured that every stable turn banks 38-40% of the coordinated bank for
+its own rate and speed, found the fraction constant across a sixfold input,
+and concluded from the constancy that a mechanism was missing — that the wing
+"yaws round without the bank following, holding a steady sideslip in every
+turn." The fraction reproduces exactly. **The conclusion is wrong**, and item
+25's skid half closes as a false finding rather than as a fix.
+
+Three measurements, none of which existed when §73 was written:
+
+| twist | canopy bank | canopy-to-link offset | link bank | coordinated | sideslip |
+|---|---|---|---|---|---|
+| 1° | 0.59° | 1.00° | **1.59°** | 1.63° | -0.02° |
+| 2° | 1.30° | 2.06° | **3.35°** | 3.41° | -0.04° |
+| 3° | 2.18° | 3.26° | **5.44°** | 5.53° | -0.07° |
+
+- **The sideslip is zero**, to under a tenth of a degree, measured directly
+  rather than inferred from the bank. A wing flying down its own centreline is
+  not skidding, and that settles it without reference to any bank at all.
+  **This is the load-bearing measurement**; the two below explain it rather
+  than establish it.
+- **The payload link is at the coordinated bank, within 2%.** Ninety-five of
+  the 105 kg hangs on that link, so the link's lean is the angle a pilot flies
+  and feels; the canopy's own bank tilts 5 kg of canopy. `bankRad` reports the
+  canopy's, and §73 compared it against a formula about the other one.
+  **Weaker evidence than it looks**, and worth saying so: the link is a
+  pendulum driven by `g - a`, so it seeks apparent gravity *by construction*
+  and could hardly land anywhere else. What it establishes is that the pilot
+  feels a coordinated turn, not independently that the turn is one.
+- **The canopy's shortfall is a spring deflection, and it balances.** The
+  imposed twist puts +433 N·m of steady roll on the canopy at 3°, and the line
+  roll spring returns -443 — a two-term equilibrium closing to 2%. That spring
+  acts on the canopy-to-link *angle*, so carrying a steady moment **requires** a
+  steady offset. The shortfall equals the offset to within a tenth of a degree
+  at every point.
+- **The flight path really is turning at the body yaw rate** (100%, 100%,
+  100%), measured in the world. Assuming that would have been assuming the
+  coordination under test, so it is measured.
+
+### The turn is pulled round by a side force that is not a slip force
+
+The lateral budget closes on two terms, to about 10%:
+
+| twist | needs | aero side force | banked lift | sum |
+|---|---|---|---|---|
+| 1° | 29.2 N | 21.6 | 10.6 | 32.1 |
+| 2° | 61.3 N | 44.4 | 23.3 | 67.7 |
+| 3° | 99.7 N | 70.8 | 39.1 | 109.9 |
+
+So there **is** a substantial aerodynamic side force — 71 N at 3°, 7% of the
+aircraft's weight, and about two thirds of what the turn needs. It arrives at a
+sideslip of 0.07°.
+
+That combination is only strange for a flat wing. **This canopy is arched**,
+so its sections' lift vectors have lateral components that cancel by symmetry
+and stop cancelling the moment the wing is loaded antisymmetrically. The twist
+is producing side force directly, without any slip to produce it with. Which is
+the trap §73 fell into stated in one line: *"there is a side force"* and *"the
+wing is slipping"* are the same sentence about a flat wing and different
+sentences about this one.
+
+**Why the constant fraction was the clue, read backwards.** The aero roll
+moment is linear in twist and so is the coordinated bank; a ratio between two
+linear terms in the same input *cannot* vary. §73 took the constancy as
+evidence of a mechanism when it was evidence of arithmetic — the signature of
+differencing two linear terms, which is the opposite of what it was read as.
+
+**The lesson is §72's and §73's own, one turn further round.** Both of those
+sections' first answers came from dividing numbers already to hand, and both
+answered an adjacent question. This one came from a *diagnostic* already to
+hand — `bankRad` — and the failure is the same shape: a quantity that was
+close enough to the one the question was about that nobody checked which it
+was. §73's fix was to fly the aircraft; the fix here is to measure the
+specific angle the claim is about. Three new diagnostics
+(`sideslipRad`, `aeroRollMomentNm`, `aeroSideForceN`) and one world-frame
+heading rate.
+
+**What survives.** The spiral departure between 3° and 4° of twist is
+untouched and remains item 25's whole content: a stable turn still tops out
+near 0.09 rad/s, a real EN-B's 0.2-0.3 is still past a departure, and canopy
+torsion still would not reach it. What is gone is the hypothesis that the
+spiral and the skid might be one fault — there is no second fault to be the
+same one.
 
 ## Numbers worth remembering
 
@@ -3472,7 +3563,10 @@ seconds of simulation, and it changed the plan.
 | twist worth of full brake | ~10 deg | superseded by the aircraft measurement below - §72 |
 | turn rate per degree of twist | 0.0272 rad/s | linear to 3 deg; **0.20 rad/s wants ~7 deg** - §73 |
 | stable turn ceiling | ~0.09 rad/s | 4 deg of twist spirals to 3.48 rad/s - §73 |
-| bank as a fraction of coordinated | 38-40% | constant across the sweep; every turn skids - §73 |
+| CANOPY bank as a fraction of coordinated | 38-40% | the roll spring's deflection, NOT a skid - §74 |
+| link bank against coordinated | within 2% | but the link seeks apparent gravity by construction - §74 |
+| sideslip in a steady turn | under 0.1 deg | measured, not inferred; there is no skid - §74 |
+| aero side force at 3 deg twist | 71 N | 2/3 of the turn's centripetal force, AT ZERO SLIP - the arc - §74 |
 | section Cm per rad of brake | -0.61 | theory -0.55; the analytic table had -0.34 |
 | usable envelope | hands-up to 25% brake | now BOTH ends are the pitch axis |
 | wing's free hang angle | 4.75 deg nose-up | what sets trim incidence |

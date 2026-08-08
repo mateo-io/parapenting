@@ -2212,7 +2212,23 @@ void AParagliderPawn::BuildCanopyMesh()
     if (UMaterialInterface* Material =
         Parapenting::LoadCanopyMaterial())
     {
-        CanopyVisual->SetMaterial(0, Material);
+        // A dynamic tint is an intentional render-level bridge: it guarantees
+        // that the active wing colourway reaches Metal even if a dynamically
+        // updated procedural section temporarily supplies neutral vertex
+        // colour data. The material still uses those colours for the panel
+        // rhythm underneath the selected presentation colour.
+        if (UMaterialInstanceDynamic* CanopyMaterial =
+            CanopyVisual->CreateDynamicMaterialInstance(0, Material))
+        {
+            CanopyMaterial->SetVectorParameterValue(
+                TEXT("CanopyPresentationTint"), Colourway.body);
+            CanopyMaterial->SetScalarParameterValue(
+                TEXT("CanopyTintOverride"), 0.78f);
+        }
+        else
+        {
+            CanopyVisual->SetMaterial(0, Material);
+        }
         GhostCanopyVisual->SetMaterial(0, Material);
     }
     if (UMaterialInterface* LineMaterial = Parapenting::LoadLineMaterial())
@@ -2225,6 +2241,7 @@ void AParagliderPawn::UpdateCanopyMesh()
     constexpr int32 SpanCount = 47;
     constexpr int32 ChordCount = 9;
     constexpr int32 SurfaceVertexCount = SpanCount * ChordCount;
+    const CanopyColourway& Colourway = ColourwayFor(SelectedWing);
     // Base shape comes from the canopy geometry, which is derived from the
     // published EPIC 2 ML specification. The constants that used to live here
     // - half span 465 cm, root chord 280 cm, arch 650 cm dropping 150 cm at
@@ -2239,6 +2256,20 @@ void AParagliderPawn::UpdateCanopyMesh()
     const double VisualCanopyPressure = bLanded
         ? State.canopyPressure
         : (bGroundLaunching ? LaunchOutput.canopyPressure : T.canopyPressure);
+    // The legacy gameplay dynamics used by this pawn can report zero cell
+    // pressure in an otherwise stable airborne state. Treating that as an
+    // artistic pressure signal painted every cruise canopy as uninflated
+    // charcoal. Keep a bounded nominal-flight floor for presentation only;
+    // actual launch, landing, collapse and cravat terms below still visibly
+    // remove pressure and shape. The geometry-driven solver may replace this
+    // bridge when it becomes the active game flight model.
+    const bool bNominalAirborne = !bLanded && !bGroundLaunching
+        && T.leftCollapse < 0.05 && T.rightCollapse < 0.05
+        && T.frontalCollapse < 0.05 && T.leftCravat < 0.05
+        && T.rightCravat < 0.05;
+    const float PresentationPressure = bNominalAirborne
+        ? FMath::Max(0.72f, static_cast<float>(VisualCanopyPressure))
+        : static_cast<float>(VisualCanopyPressure);
     const auto LoadPose = Parapenting::Physics::EvaluateCanopyLoadPose(
         bGroundLaunching ? 0.0 : T.highLoadDeformation,
         bGroundLaunching ? 1.0 : T.loadFactor);
@@ -2321,7 +2352,7 @@ void AParagliderPawn::UpdateCanopyMesh()
                     - static_cast<float>(
                         bGroundLaunching ? 0.0 : T.deepStall) * 75.0f);
             const float LocalPressure = FMath::Clamp(
-                static_cast<float>(VisualCanopyPressure)
+                PresentationPressure
                     * (1.0f - 0.72f * Collapse - 0.82f * Cravat)
                     * (1.0f - 0.65f * Frontal),
                 0.0f, 1.0f);
@@ -2330,18 +2361,17 @@ void AParagliderPawn::UpdateCanopyMesh()
                 0.04f, 0.22f, AbsSpan);
             const float PanelValue = (S % 2) == 0 ? 1.0f : 0.91f;
             FLinearColor Inflated = FMath::Lerp(
-                FLinearColor(0.92f, 0.16f, 0.035f),
-                FLinearColor(1.0f, 0.56f, 0.035f), CentrePanel);
+                Colourway.body, Colourway.centre, CentrePanel);
             Inflated = FMath::Lerp(
-                Inflated, FLinearColor(0.055f, 0.10f, 0.18f), TipPanel);
+                Inflated, Colourway.tip, TipPanel);
             Inflated *= PanelValue;
             const FLinearColor Unloaded(0.08f, 0.055f, 0.045f);
-            // Linear, not sRGB: mesh vertex colours reach the material
-            // unconverted, so encoding here would gamma the skin twice and
-            // render the striped canopy as near-white. See ParapentingTerrain.
+            // Match the terrain path: FColor stores sRGB and the material's
+            // VertexColor expression decodes it. The old raw conversion
+            // crushed the colourway in the packaged Metal renderer.
             const FColor SkinColor = FLinearColor::LerpUsingHSV(
                 Unloaded, Inflated,
-                0.18f + 0.82f * LocalPressure).ToFColor(false);
+                0.18f + 0.82f * LocalPressure).ToFColor(true);
             const float CellThickness = (
                 FMath::Sin(Chord01 * PI) * (38.0f - 12.0f * AbsSpan)
                 + FMath::Pow(1.0f - Chord01, 8.0f)

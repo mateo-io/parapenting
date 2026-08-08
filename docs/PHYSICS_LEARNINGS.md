@@ -3806,6 +3806,113 @@ caught it was not judgement but a column printed beside the answer because the
 failure was anticipated in writing before the run. That is the only one of the
 four that cost nothing.
 
+## 78. A growth factor per cycle, and the coefficient's required value is partly the 10 Hz hold
+
+§77 left a lead: peak-to-trough amplitude grows by a constant factor per cycle,
+which is a *rate* — what §76 established the coefficient acts on — and unlike a
+departure it exists at ratios that never depart, where it should sit below 1.
+Every instrument this item has used is either a yes/no departure read against a
+budget (and §77 showed the budget moves with the schedule) or an eigenvalue
+(and §47 showed the slow mode's has no *T*-independent value). A per-cycle
+growth factor `g` needs none of that.
+
+**Amplitude is peak-to-trough, with no trim in it.** The obvious construction,
+excursion below trim CL, cannot be computed at the two ratios that decide the
+answer: 0.30 never settles and 0.25 departs, so neither has a trim.
+
+### It is a real quantity — the first continuous one on this axis
+
+`g` per cycle at the 0.05 s hold: ratio 0.30 returns **0.99 fifty-four times
+running**, 0.35 returns 0.80 three times, 0.20 returns 1.61 / 1.59 / 1.64. The
+amplitude sequence genuinely has one growth factor in it, and it is measurable
+at stable ratios where a departure test has nothing to read.
+
+Small-amplitude `g`, by ratio and aerodynamic hold:
+
+| ratio | 0.025 s | 0.05 s | 0.10 s | 0.20 s |
+|---|---|---|---|---|
+| 0.40 | — | below floor | 0.68 | 0.73 |
+| 0.35 | 0.788 | 0.802 | 0.830 | 0.887 |
+| 0.30 | **0.977** | **0.994** | **1.029** | **1.100** |
+| 0.25 | — | 1.26 | 1.30 | 1.39 |
+| 0.20 | — | 1.61 | 1.66 | 1.78 |
+
+### The control it was built for failed, and that is the finding
+
+The reason to build `g` was the hope it would be schedule-invariant where
+"settles inside 1800 s" is not. **It is not.** `g` moves monotonically with the
+hold at every ratio — coarser hold, larger `g`, less stable. The intended use
+is dead.
+
+**What replaces it is worth more, because of where the movement lands.** Ratio
+0.30 *straddles 1.0*: `g` = 0.977 and 0.994 at the 0.025 s and 0.05 s holds —
+decaying — against 1.029 and 1.100 at 0.10 s and 0.20 s — growing. §77 could
+only say the settle *time* moved with the schedule. This says the **sign of the
+growth rate** moves, at the one ratio that decides where the boundary sits, and
+says it with a quantity that has no budget in it anywhere.
+
+**Ratio 0.30 is stable at holds of 0.05 s and finer. That is measured directly,
+at two holds, with no extrapolation in it.**
+
+### The extrapolation is available here, and §46 is why it had to be earned
+
+The first draft of this section said the increments were the wrong shape for a
+converged sequence — +0.030 then +0.017 for ratio 0.30 — and therefore that
+extrapolating would repeat §46's error of reaching below the model's own
+aerodynamic interval. **That reading was wrong, and it was wrong by reading the
+wrong column.** It used the *mean* `g`, and at the 0.20 s hold the mean is
+dragged from a first-cycle 1.100 down to 1.041 by the nonlinear decline over 51
+cycles — the same effect §77 found in the last cycle before a departure.
+
+On first-cycle `g`, the only one that is a linear rate, the increments are:
+
+| ratio | 0.025→0.05 | 0.05→0.10 | 0.10→0.20 |
+|---|---|---|---|
+| 0.35 | +0.014 | +0.028 | +0.057 |
+| 0.30 | +0.017 | +0.035 | +0.071 |
+
+They **double for every doubling of the hold**. First order in *h*, exactly. So
+the order is established rather than assumed, and Richardson extrapolation to
+*h* → 0 gives, from three independent pairs:
+
+| ratio | from 0.025/0.05 | from 0.05/0.10 | from 0.10/0.20 |
+|---|---|---|---|
+| 0.35 | 0.774 | 0.774 | 0.773 |
+| 0.30 | 0.960 | 0.959 | 0.958 |
+
+Agreement to 0.002 across pairs spanning an eightfold range of *h*. **This is
+what §46 lacked**: there, `(Φ₀₀−1)/T` had no constant to extrapolate and its
+order was never established, so a tidy factor came out with a story attached.
+Here the order is confirmed by the increments and the limit by three concordant
+pairs — and the load-bearing claim (0.30 is stable) does not rest on the
+extrapolation at all, only the limit's *value* does.
+
+### What this costs item 11
+
+**Part of why `swingDampingRatio` must be 0.35 is the 10 Hz aerodynamic hold,
+not the aircraft.** In the converged limit ratio 0.30 decays at 4% per cycle.
+Not all of it is schedule: 0.20 departs at every hold with `g` ≈ 1.6–1.8 and
+0.35 is stable at every hold, so the instability is real and the classes at the
+extremes are invariant, exactly as §77 found. But **§39's location of the
+boundary between 0.35 and 0.30 is not a property of the wing** — it was measured
+at one hold, and at a converged hold the boundary is below 0.30.
+
+### Recorded, not claimed
+
+Reading the 0.05 s column, `g` goes 0.99 at ratio 0.30 and 1.26 at 0.25, so the
+converged boundary sits somewhere near **0.28–0.29** — which is where the
+*eigenvalue* put it (0.28–0.25), and §39 ruled against the eigenvalue precisely
+because the flown answer said 0.35–0.30. The flown answer was taken at the
+shipped 10 Hz hold.
+
+**This is not claimed.** The eigenvalues were themselves computed at that same
+0.1 s hold, so there is no reason yet why they should agree with a converged
+flown value, and one number landing near another is what §40 exists to stop
+being written up. The test it names is specific: **recompute the spectrum at
+0.025 and 0.05 s holds and find where the crossing goes.** If the eigenvalue
+crossing is hold-invariant while the flown one moves onto it, §39's verdict
+inverts and the eigenvalue was right all along.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3851,6 +3958,13 @@ four that cost nothing.
 | ratio 0.20 departure vs aero hold | 96 / 92 / 94 s | INVARIANT over a 4x hold change - §77 |
 | ratio 0.30 excursion at 1800 s, by hold | CL 0.508 / 0.386 / 0.303 | rate near the boundary is NOT - §77 |
 | what the 0.1 s hold can move | the boundary's LOCATION | §39's 0.35-0.30 rests on it - §77 |
+| per-cycle growth g, ratio 0.30 | 0.977/0.994/1.029/1.100 | STRADDLES 1 over holds 0.025-0.20s - §78 |
+| the same, ratio 0.35 | 0.788/0.802/0.830/0.887 | stable at every hold - §78 |
+| the same, ratio 0.20 | 1.61/1.66/1.78 | unstable at every hold - §78 |
+| g's convergence order in the hold | first order, increments double | established, not assumed - §78 |
+| g extrapolated to zero hold | 0.774 (r 0.35), 0.959 (r 0.30) | three Richardson pairs agree to 0.002 - §78 |
+| ratio 0.30 at holds <= 0.05 s | STABLE, measured directly | no extrapolation in this one - §78 |
+| converged boundary, by g | near 0.28-0.29 | where the EIGENVALUE put it - unclaimed - §78 |
 | CANOPY bank as a fraction of coordinated | 38-40% | the roll spring's deflection, NOT a skid - §74 |
 | link bank against coordinated | within 2% | but the link seeks apparent gravity by construction - §74 |
 | sideslip in a steady turn | under 0.1 deg | measured, not inferred; there is no skid - §74 |

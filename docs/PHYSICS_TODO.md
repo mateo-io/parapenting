@@ -1098,13 +1098,54 @@ stands in for, and it is checkable against a real wing in a way "the period is
   was put in the table before the run precisely so "still moving" could not be
   read as "settled". Fourth instance of §73/§74/§75's pattern; the only one that
   cost nothing.
-- **Next:** re-derive §39's boundary location at a stated aerodynamic hold, and
-  find out whether the ×1.6 per-cycle growth rate — which is a *rate*, the
-  quantity the coefficient actually acts on per §76 — is the right currency for
-  the boundary. It is measurable at every ratio that oscillates at all,
-  including the stable ones where it should be below 1.0, which makes it the
-  first quantity on this axis that is continuous across the boundary rather than
-  a yes/no departure.
+- **DONE, and it moved the boundary (§78).** `pitch_eigenmodes --growth`
+  measures the per-cycle growth factor `g` of peak-to-trough amplitude. No trim
+  in it (0.30 and 0.25 have none), no window, no linearisation, no settle
+  budget — and it exists at stable ratios, where it sits below 1.
+
+| ratio | hold 0.025 s | 0.05 s | 0.10 s | 0.20 s |
+|---|---|---|---|---|
+| 0.35 | 0.788 | 0.802 | 0.830 | 0.887 |
+| 0.30 | **0.977** | **0.994** | **1.029** | **1.100** |
+| 0.25 | — | 1.26 | 1.30 | 1.39 |
+| 0.20 | — | 1.61 | 1.66 | 1.78 |
+
+- **It is a real quantity:** ratio 0.30 returns 0.99 fifty-four cycles running.
+  The first continuous measurement on this axis.
+- **The control it was built for failed:** `g` is *not* schedule-invariant. The
+  intended use — carrying the boundary where the settle time cannot — is dead.
+- **Where the movement lands is the finding: ratio 0.30 straddles 1.0.** Stable
+  at the 0.025 s and 0.05 s holds, growing at 0.10 s and 0.20 s. §77 showed the
+  settle *time* moves with the schedule; this shows the **sign of the growth
+  rate** moves, at the ratio that decides the boundary. **Ratio 0.30 is stable
+  at holds of 0.05 s and finer, measured directly, no extrapolation.**
+- **The extrapolation is earned here where §46's was not.** First-cycle
+  increments double for every doubling of the hold — first order in *h*,
+  established rather than assumed — and Richardson from three independent pairs
+  gives 0.774 (ratio 0.35) and 0.959 (0.30), agreeing to 0.002 across an
+  eightfold range of *h*.
+- **So part of why 0.35 is required is the 10 Hz hold, not the aircraft.** Not
+  all of it: 0.20 departs at every hold and 0.35 is stable at every hold, so the
+  instability is real. But **§39's boundary between 0.35 and 0.30 is not a
+  property of the wing** — at a converged hold the boundary is below 0.30.
+- **A method note that cost a wrong sentence.** The first reading used the
+  *mean* `g` and concluded the sequence was not converging. At the 0.20 s hold
+  the mean is dragged from a first-cycle 1.100 to 1.041 by nonlinear decline
+  over 51 cycles. The small-amplitude growth factor is the FIRST cycles; where
+  mean and first differ, the amplitude has grown enough for the nonlinearity to
+  bite, which is §77's effect and a finding rather than a defect.
+- **Recorded, NOT claimed:** the converged boundary sits near 0.28–0.29, which
+  is where the *eigenvalue* put it (0.28–0.25) and where §39 ruled against it
+  because the flown answer said 0.35–0.30. The flown answer was taken at the
+  10 Hz hold. The eigenvalues were too, so there is no reason yet why they
+  should agree — §40 is what stops this being written up as a result.
+- **Next, and it is specific:** recompute the spectrum (`--sweep`) at 0.025 and
+  0.05 s aerodynamic holds and find where the eigenvalue crossing goes. If it
+  is hold-invariant while the flown crossing moves onto it, **§39's verdict
+  inverts and the eigenvalue was right all along** — which would retire the
+  "biased stable, the eigenvalue loses" note that three later sections lean on.
+  Everything needed exists: `--sweep` already takes the spectrum through the
+  boundary, and `SetSchedule` is already wired into this file.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

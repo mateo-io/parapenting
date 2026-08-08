@@ -190,6 +190,28 @@ def make_canopy_fabric():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         weave, "", woven_color, "B"
     )
+    # Procedural mesh vertex colours are the detailed panel signal, but Metal
+    # can occasionally deliver a neutral stream for a dynamically-updated
+    # section.  Keep the selected wing colour as an explicit material
+    # parameter so the canopy remains unmistakably coloured in that case;
+    # vertex colours still supply the panel variation beneath the tint.
+    presentation_tint = vector(
+        material, "CanopyPresentationTint",
+        unreal.LinearColor(0.92, 0.16, 0.035, 1.0), 550, 180
+    )
+    tint_override = scalar(material, "CanopyTintOverride", 0.78, 550, 260)
+    presented_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 780, 40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        woven_color, "", presented_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        presentation_tint, "RGB", presented_color, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        tint_override, "", presented_color, "Alpha"
+    )
     roughness = scalar(material, "FabricRoughness", 0.68, 100, 440)
     woven_roughness = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionMultiply, 320, 440
@@ -223,7 +245,7 @@ def make_canopy_fabric():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         underside_emissive_mask, "", underside_emissive, "B"
     )
-    connect(woven_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(presented_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
     connect(
         transmitted_color, "", material,
         unreal.MaterialProperty.MP_SUBSURFACE_COLOR

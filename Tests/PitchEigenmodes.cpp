@@ -4288,6 +4288,12 @@ struct Trough
     double timeS = 0.0;
     double incidenceDeg = 0.0;
     double sinceLastS = 0.0;
+    // The CL maximum between the previous trough and this one. Peak-to-trough
+    // is an amplitude with NO TRIM IN IT, which is what makes it measurable at
+    // the ratios that matter: 0.30 never settles and 0.25 departs, so neither
+    // has a trim CL to take an excursion against. Zero on the first trough,
+    // which has no preceding peak inside the window.
+    double precedingPeakCL = 0.0;
 };
 
 struct TroughRun
@@ -4321,6 +4327,7 @@ TroughRun TroughsOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
     double extremeTimeS = 0.0;
     double extremeAlphaDeg = 0.0;
     double lastTroughTimeS = 0.0;
+    double lastPeakCL = 0.0;
     bool started = false;
 
     const int ticks = maximumSeconds * 120;
@@ -4364,6 +4371,7 @@ TroughRun TroughsOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 trough.incidenceDeg = extremeAlphaDeg;
                 trough.sinceLastS =
                     lastTroughTimeS > 0.0 ? extremeTimeS - lastTroughTimeS : 0.0;
+                trough.precedingPeakCL = lastPeakCL;
                 out.troughs.push_back(trough);
                 lastTroughTimeS = extremeTimeS;
                 falling = false;
@@ -4382,6 +4390,7 @@ TroughRun TroughsOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
             }
             else if (cl < extreme - Hysteresis)
             {
+                lastPeakCL = extreme;
                 falling = true;
                 extreme = cl;
                 extremeTimeS = t;
@@ -4629,6 +4638,246 @@ ScheduleOutcome ScheduleOutcomeAt(const CanopyGeometry& canopy,
         }
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// THE FIRST QUANTITY ON THIS AXIS THAT IS CONTINUOUS ACROSS THE BOUNDARY.
+//
+// Every instrument this item has used is one of two kinds, and both have a
+// defect that has cost levels:
+//
+//   * a DEPARTURE, which is a yes/no read against a budget. §77 showed the
+//     budget is the problem: ratio 0.30's behaviour at 1800 s runs from
+//     "nearly settled" to "strongly growing" purely on the aerodynamic hold,
+//     and §39 located the boundary between 0.35 and 0.30 on exactly that read.
+//   * an EIGENVALUE, which is linear and, per §47, has no T-independent value
+//     for the slow mode at all because Phi(T) is not an exponential family.
+//
+// §77 found a third thing lying in the trough sequence and did not pursue it:
+// the peak-to-trough amplitude grows by a constant factor per cycle - x1.6 for
+// four cycles at ratio 0.20 - until the cycle that departs. That factor is a
+// RATE, which is what §76 established the coefficient actually acts on; it is
+// measured off the flown trace, so no linearisation is assumed; and unlike a
+// departure it exists at ratios that never depart, where it should simply sit
+// below 1. If it crosses 1 where the flight changes character, it locates the
+// boundary WITHOUT a settle budget.
+//
+// AMPLITUDE IS PEAK-TO-TROUGH, WITH NO TRIM IN IT. The obvious construction -
+// excursion below the trim CL - cannot be computed at the two ratios that
+// matter, because 0.30 never settles and 0.25 departs, so neither has a trim.
+// Peak-to-trough needs nothing but the trace.
+//
+// THREE CONTROLS, and the third is the one that decides whether this instrument
+// is worth having.
+//
+//   1. AGAINST THE EIGENVALUE. A mode growing at sigma with period T changes
+//      amplitude by exp(sigma*T) per cycle. At ratio 0.35, sigma = -0.0201 /s
+//      and T = 16.4 s predict g = 0.72; at 0.30, sigma = -0.0084 predicts 0.87.
+//      That is a numeric prediction from arithmetic this measurement shares
+//      nothing with. If g misses it badly at the STABLE ratios - where the
+//      linearisation is entitled to be right - the instrument is wrong and
+//      nothing below it means anything.
+//   2. IS g EVEN CONSTANT? The whole idea is that a sequence of amplitudes has
+//      one growth factor in it. If g wanders cycle to cycle in the
+//      small-amplitude regime, there is no such quantity and this is over. The
+//      per-cycle values are printed rather than a fitted average, because a
+//      mean would hide precisely the breakdown §77 found in the last cycle.
+//   3. IS IT SCHEDULE-INVARIANT WHERE THE DEPARTURE IS NOT? This is the point.
+//      §77 showed "settles inside 1800 s" moves with the aerodynamic hold while
+//      the stability CLASSES do not. If g at a given ratio is the same at 0.05,
+//      0.10 and 0.20 s, then g can carry the boundary that the settle-time
+//      cannot. If g moves with the hold too, this is no improvement on what it
+//      replaces and should be said so plainly.
+//
+// THE FLOOR, stated before the numbers. A settling wing's amplitude decays into
+// the 0.002 hysteresis, and a ratio of two numbers near the resolution floor is
+// noise wearing a decimal point. So g is computed only while BOTH amplitudes
+// exceed 0.02 - ten times the hysteresis - and the amplitude is printed beside
+// every g so the floor is visible rather than asserted.
+struct CycleGrowth
+{
+    std::vector<double> ratios;      // amplitude(k+1) / amplitude(k)
+    std::vector<double> amplitudes;  // the amplitude each ratio starts from
+    std::vector<double> times;
+    bool departed = false;
+};
+
+CycleGrowth GrowthOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                double ratio, int maximumSeconds, int aerodynamicsInterval)
+{
+    constexpr double AmplitudeFloor = 0.020;   // 10x the hysteresis
+    constexpr double PhugoidSpacingS = 8.0;    // §77's filter, same reason
+
+    const TroughRun run = TroughsOf(canopy, linePlan, ratio, maximumSeconds,
+                                    0.002, aerodynamicsInterval);
+    CycleGrowth out;
+    out.departed = run.departed;
+
+    // Amplitudes of phugoid-spaced cycles only. A trough closer than 8 s to its
+    // predecessor is not a cycle of this mode (§77), and pairing its peak with
+    // it would put a ripple amplitude in a sequence of phugoid amplitudes.
+    std::vector<double> amplitude, when;
+    for (const Trough& trough : run.troughs)
+    {
+        if (trough.sinceLastS < PhugoidSpacingS) continue;
+        if (trough.precedingPeakCL <= 0.0) continue;
+        amplitude.push_back(trough.precedingPeakCL - trough.cl);
+        when.push_back(trough.timeS);
+    }
+    for (std::size_t k = 0; k + 1 < amplitude.size(); ++k)
+    {
+        if (amplitude[k] < AmplitudeFloor) continue;
+        if (amplitude[k + 1] < AmplitudeFloor) continue;
+        // Consecutive cycles only: a gap means a stretch of non-phugoid motion
+        // was skipped, and a ratio across it is not a per-cycle growth.
+        if (when[k + 1] - when[k] > 2.0 * 24.0) continue;
+        out.ratios.push_back(amplitude[k + 1] / amplitude[k]);
+        out.amplitudes.push_back(amplitude[k]);
+        out.times.push_back(when[k]);
+    }
+    return out;
+}
+
+void GrowthCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                 int maximumSeconds)
+{
+    std::printf("PER-CYCLE GROWTH: the quantity that does not need a budget.\n"
+                "§77 found peak-to-trough amplitude growing by a constant "
+                "factor per cycle - x1.6\nat ratio 0.20 - until the cycle that "
+                "departs. That is a rate, it is what §76 says\nthe coefficient "
+                "acts on, and unlike a departure it EXISTS at ratios that never "
+                "depart.\nAmplitude is peak-to-trough, so there is no trim in "
+                "it and 0.30 and 0.25 can be\nmeasured despite having none.\n\n"
+                "  CONTROL 1: a mode at sigma with period T grows exp(sigma*T) "
+                "per cycle. Ratio 0.35\n  predicts g = 0.72 (sigma -0.0201, T "
+                "16.4s); ratio 0.30 predicts g = 0.87\n  (sigma -0.0084). "
+                "Missing those at the STABLE ratios means the instrument is "
+                "wrong.\n\n");
+
+    for (const int interval : {6, 12, 24})
+    {
+        std::printf("aerodynamic hold %.2fs\n", interval / 120.0);
+        std::printf("%8s %10s %12s %10s   %s\n", "ratio", "cycles", "mean g",
+                    "outcome", "g per cycle");
+        for (const double ratio : {0.40, 0.35, 0.30, 0.25, 0.20})
+        {
+            const CycleGrowth growth =
+                GrowthOf(canopy, linePlan, ratio, maximumSeconds, interval);
+            if (growth.ratios.empty())
+            {
+                std::printf("%8.2f %10s %12s %10s   %s\n", ratio, "0", "-",
+                            growth.departed ? "DEPARTED" : "-",
+                            "amplitude never above the floor");
+                continue;
+            }
+            double sum = 0.0;
+            for (const double g : growth.ratios) sum += g;
+            std::printf("%8.2f %10zu %12.3f %10s   ", ratio,
+                        growth.ratios.size(), sum / growth.ratios.size(),
+                        growth.departed ? "DEPARTED" : "flying");
+            // Every value, not a fit. CONTROL 2 is whether these are the same
+            // number, and a mean cannot answer that about itself.
+            const std::size_t show =
+                growth.ratios.size() > 8 ? 8 : growth.ratios.size();
+            for (std::size_t k = 0; k < show; ++k)
+                std::printf("%.2f ", growth.ratios[k]);
+            if (growth.ratios.size() > show) std::printf("...");
+            std::printf("\n");
+        }
+        std::printf("\n");
+    }
+
+    std::printf("  CONTROL 2 is the g-per-cycle column against itself. If those "
+                "are one number, the\n  amplitude sequence has a growth factor "
+                "in it. If they wander, it does not, and\n  there is no "
+                "continuous quantity here to carry a boundary.\n\n");
+    std::printf("  CONTROL 3 is the same row read DOWN the three holds, and it "
+                "is what decides\n  whether this instrument is worth having. "
+                "§77 showed \"settles inside 1800s\"\n  moves with the hold "
+                "while the stability CLASSES do not. If g at a ratio is the\n  "
+                "same at 0.05, 0.10 and 0.20s, g can carry the boundary that "
+                "the settle time\n  cannot, and §39's location can be "
+                "re-derived. If g moves with the hold too, this\n  is no "
+                "improvement on what it replaces and that is the finding.\n\n");
+    // THE CONVERGENCE COLUMN, and it exists to stop this section's main claim
+    // from resting on an extrapolation.
+    //
+    // The sweep above has g falling monotonically as the hold gets finer, and
+    // ratio 0.30 straddles 1.0 inside the range tested. The tempting next
+    // sentence is "so as the hold goes to zero the wing is stable and 0.35 is
+    // an artefact" - and that sentence would be §46's error exactly, which
+    // extrapolated a quantity below the 0.1 s aerodynamic interval, i.e.
+    // outside the model, and got a tidy factor with a story attached.
+    //
+    // The increments are the tell, and READ OFF THE WRONG COLUMN they look the
+    // wrong shape: g at 0.30 appears to move +0.030 from the 0.05 s hold to
+    // 0.10 s and only +0.017 from 0.10 s to 0.20 s, which is a sequence whose
+    // increments shrink towards the COARSE end - the opposite of convergence.
+    //
+    // That reading was mine and it was wrong. It used the MEAN g, and at the
+    // 0.20 s hold the mean is pulled down from a first-cycle 1.100 to 1.041 by
+    // the nonlinear decline over 51 cycles - the very effect §77 found in the
+    // last cycle before a departure. On FIRST-CYCLE g, which is the
+    // small-amplitude growth factor and the only one that is a linear rate,
+    // the increments are +0.017, +0.035, +0.071: they double for every
+    // doubling of the hold. First order in h, exactly.
+    //
+    // So the fourth point is what turns this from an extrapolation that would
+    // repeat §46's error into one that is checked. §46 failed because
+    // (Phi00-1)/T had no constant to extrapolate and its order was never
+    // established. Here the order is confirmed by the increments and the limit
+    // is confirmed by three independent Richardson pairs.
+    //
+    // A NOTE ON WHICH NUMBER TO READ, since this cost a wrong sentence once:
+    // the mean is printed because it is the honest summary of the whole flight,
+    // but the small-amplitude growth factor is the FIRST cycles. Where the two
+    // differ, the amplitude has grown enough for the nonlinearity to bite, and
+    // that difference is a finding rather than a defect.
+    //
+    // Two ratios only - 0.35 and 0.30 are the two that decide the boundary, and
+    // a 0.025 s hold costs four times a 0.10 s one for every second flown.
+    std::printf("CONVERGENCE: does g have a limit as the hold gets finer, or "
+                "not?\n  The increments above shrink towards the COARSE end, "
+                "which is the wrong direction\n  for a converged sequence. "
+                "Extrapolating anyway would be §46's error verbatim.\n\n");
+    std::printf("%8s %10s %12s %10s   %s\n", "ratio", "hold", "mean g",
+                "cycles", "g per cycle");
+    for (const double ratio : {0.35, 0.30})
+    {
+        for (const int interval : {3, 6, 12, 24})
+        {
+            const CycleGrowth growth =
+                GrowthOf(canopy, linePlan, ratio, maximumSeconds, interval);
+            if (growth.ratios.empty())
+            {
+                std::printf("%8.2f %9.3fs %12s %10s   %s\n", ratio,
+                            interval / 120.0, "-", "0", "below the floor");
+                continue;
+            }
+            double sum = 0.0;
+            for (const double g : growth.ratios) sum += g;
+            std::printf("%8.2f %9.3fs %12.3f %10zu   ", ratio, interval / 120.0,
+                        sum / growth.ratios.size(), growth.ratios.size());
+            const std::size_t show =
+                growth.ratios.size() > 6 ? 6 : growth.ratios.size();
+            for (std::size_t k = 0; k < show; ++k)
+                std::printf("%.3f ", growth.ratios[k]);
+            if (growth.ratios.size() > show) std::printf("...");
+            std::printf("\n");
+        }
+    }
+    std::printf("\n  IF g KEEPS FALLING at 0.025s, there is no converged growth "
+                "factor and the flown\n  trace has the same defect §47 found in "
+                "Phi(T) - no hold-independent value - which\n  would be a "
+                "statement about the solver rather than about the wing. IF IT "
+                "LEVELS\n  OFF, the limit is the number to quote and the "
+                "boundary can be placed at it.\n\n");
+
+    std::printf("  WHERE g CROSSES 1.0 IS THE BOUNDARY, on this instrument's "
+                "own terms, with no\n  settle budget anywhere in it. Compare "
+                "against §39's flown 0.35-0.30 and the\n  eigenvalue's "
+                "0.28-0.25 - three routes to one number, which is the most this "
+                "axis\n  has ever had.\n\n");
 }
 
 void ScheduleBoundaryCheck(const CanopyGeometry& canopy,
@@ -5642,6 +5891,7 @@ int main(int argc, char** argv)
     bool swing = false;
     bool departureCL = false;
     bool trough = false;
+    bool growth = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -5661,6 +5911,7 @@ int main(int argc, char** argv)
         if (argument == "--swing") swing = true;
         if (argument == "--departure-cl") departureCL = true;
         if (argument == "--trough") trough = true;
+        if (argument == "--growth") growth = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -5843,6 +6094,17 @@ int main(int argc, char** argv)
         // does not: it must be able to tell "does not depart" from "departs
         // later than I watched", and the 0.05 s hold is the slowest column.
         ScheduleBoundaryCheck(canopy, linePlan, settleSeconds < 420 ? 300 : 1800);
+    }
+
+    if (growth)
+    {
+        // 900, not 1800. This check does not ask whether anything departs - it
+        // reads a per-cycle ratio off whatever cycles it gets, and 900 s is
+        // 50-odd phugoid cycles, far more than the handful the ratio needs.
+        // Doubling it would double a fifteen-run sweep for no extra cycles in
+        // the only regime that matters, which is where the amplitude is above
+        // the floor.
+        GrowthCheck(canopy, linePlan, settleSeconds < 420 ? 180 : 900);
     }
 
     if (drag)

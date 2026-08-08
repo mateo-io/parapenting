@@ -206,6 +206,13 @@ void AParapentingGameMode::BeginPlay()
         nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
     UMaterialInterface* ShapeMaterial = LoadObject<UMaterialInterface>(
         nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    // BasicShapeMaterial is useful as a guaranteed fallback, but its colour
+    // parameter is not a dependable cooked rendering contract.  In the
+    // distant flight view that made settlement roofs collapse to scattered
+    // white points.  Use the authored surface master wherever a deliberately
+    // coloured hard-surface landmark is needed.
+    UMaterialInterface* SurfaceMaterial = LoadObject<UMaterialInterface>(
+        nullptr, TEXT("/Game/Materials/M_SurfaceMaster.M_SurfaceMaster"));
 
     World->SpawnActor<AParapentingTerrain>();
 
@@ -489,14 +496,22 @@ void AParapentingGameMode::BeginPlay()
         Buildings->RegisterComponent();
         Roofs->RegisterComponent();
         UMaterialInstanceDynamic* BuildingMaterial =
-            UMaterialInstanceDynamic::Create(ShapeMaterial, Settlements);
+            UMaterialInstanceDynamic::Create(
+                SurfaceMaterial ? SurfaceMaterial : ShapeMaterial, Settlements);
         BuildingMaterial->SetVectorParameterValue(
-            TEXT("Color"), FLinearColor(0.52f, 0.45f, 0.36f));
+            TEXT("BaseColor"), FLinearColor(0.34f, 0.24f, 0.16f));
+        BuildingMaterial->SetVectorParameterValue(
+            TEXT("Color"), FLinearColor(0.34f, 0.24f, 0.16f));
+        BuildingMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.86f);
         Buildings->SetMaterial(0, BuildingMaterial);
         UMaterialInstanceDynamic* RoofMaterial =
-            UMaterialInstanceDynamic::Create(ShapeMaterial, Settlements);
+            UMaterialInstanceDynamic::Create(
+                SurfaceMaterial ? SurfaceMaterial : ShapeMaterial, Settlements);
         RoofMaterial->SetVectorParameterValue(
-            TEXT("Color"), FLinearColor(0.24f, 0.075f, 0.035f));
+            TEXT("BaseColor"), FLinearColor(0.24f, 0.055f, 0.022f));
+        RoofMaterial->SetVectorParameterValue(
+            TEXT("Color"), FLinearColor(0.24f, 0.055f, 0.022f));
+        RoofMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.74f);
         Roofs->SetMaterial(0, RoofMaterial);
 
         for (int32 Block = 0; Block < 170; ++Block)
@@ -790,9 +805,13 @@ void AParapentingGameMode::BeginPlay()
             River->SetMaterial(0, RiverMaterial);
         }
         UMaterialInstanceDynamic* RoadMaterial =
-            UMaterialInstanceDynamic::Create(ShapeMaterial, ValleyLines);
+            UMaterialInstanceDynamic::Create(
+                SurfaceMaterial ? SurfaceMaterial : ShapeMaterial, ValleyLines);
         RoadMaterial->SetVectorParameterValue(
-            TEXT("Color"), FLinearColor(0.12f, 0.125f, 0.12f));
+            TEXT("BaseColor"), FLinearColor(0.075f, 0.078f, 0.068f));
+        RoadMaterial->SetVectorParameterValue(
+            TEXT("Color"), FLinearColor(0.075f, 0.078f, 0.068f));
+        RoadMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.92f);
         Road->SetMaterial(0, RoadMaterial);
         // Build one continuous ribbon instead of 52 scaled cubes. The old
         // segment gaps flashed as cyan runway markings from the flight camera

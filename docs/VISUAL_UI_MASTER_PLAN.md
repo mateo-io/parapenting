@@ -756,18 +756,23 @@ bounded on all profiles.
 
 ## Level 8 — Camera, replay and final-pixel polish
 
-**Implementation status (2026-08-04): first capture slice.** `F12` now toggles
+**Implementation status (2026-08-08): camera-and-capture slice.** `F12` now toggles
 a clean photo presentation mode. It hides only the HUD and onboarding layer;
 the deterministic camera feedback, fixed simulation clock, replay inputs and
 graphics profile remain untouched. `Esc` exits it along with any Flight Deck.
+The fourth camera mode, **Scenic Wing**, is a live-pawn three-quarter view, and
+all chase views blend to a raised centred composition inside 32 m AGL so wing,
+horizon and landing surface remain readable during the flare.
 
 **Outcome:** ordinary flying feels authored and recordings look intentional,
 while camera feedback remains subordinate to spatial judgement.
 
 ### Bite-sized work
 
-- [ ] Tune chase, pilot, wing and scenic camera rigs against the deterministic
-  `CameraFeedback` contract, keeping its accessibility scaling intact.
+- [~] Tune chase, pilot, wing and scenic camera rigs against the deterministic
+  `CameraFeedback` contract, keeping its accessibility scaling intact. Rear,
+  close and technical views remain; Scenic Wing and the low-altitude framing
+  blend are now live. Pilot/helmet framing remains open.
 - [ ] Add collision-aware framing, horizon protection and low-speed/landing
   composition; never hide a collapse or flare cue.
 - [ ] Establish motion blur, depth of field, lens flare, bloom, exposure and

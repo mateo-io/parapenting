@@ -3921,6 +3921,300 @@ void BasinCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
 }
 
 // ---------------------------------------------------------------------------
+// IS THERE ONLY ONE DEPARTURE IN THIS AIRCRAFT?
+//
+// Section 75 measured the wing's steady envelope edge in the one currency the
+// pitch-divergence argument is written in - lift coefficient - and found it in
+// the same place by two routes that share no mechanism:
+//
+//   last steady state on the ACCELERATOR   CL 0.425 (20% bar)
+//   last steady state on imposed TWIST     CL 0.461 (3.8 deg)
+//
+// The two differ by less than either sweep's own step in CL, so the aircraft
+// has a static envelope edge somewhere near CL 0.44 and it does not care how
+// it was driven there. Section 54 independently found the finite-amplitude
+// basin edge to be NOSE-DOWN - departure incidence -2.6, -2.5, -5.8 degrees
+// against a 5.1 degree trim - and said in as many words that this is "the same
+// low-CL loop-gain path as full bar and 40% brake rather than a stall".
+//
+// That raises a question this item has never asked, and it is a big one. The
+// swingDampingRatio boundary might not be a separate phenomenon at all. The
+// phugoid at low damping GROWS; a growing oscillation on speed is a growing
+// oscillation on CL; and if it grows until its trough reaches the static edge,
+// then there is no trim to come back to and the wing leaves. Under that story:
+//
+//   * 0.35 is not a mysteriously required damping. It is the least damping
+//     that keeps the phugoid's excursion INSIDE the static envelope.
+//   * item 11's eleven-level search for a "missing stabilising mechanism" has
+//     been looking for something that need not exist. What would close it is
+//     widening the static envelope - which is the low-CL loop gain, which is
+//     item 11's own opening paragraph and item 12's drag.
+//
+// THIS IS WRITTEN TO BE REFUTED, and there are two clean ways it can be:
+//
+//   (a) a ratio that DEPARTS whose CL never approaches the static edge. Then
+//       the ratio boundary is its own mechanism and this is wrong.
+//   (b) a ratio that SURVIVES after dipping well below the static edge. Then
+//       the edge is not an edge for transients and the story does not join up.
+//
+// So: fly each ratio cold, watch CL rather than incidence, and record the
+// lowest value it reaches and what happened afterwards.
+//
+// One thing this deliberately does NOT assume: that a steady boundary and a
+// transient trough are the same number. They are different quantities - one is
+// "the last CL at which an equilibrium exists", the other is "the lowest CL
+// touched on the way past". The claim is only that the second reaching the
+// first is what ends the flight, and the table prints both so a reader can
+// disagree.
+struct DepartureCL
+{
+    double lowestCL = 10.0;
+    double lowestCLTimeS = 0.0;
+    double settledCL = 0.0;
+    bool departed = false;
+    bool settled = false;
+    double departureTimeS = 0.0;
+    int flownSeconds = 0;
+};
+
+DepartureCL DepartureCLOf(const CanopyGeometry& canopy,
+                          const LinePlanSpec& linePlan, double ratio,
+                          int maximumSeconds)
+{
+    CoupledParagliderSolver solver(canopy, linePlan);
+    solver.SetSwingDampingRatio(ratio);
+    CoupledState state;
+    DepartureCL out;
+
+    // The same settle criterion `SettleAt` uses, so "settled" means here what
+    // it means everywhere else on this axis.
+    constexpr double SpreadToleranceRad = 1.7e-4;
+    double low = 0.0, high = 0.0;
+    int inWindow = 0;
+    for (int second = 0; second < maximumSeconds && !out.departed; ++second)
+    {
+        for (int step = 0; step < 120; ++step)
+        {
+            solver.Step(state, CoupledControls{}, CoupledAtmosphere{});
+            const CoupledDiagnostics& d = solver.Diagnostics();
+            const double t = second + (step + 1) / 120.0;
+            // The trough is only meaningful while the wing is still flying:
+            // once it is past 20 degrees it is separated and its CL is a
+            // number about a stalled wing, not about an envelope edge.
+            if (d.angleOfAttackRad > 0.35)
+            {
+                out.departed = true;
+                out.departureTimeS = t;
+                break;
+            }
+            if (d.liftCoefficient < out.lowestCL)
+            {
+                out.lowestCL = d.liftCoefficient;
+                out.lowestCLTimeS = t;
+            }
+            if (inWindow == 0) { low = high = d.angleOfAttackRad; }
+            low = std::min(low, d.angleOfAttackRad);
+            high = std::max(high, d.angleOfAttackRad);
+            ++inWindow;
+        }
+        out.flownSeconds = second + 1;
+        if (inWindow >= 120 * 10)
+        {
+            if (high - low < SpreadToleranceRad) { out.settled = true; break; }
+            inWindow = 0;
+        }
+    }
+    out.settledCL = solver.Diagnostics().liftCoefficient;
+    return out;
+}
+
+void DepartureCLCheck(const CanopyGeometry& canopy,
+                      const LinePlanSpec& linePlan, int maximumSeconds)
+{
+    std::printf("ONE DEPARTURE OR SEVERAL? Section 75 put the aircraft's "
+                "static envelope edge at\nCL 0.425 (accelerator) and CL 0.461 "
+                "(imposed twist) - one edge, two routes. If the\n"
+                "swingDampingRatio boundary is the phugoid growing until it "
+                "TOUCHES that edge,\nthen the ratios that depart are the ones "
+                "whose CL trough reaches it, and 0.35 is\nnot a missing "
+                "mechanism but a margin.\n\n");
+    std::printf("%8s %12s %10s %12s %12s %14s\n", "ratio", "lowest CL", "at",
+                "settled CL", "flown", "outcome");
+    for (const double ratio : {0.90, 0.50, 0.35, 0.30, 0.25, 0.20})
+    {
+        const DepartureCL point =
+            DepartureCLOf(canopy, linePlan, ratio, maximumSeconds);
+        std::printf("%8.2f %12.3f %9.0fs %12.3f %11ds %14s\n", ratio,
+                    point.lowestCL, point.lowestCLTimeS, point.settledCL,
+                    point.flownSeconds,
+                    point.departed ? "DEPARTED"
+                        : point.settled ? "settled" : "still moving");
+    }
+    std::printf("\n  The static edge from section 75 is CL 0.425-0.461. A "
+                "departing row whose trough\n  never approaches it refutes "
+                "this; so does a surviving row whose trough goes\n  well below "
+                "it. The two quantities are NOT the same kind of thing - one is "
+                "the\n  last CL an equilibrium exists at, the other the lowest "
+                "CL touched in passing -\n  and the claim is only that the "
+                "second reaching the first is what ends the\n  flight.\n\n");
+    std::printf("  READ THIS TABLE NARROWLY. The trough of a GROWING "
+                "oscillation depends on how\n  long it was flown, so a "
+                "marginal ratio's trough is a statement about the\n  window. "
+                "The test below removes the window: it asks the recovery "
+                "question\n  directly, at ratios that are not near any "
+                "boundary at all.\n\n");
+}
+
+// THE VERSION WITHOUT A WINDOW IN IT.
+//
+// Above, a marginal ratio's CL trough is confounded with how long it was
+// flown - a mode growing at 0.008/s reaches whatever depth the clock allows.
+// So ask the question that has no clock in it: from a SETTLED trim at a ratio
+// nowhere near any boundary, push the wing to a chosen depth of CL and ask
+// whether it comes back.
+//
+// If the static edge is also the transient edge, the recovery boundary sits at
+// the same CL regardless of which stable ratio it is measured from - and that
+// CL should be section 75's 0.425-0.461, arrived at from a third direction
+// that shares no arithmetic with either of section 75's routes.
+//
+// The kick is pure surge, which is the shortest path to low CL: faster wing,
+// same weight, lower coefficient. Deliberately NOT along the phugoid
+// eigendirection - section 54 already did that, and using it again would make
+// this a re-run rather than a control.
+struct RecoveryEdge
+{
+    double survivedTroughCL = 0.0;   // deepest dip that came back
+    double departedTroughCL = 0.0;   // shallowest dip that did not
+    double survivedKick = 0.0;
+    double departedKick = 0.0;
+    // The CL one step after the largest RECOVERED kick, before anything has
+    // responded to it. Section 54's control, in this currency: a kick that puts
+    // the wing outside the envelope on the spot has measured the kick and not
+    // an edge. This must sit well ABOVE the trough for the trough to mean
+    // "flown down to" rather than "placed at".
+    double survivedKickCL = 0.0;
+    bool bracketed = false;
+    bool noTrim = false;
+};
+
+RecoveryEdge RecoveryEdgeAt(const CanopyGeometry& canopy,
+                            const LinePlanSpec& linePlan, double ratio,
+                            int maximumSeconds, double flightSeconds)
+{
+    RecoveryEdge out;
+    const OwnTrim trim = SettleAt(canopy, linePlan, ratio, maximumSeconds);
+    if (!trim.settled || trim.departed) { out.noTrim = true; return out; }
+
+    const int ticks = static_cast<int>(flightSeconds * 120.0);
+    // Returns the lowest CL reached, and whether it came back.
+    const auto fly = [&](double surgeKick, double& troughCL, double& kickCL)
+    {
+        CoupledState state = trim.state;
+        Perturb(state, 0, surgeKick);
+        CoupledParagliderSolver local = trim.solver;
+        troughCL = 10.0;
+        kickCL = 0.0;
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            local.Step(state, CoupledControls{}, CoupledAtmosphere{});
+            const CoupledDiagnostics& d = local.Diagnostics();
+            // One solve is 1/120 s: nothing has responded to the kick yet.
+            if (tick == 0) kickCL = d.liftCoefficient;
+            if (d.angleOfAttackRad > 0.35 || d.angleOfAttackRad < -0.20)
+                return false;
+            troughCL = std::min(troughCL, d.liftCoefficient);
+        }
+        return true;
+    };
+
+    double survived = 0.0, departed = 0.0;
+    for (const double kick : {0.5, 1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0})
+    {
+        double trough = 0.0, kickCL = 0.0;
+        if (fly(kick, trough, kickCL))
+        {
+            survived = kick;
+            out.survivedTroughCL = trough;
+            out.survivedKickCL = kickCL;
+            continue;
+        }
+        departed = kick;
+        out.departedTroughCL = trough;
+        out.bracketed = true;
+        break;
+    }
+    if (!out.bracketed) return out;
+
+    // Bisect, so the two troughs bracket the edge tightly enough to compare
+    // against a number quoted to three digits.
+    for (int step = 0; step < 5; ++step)
+    {
+        const double middle = 0.5 * (survived + departed);
+        double trough = 0.0, kickCL = 0.0;
+        if (fly(middle, trough, kickCL))
+        {
+            survived = middle;
+            out.survivedTroughCL = trough;
+            out.survivedKickCL = kickCL;
+        }
+        else { departed = middle; out.departedTroughCL = trough; }
+    }
+    out.survivedKick = survived;
+    out.departedKick = departed;
+    return out;
+}
+
+void RecoveryEdgeCheck(const CanopyGeometry& canopy,
+                       const LinePlanSpec& linePlan, int maximumSeconds)
+{
+    std::printf("THE RECOVERY EDGE, with no window in it. From a settled trim "
+                "at a ratio nowhere\nnear a boundary, push the wing down the CL "
+                "scale on a pure surge kick and bisect\nthe depth it can come "
+                "back from. If the static envelope edge is also the\ntransient "
+                "one, this lands on section 75's CL 0.425-0.461 from every "
+                "starting\nratio, by arithmetic shared with neither of section "
+                "75's routes.\n\n");
+    std::printf("%8s %10s %10s %14s %12s %12s\n", "ratio", "last ok",
+                "first lost", "trough there", "kick's own", "lost trough");
+    for (const double ratio : {0.90, 0.50, 0.35})
+    {
+        const RecoveryEdge edge =
+            RecoveryEdgeAt(canopy, linePlan, ratio, maximumSeconds, 120.0);
+        if (edge.noTrim)
+        {
+            std::printf("%8.2f %10s %10s %14s %12s %12s\n", ratio, "-", "-",
+                        "-", "-", "no trim");
+            continue;
+        }
+        if (!edge.bracketed)
+        {
+            std::printf("%8.2f %10s %10s %13.3f %12.3f %12s\n", ratio,
+                        ">12", "-", edge.survivedTroughCL,
+                        edge.survivedKickCL, "survived 12");
+            continue;
+        }
+        std::printf("%8.2f %9.2fu %9.2fu %13.3f %12.3f %12.3f\n", ratio,
+                    edge.survivedKick, edge.departedKick,
+                    edge.survivedTroughCL, edge.survivedKickCL,
+                    edge.departedTroughCL);
+    }
+    std::printf("\n  Three ratios spanning a factor of nearly three in the one "
+                "coefficient this\n  item is about. If they give the same "
+                "recovery CL, the edge is a property of\n  the WING and the "
+                "ratio only decides how easily the wing is taken there.\n\n");
+    std::printf("  TROUGH THERE is the number: the deepest CL the wing came "
+                "back from. The kick's\n  own CL is section 54's control in "
+                "this currency - it must sit WELL ABOVE the\n  trough, or the "
+                "wing was placed at low CL rather than flown down to it.\n\n");
+    std::printf("  LOST TROUGH IS NOT AN EDGE ESTIMATE and is printed only to "
+                "prevent it being\n  read as one: a run that does not recover "
+                "keeps falling, so its trough is a\n  number about how long it "
+                "was watched. The bracket is tight in KICK SIZE; in CL\n  only "
+                "the recovered side is informative.\n\n");
+}
+
+// ---------------------------------------------------------------------------
 // Pointing item 12 at item 11: is the missing drag the missing stabiliser?
 //
 // Everything above searched the LINK. Section 54 finished that search in the
@@ -4885,6 +5179,7 @@ int main(int argc, char** argv)
     bool split = false;
     bool pilot = false;
     bool swing = false;
+    bool departureCL = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -4902,6 +5197,7 @@ int main(int argc, char** argv)
         if (argument == "--split") split = true;
         if (argument == "--pilot") pilot = true;
         if (argument == "--swing") swing = true;
+        if (argument == "--departure-cl") departureCL = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -5048,6 +5344,23 @@ int main(int argc, char** argv)
         // growing at 0.008/s, and longer than the 348 s in which 0.25 left
         // during its own settle.
         BasinCheck(canopy, linePlan, 0.25, maximum, 420.0);
+    }
+
+    if (departureCL)
+    {
+        // NOT the amplitude block's hour. That budget exists so "0.30 does not
+        // settle" is a statement about the aircraft rather than the clock, and
+        // neither check here needs it: the recovery test wants a settled trim
+        // at ratios that settle in 80-410 s, and the CL table below is read
+        // for the SHAPE of its troughs rather than for whether 0.30 converges,
+        // which §54 already established and this would only re-pay for.
+        //
+        // Written down because the first version of this inherited 3600 from
+        // the block above without asking, and turned a four-minute measurement
+        // into a forty-minute one for nothing.
+        const int maximum = settleSeconds < 420 ? 180 : 900;
+        DepartureCLCheck(canopy, linePlan, maximum);
+        RecoveryEdgeCheck(canopy, linePlan, maximum);
     }
 
     if (drag)

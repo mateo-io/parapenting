@@ -3585,6 +3585,102 @@ version of the claim that can come out the other way. Here that was the
 accelerator control, which had no turn in it at all, and which was allowed to
 refute the tidy answer right up until it didn't.
 
+## 76. The wing's tolerance for low CL is the same at every damping ratio — so the coefficient buys excitation, not robustness
+
+§75 put the aircraft's *static* envelope edge at CL 0.425 (accelerator) and CL
+0.461 (imposed twist) — one edge, two routes. §54 had independently found the
+finite-amplitude basin edge to be **nose-down**, at −2.6°, −2.5° and −5.8°
+against a 5.1° trim, and said in as many words that this is "the same low-CL
+loop-gain path as full bar and 40% brake rather than a stall."
+
+That suggested a tidy unification, and it is worth stating because it is
+**wrong**: that `swingDampingRatio` = 0.35 is not a missing mechanism at all,
+but the least damping that keeps the growing phugoid's CL trough *inside* the
+static envelope. Under that story item 11's eleven-level search for a
+stabilising mechanism has been looking for something that need not exist.
+
+### It is refuted, twice, and neither refutation is subtle
+
+**Flying each ratio cold and watching CL rather than incidence** (900 s):
+
+| ratio | lowest CL | at | outcome |
+|---|---|---|---|
+| 0.90 | 0.509 | 1 s | settled |
+| 0.50 | 0.508 | 1 s | settled |
+| 0.35 | 0.507 | 1 s | settled |
+| 0.30 | **0.425** | 885 s | still moving |
+| 0.25 | 0.007 | 469 s | **DEPARTED** |
+| 0.20 | 0.001 | 92 s | **DEPARTED** |
+
+Ratio 0.30 reaches **CL 0.425** — squarely at the static edge, to three digits
+— and does not depart. Touching the edge is not what ends the flight.
+
+**And the version with no window in it.** A growing oscillation's trough is
+confounded with how long it was flown, so the question is asked without a
+clock: from a settled trim, push the wing down the CL scale on a pure surge
+kick and bisect the depth it comes back from. Pure surge deliberately, *not*
+the phugoid eigendirection — §54 used that, and reusing it would make this a
+re-run rather than a control.
+
+| ratio | last recovered | first lost | trough there | kick's own CL |
+|---|---|---|---|---|
+| 0.90 | 3.94 m/s | 3.97 | **0.182** | 0.443 |
+| 0.50 | 3.94 m/s | 3.97 | **0.181** | 0.443 |
+| 0.35 | 3.94 m/s | 3.97 | **0.183** | 0.443 |
+
+The wing recovers from a transit down to **CL 0.18**, less than half the static
+edge. So the static edge and the transient point of no return are different
+numbers by a factor of 2.4, and the unification does not join up.
+
+### What replaces it is worth more than the hypothesis was
+
+**The recovery edge does not move with the coefficient at all.** Same kick to
+three digits (3.94 / 3.97 m/s), same trough to 0.002, across a factor of 2.6 in
+`swingDampingRatio`. It is a property of the **wing**, and the coefficient has
+no purchase on it whatever.
+
+That narrows item 11 in a direction eleven levels of searching had not: whatever
+`swingDampingRatio` is standing in for, **it does not change how much CL
+excursion this wing survives — it changes how much excursion the phugoid
+produces.** The coefficient acts on the excitation, not on the tolerance. A
+"missing stabilising mechanism" that made the wing more robust to low-CL
+transits would be the wrong shape of answer.
+
+### A correction owed to §54, and its limit
+
+§54 measured the basin along the **phugoid eigendirection** and found it
+*growing* as the aircraft destabilises — 4.0, 4.0, 6.0 m/s survived at ratios
+0.90, 0.50, 0.35. On a **fixed** direction the basin does not move at all. The
+phugoid eigendirection is itself a function of the ratio, so at least part of
+"the basin grows" is the direction rotating rather than the aircraft becoming
+more tolerant.
+
+**Stated as a limit rather than a correction**, because it was not tested
+directly: two kick directions were used, not one direction and two readings.
+§54's conclusion — that the finite-amplitude story is eliminated because the
+basin does not *shrink* — is untouched either way, and is if anything
+strengthened by a basin that does not move.
+
+### The coincidence that is not claimed
+
+The largest recovered kick places the wing at **CL 0.443**, and §75's static
+edge is CL 0.425–0.461. That is a striking landing, from a measurement sharing
+no arithmetic with either of §75's routes.
+
+**It is not claimed.** It was not predicted in advance, it rests on a single
+number, and the kick CL is the same at all three ratios for the trivial reason
+that the bisection converged on the same kick. Recording it as an observation
+with the prediction absent is exactly what §40 exists to enforce.
+
+### Method note: a budget inherited without asking
+
+The first run of this took **forty minutes** instead of four, because the new
+check took the 3600 s settle budget from the block above it in the same file.
+That budget exists so that "ratio 0.30 does not settle" is a statement about
+the aircraft rather than the clock — a question neither of these checks asks.
+Small, and the same shape as every other error on this axis: a quantity
+carried over from a neighbouring context where it meant something else.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3622,6 +3718,8 @@ refute the tidy answer right up until it didn't.
 | departure CL, by twist | 0.461 last stable | the turn envelope's edge - §75 |
 | departure CL, by accelerator | 0.425 last stable | the SAME edge, no turn involved - §75 |
 | loop gain's CL 0.35 | optimistic by ~0.09 | the flown aircraft departs near CL 0.44 - §75 |
+| transient recovery edge | CL 0.18 | the wing comes back from this; HALF the static edge - §76 |
+| recovery edge vs damping ratio | does not move | 0.182/0.181/0.183 over a 2.6x range - §76 |
 | CANOPY bank as a fraction of coordinated | 38-40% | the roll spring's deflection, NOT a skid - §74 |
 | link bank against coordinated | within 2% | but the link seeks apparent gravity by construction - §74 |
 | sideslip in a steady turn | under 0.1 deg | measured, not inferred; there is no skid - §74 |

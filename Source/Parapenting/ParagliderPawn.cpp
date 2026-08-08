@@ -894,14 +894,34 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         CameraBase = FVector(-150.0f, -780.0f, 190.0f);
         BaseFov = 76.0f;
     }
+    else if (CameraMode == 3)
+    {
+        // Scenic wing: a restrained three-quarter composition for photo mode
+        // and replay viewing. It remains attached to the live pawn rather
+        // than introducing a free camera or a second simulation transform.
+        CameraBase = FVector(-890.0f, -980.0f, 410.0f);
+        BaseFov = 70.0f;
+    }
+    // At flare height, a long low chase angle tends to lose either the wing
+    // or the landing surface. Blend to a slightly higher, centred composition
+    // from the same deterministic ground-clearance query. This is presentation
+    // only and intentionally does not block, steer, or otherwise react to
+    // geometry.
+    const float LandingFrameBlend = FMath::Clamp(
+        static_cast<float>((32.0 - GetGroundClearanceM()) / 32.0), 0.0f, 1.0f);
+    CameraBase = FMath::Lerp(CameraBase, FVector(-780.0f, 0.0f, 410.0f),
+        LandingFrameBlend);
+    BaseFov = FMath::Lerp(BaseFov, 82.0f, LandingFrameBlend);
     const FVector CameraTarget = CameraBase + InertialOffset + FVector(
         -static_cast<float>((Telemetry.airspeedMps - 10.5) * 7.0),
         static_cast<float>(-Telemetry.harnessRollRad * 95.0) * MotionScale,
         static_cast<float>(Telemetry.harnessPitchRad * 120.0) * MotionScale);
     Camera->SetRelativeLocation(FMath::VInterpTo(
         Camera->GetRelativeLocation(), CameraTarget, DeltaSeconds, 2.8f));
-    const float CameraBasePitch = CameraMode == 2 ? 8.0f : 3.0f;
-    const float CameraBaseYaw = CameraMode == 2 ? 79.0f : 0.0f;
+    const float CameraBasePitch = CameraMode == 2 ? 8.0f
+        : (CameraMode == 3 ? -2.0f : 3.0f);
+    const float CameraBaseYaw = CameraMode == 2 ? 79.0f
+        : (CameraMode == 3 ? 38.0f : 0.0f);
     const FRotator CameraRotationTarget(
         CameraBasePitch + static_cast<float>(CameraResponse.pitchDegrees),
         CameraBaseYaw + static_cast<float>(CameraResponse.yawDegrees),
@@ -3583,7 +3603,7 @@ void AParagliderPawn::ToggleAirflowVisualization()
 
 void AParagliderPawn::CycleCameraMode()
 {
-    CameraMode = (CameraMode + 1) % 3;
+    CameraMode = (CameraMode + 1) % 4;
 }
 
 void AParagliderPawn::CycleAccessibilityProfile()
@@ -3855,6 +3875,7 @@ const char* AParagliderPawn::GetCameraModeDisplayName() const
     {
         case 1: return "CLOSE CHASE";
         case 2: return "SIDE TECHNICAL";
+        case 3: return "SCENIC WING";
         default: return "REAR CHASE";
     }
 }

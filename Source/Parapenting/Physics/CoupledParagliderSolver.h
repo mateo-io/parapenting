@@ -623,6 +623,9 @@ public:
         { ScheduleValue = schedule; }
 
     double AllUpMassKg() const { return SystemMassKg; }
+    // What `liftCoefficient` is referenced to, so a test can check the
+    // diagnostic against weight over q S rather than take it on trust.
+    double WingReferenceAreaM2() const { return ReferenceAreaM2; }
 
     // What each section carries in clean hands-up trim, newtons. The reference
     // the collapse criterion's local unloading is measured against.

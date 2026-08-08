@@ -1793,6 +1793,43 @@ int main()
               "Level 11's to represent and is not evidence for anything here");
     }
 
+    // THE CL DIAGNOSTIC'S OWN CONTROL. Two findings now rest on
+    // `liftCoefficient` - §75's departure boundary and §76's recovery edge -
+    // and it is computed from the exchanged aerodynamic force, not from the
+    // weight. So in SETTLED glide it can be checked against the thing it is
+    // not made of: a wing in equilibrium carries its own weight, less the
+    // cosine of the glide angle, so CL must be W cos(gamma) / (q S).
+    //
+    // Cheap, and it is the difference between a number and a number that has
+    // been checked once.
+    {
+        CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+        CoupledState state;
+        Fly(wing, handsOff, 240.0, &state);
+        const CoupledDiagnostics& d = wing.Diagnostics();
+        const CoupledAtmosphere air;
+        const double q =
+            0.5 * air.densityKgM3 * d.airspeedMps * d.airspeedMps;
+        // The glide angle off the flight path, so no aerodynamic quantity
+        // enters the comparison at all.
+        const double horizontal = std::sqrt(
+            state.velocityWorldMps.x * state.velocityWorldMps.x
+            + state.velocityWorldMps.y * state.velocityWorldMps.y);
+        const double gamma =
+            std::atan2(-state.velocityWorldMps.z, std::max(1.0e-9, horizontal));
+        const double fromWeight = wing.AllUpMassKg() * 9.80665 * std::cos(gamma)
+            / (q * wing.WingReferenceAreaM2());
+        std::printf("CL diagnostic against weight: reported %.4f, "
+                    "W cos(gamma)/(q S) = %.4f  (%.1f%% apart)\n",
+                    d.liftCoefficient, fromWeight,
+                    100.0 * std::fabs(d.liftCoefficient - fromWeight)
+                        / fromWeight);
+        Check(std::fabs(d.liftCoefficient - fromWeight) < 0.03 * fromWeight,
+              "the lift coefficient diagnostic agrees within 3% with the "
+              "weight the settled wing must be carrying - so it is measuring "
+              "lift and not something proportional to it");
+    }
+
     // IS THE SPIRAL A SPIRAL? §73 found the aircraft departs between 3 and 4
     // degrees of imposed twist and called it a spiral departure, on the
     // strength of the turn rate winding up to 3.48 rad/s. But the same run

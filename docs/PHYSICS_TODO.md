@@ -1298,6 +1298,36 @@ reframing (the largest sensitivity in the matrix is a *wing* entry — §45).
 list of eliminated candidates. That is an absence rather than a mystery, and it
 is a different kind of open than the ones above.
 
+- **THE COEFFICIENT BUYS EXCITATION, NOT ROBUSTNESS (§76).** The one candidate
+  §75 opened — that 0.35 is simply the least damping keeping the growing
+  phugoid's CL trough inside the static envelope, so no mechanism need exist —
+  is **refuted**, and what replaced it narrows the search.
+  - Ratio 0.30 reaches **CL 0.425**, squarely at §75's static edge, and does
+    not depart. Touching the edge is not what ends the flight.
+  - Asked without a clock — from a settled trim, bisect the depth of a pure
+    surge kick the wing comes back from — the transient recovery edge is
+    **CL 0.18**, less than half the static edge. Static edge and point of no
+    return are different numbers by a factor of 2.4.
+  - **And the recovery edge does not move with the coefficient at all**:
+    3.94 m/s of kick and a trough of 0.182 / 0.181 / 0.183 at ratios 0.90,
+    0.50 and 0.35. A factor of 2.6 in the coefficient, no effect on the wing's
+    tolerance.
+  - **So a mechanism that made the wing more robust to low-CL transits is the
+    wrong shape of answer.** `swingDampingRatio` does not change how much
+    excursion the wing survives; it changes how much the phugoid produces.
+    That is a constraint on the missing mechanism of the same kind as §51's,
+    and it points at the phugoid's growth rather than the wing's margins.
+  - **Owed to §54, with its limit stated:** §54 measured the basin along the
+    *phugoid eigendirection* and found it growing (4.0, 4.0, 6.0 m/s). On a
+    fixed direction it does not move. The eigendirection is itself a function
+    of the ratio, so some of "the basin grows" is the direction rotating —
+    though two directions were used rather than one direction read two ways,
+    so this is a limit rather than a correction. §54's elimination of the
+    finite-amplitude story stands either way.
+  - Not claimed, recorded: the largest recovered kick places the wing at
+    **CL 0.443** against §75's static edge of 0.425–0.461. One number, no
+    prediction made in advance. §40's rule.
+
 **Therefore the four loosened gates stay loosened** and the table above stands
 as written: item 11 has not landed, and restoring the strict thresholds now
 would make the suite green about a disagreement rather than honest about one.

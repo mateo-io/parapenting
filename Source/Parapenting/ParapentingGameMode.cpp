@@ -225,6 +225,12 @@ void AParapentingGameMode::BeginPlay()
         UHierarchicalInstancedStaticMeshComponent* Shrubs =
             NewObject<UHierarchicalInstancedStaticMeshComponent>(
                 Forest, TEXT("ForestEdgeShrubs"));
+        UHierarchicalInstancedStaticMeshComponent* ShoreVegetation =
+            NewObject<UHierarchicalInstancedStaticMeshComponent>(
+                Forest, TEXT("LakeShoreVegetation"));
+        UHierarchicalInstancedStaticMeshComponent* ShoreRocks =
+            NewObject<UHierarchicalInstancedStaticMeshComponent>(
+                Forest, TEXT("LakeShoreRocks"));
         Forest->SetRootComponent(Crowns);
         Crowns->SetStaticMesh(ConeMesh);
         Trunks->SetupAttachment(Crowns);
@@ -235,21 +241,31 @@ void AParapentingGameMode::BeginPlay()
         ForestEdges->SetStaticMesh(ConeMesh);
         Shrubs->SetupAttachment(Crowns);
         Shrubs->SetStaticMesh(SphereMesh);
+        ShoreVegetation->SetupAttachment(Crowns);
+        ShoreVegetation->SetStaticMesh(ConeMesh);
+        ShoreRocks->SetupAttachment(Crowns);
+        ShoreRocks->SetStaticMesh(SphereMesh);
         Crowns->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Trunks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Deciduous->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         ForestEdges->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Shrubs->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        ShoreVegetation->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        ShoreRocks->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Crowns->SetCullDistances(120000, 950000);
         Trunks->SetCullDistances(90000, 650000);
         Deciduous->SetCullDistances(100000, 750000);
         ForestEdges->SetCullDistances(100000, 1000000);
         Shrubs->SetCullDistances(70000, 500000);
+        ShoreVegetation->SetCullDistances(90000, 650000);
+        ShoreRocks->SetCullDistances(70000, 420000);
         Crowns->RegisterComponent();
         Trunks->RegisterComponent();
         Deciduous->RegisterComponent();
         ForestEdges->RegisterComponent();
         Shrubs->RegisterComponent();
+        ShoreVegetation->RegisterComponent();
+        ShoreRocks->RegisterComponent();
         if (ShapeMaterial)
         {
             UMaterialInstanceDynamic* CrownMaterial =
@@ -277,6 +293,16 @@ void AParapentingGameMode::BeginPlay()
             ShrubMaterial->SetVectorParameterValue(
                 TEXT("Color"), FLinearColor(0.065f, 0.20f, 0.042f));
             Shrubs->SetMaterial(0, ShrubMaterial);
+            UMaterialInstanceDynamic* ShoreVegetationMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
+            ShoreVegetationMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.045f, 0.145f, 0.055f));
+            ShoreVegetation->SetMaterial(0, ShoreVegetationMaterial);
+            UMaterialInstanceDynamic* ShoreRockMaterial =
+                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
+            ShoreRockMaterial->SetVectorParameterValue(
+                TEXT("Color"), FLinearColor(0.19f, 0.205f, 0.18f));
+            ShoreRocks->SetMaterial(0, ShoreRockMaterial);
         }
 
         for (int32 XIndex = -10; XIndex <= 48; ++XIndex)
@@ -363,6 +389,47 @@ void AParapentingGameMode::BeginPlay()
                             ShrubGround + 1.5f) * 100.0f,
                         FVector(1.4f, 1.4f, 1.1f)
                             * (0.75f + 0.18f * ShrubIndex)));
+                }
+            }
+        }
+
+        // Lake-side accents are deliberately sparse and derive their position
+        // from the same terrain datum as the lake. They make the shoreline
+        // read at flight distance without adding collision or masking a
+        // landing field with dense procedural forest.
+        for (int32 XIndex = 18; XIndex <= 50; ++XIndex)
+        {
+            for (int32 YIndex = -20; YIndex <= 45; ++YIndex)
+            {
+                const float X = XIndex * 100.0f
+                    + FMath::Sin(XIndex * 4.71f + YIndex * 1.37f) * 26.0f;
+                const float Y = YIndex * 100.0f
+                    + FMath::Sin(XIndex * 1.93f - YIndex * 5.21f) * 24.0f;
+                const float Ground = static_cast<float>(
+                    Parapenting::Physics::TerrainModel::HeightM(X, Y));
+                const auto Normal =
+                    Parapenting::Physics::TerrainModel::Normal(X, Y);
+                // The lake is -7.34 m local. A limited elevation band keeps
+                // these accents on the immediate bank rather than distributing
+                // generic forest over the entire valley.
+                if (Ground < -6.3f || Ground > 42.0f || Normal.z < 0.78) continue;
+                const float Density = 0.5f + 0.5f * FMath::PerlinNoise2D(
+                    FVector2D(X * 0.012f, Y * 0.012f));
+                if (Density < 0.48f) continue;
+                const float Scale = 0.65f + Density * 0.55f;
+                if (Density > 0.66f)
+                {
+                    ShoreVegetation->AddInstance(FTransform(
+                        FRotator(0.0f, XIndex * 37.0f + YIndex * 11.0f, 0.0f),
+                        FVector(X, Y, Ground + 2.5f) * 100.0f,
+                        FVector(1.5f, 1.5f, 3.8f) * Scale));
+                }
+                else if (SphereMesh)
+                {
+                    ShoreRocks->AddInstance(FTransform(
+                        FRotator(0.0f, XIndex * 19.0f - YIndex * 31.0f, 0.0f),
+                        FVector(X, Y, Ground + 0.7f) * 100.0f,
+                        FVector(0.9f, 1.3f, 0.55f) * Scale));
                 }
             }
         }

@@ -3681,6 +3681,131 @@ the aircraft rather than the clock — a question neither of these checks asks.
 Small, and the same shape as every other error on this axis: a quantity
 carried over from a neighbouring context where it meant something else.
 
+## 77. The departure is not a threshold crossing, and the boundary's *location* is the one part of it the schedule can move
+
+§76 measured two edges and inferred a third thing. The edges: the transient
+recovery edge at CL 0.18, which does not move with `swingDampingRatio`, and
+§75's static envelope edge at CL 0.425–0.461. The inference, reached by
+subtraction rather than measured: since tolerance is fixed and the boundary
+moves, the coefficient must act on the excursion the phugoid *produces*.
+
+That inference is sound and it was never a measurement. The sharp version:
+**a departing wing leaves when its trough crosses the transient edge, not the
+static one.** Written with four outcomes, three of them against it, and the
+surviving ratios put in the same table as a free falsifier.
+
+### Ratio 0.20 answers it, and the answer is "neither edge"
+
+Five troughs, spaced 14.8 / 15.0 / 15.7 / 17.8 s — the phugoid, not an
+identifier artefact:
+
+| trough | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| CL | 0.481 | 0.442 | 0.380 | 0.287 | **0.014** |
+| at | 26 s | 41 s | 56 s | 72 s | 90 s |
+| α | 3.80° | 3.09° | 2.01° | 0.40° | −5.40° |
+
+The wing flies **through** CL 0.425, 0.380 and 0.287 and keeps flying — so the
+static edge is not the criterion, now confirmed from a second direction after
+§76's ratio-0.30 result. And the terminal cycle runs 0.287 → 0.014, past CL
+0.18 without ever resolving near it. The transient edge is not the criterion
+either.
+
+**What the sequence actually shows is a growth rate, not a threshold.** The
+excursion below trim runs 0.06, 0.10, 0.16, 0.25 — a clean ×1.6 per cycle —
+and then the last cycle overshoots that geometry badly instead of landing at
+the ×1.6 prediction of ≈0.40. **The departure is where the growth stops being
+exponential**, which is a statement about the nonlinearity and not about any
+scalar the wing crosses.
+
+This was the outcome predicted in advance, and for a stated reason: §53 found
+transient amplification G = 13.9 while every mode decays, which already says
+this system's behaviour is not a function of any one number. A surge kick
+reaches CL 0.18 carrying 3.94 m/s of excess speed; the phugoid reaches the same
+CL slowly with a different pitch rate. §76's factor of 2.4 was never two
+estimates of one quantity.
+
+### The identifier's control caught two things, and one was me
+
+The first version printed the **last twelve troughs**, which on a departing row
+are spaced 0.1–0.7 s — the collapse being sampled, not cycles of a 16 s mode.
+The spacing column, printed next to every trough for exactly this reason,
+made it obvious on sight. Splitting the list by *spacing* rather than by
+*position* is what produced the table above.
+
+That exposed the second thing: ratio 0.25 shows **415 troughs spaced closer
+than 8 s**, starting at 177 s, spaced at 0.1 s — which is the aerodynamic hold
+exactly. Two readings fitted, saying opposite things, so both knobs were turned:
+
+| hysteresis | phugoid-like | closer | departs |
+|---|---|---|---|
+| 0.002 | 22 | 415 | 470 s |
+| 0.010 | 24 | 91 | 470 s |
+| 0.030 | 24 | 23 | 470 s |
+
+Close troughs fall away by a factor of 18 while the phugoid count holds and the
+departure time does not move by a millisecond. **Small ripple on a good
+phugoid. Not a finding.** §36, §48 and §49 are three prior occasions on this
+axis where an identifier returned a confident number instead of failing; this
+is the first time the check was built in before the number was read.
+
+### The lead that came out of the control, and the correction it needed
+
+The other knob was not tidy. Over a 900 s window, ratio 0.25 departed at 163 s
+at a 0.20 s hold, 470 s at 0.10 s, and **not at all** at 0.05 s. Item 11 carries
+a bullet saying "it is not the schedule" — true, and it does not cover this: it
+was measured on a *settling* wing at ratio 0.35, so there was no departure in
+it. The stability boundary had never been tested against the schedule at all.
+§47 had independently named this same 0.1 s hold as why Φ(T) is not an
+exponential family.
+
+**The sweep that followed refuted the exciting reading, using a column put in
+to make that possible.** 1800 s, four times what the 0.10 s hold needs, with
+the lowest CL printed beside every row:
+
+| ratio | hold 0.05 s | hold 0.10 s | hold 0.20 s |
+|---|---|---|---|
+| 0.35 | settled, CL 0.511 | settled, CL 0.507 | settled, CL 0.497 |
+| 0.30 | moving, CL **0.508**, 0.69° | moving, CL **0.386**, 5.9° | moving, CL **0.303**, 10.2° |
+| 0.25 | moving, CL 0.224, 6.9° | DEPARTED 470 s | DEPARTED 163 s |
+| 0.20 | DEPARTED **96 s** | DEPARTED **92 s** | DEPARTED **94 s** |
+
+Ratio 0.25 at the fine hold reads "still moving" and its lowest CL is **0.224
+against a trim of 0.54, with a 6.9° spread**. That is not a stable wing; it is a
+slower one that had not crossed 20° inside the window. **"It does not depart at
+0.05 s" was a statement about 900 seconds**, and the lowest-CL column exists so
+that it could not survive as anything else.
+
+### What is true: the classes are invariant, the rates are not
+
+- **Ratio 0.35 settles at every hold** (CL 0.497–0.511, spread ≤0.01°).
+- **Ratio 0.20 departs at 96 / 92 / 94 s** — unchanged across a **fourfold**
+  change in the hold. The strongly unstable case does not care about the
+  schedule at all, and it is the cleanest control row in the table.
+
+So the instability is real and `swingDampingRatio` = 0.35 is not an artefact.
+What the hold changes is **how fast marginal ratios develop**, and there the
+trend is monotone and large: ratio 0.30's excursion at 1800 s goes CL 0.508 →
+0.386 → 0.303 as the hold coarsens, i.e. from nearly settled to strongly
+growing.
+
+**And that is not free, because one live claim rests on exactly that quantity.**
+§39 located the boundary "flown, between 0.35 and 0.30" on the strength of 0.30
+*failing to settle inside a budget* — and failing to settle inside a budget is
+precisely what moves with the hold. The stability classes at 0.35 and 0.20 are
+schedule-invariant; **the boundary's location between them is not**, and it has
+been quoted to two digits for several levels. Item 11's "it is not the schedule"
+bullet is correct about the slow mode and does not extend to the boundary.
+
+### The pattern, for the fourth time on this axis
+
+§73's constant ratio, §74's wrong angle, §75's ordering argument — a number
+that *points at* the conclusion, accepted because the conclusion was already
+believed. This time the number was mine and it was one window wide, and what
+caught it was not judgement but a column printed beside the answer because the
+failure was anticipated in writing before the run. That is the only one of the
+four that cost nothing.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3720,6 +3845,12 @@ carried over from a neighbouring context where it meant something else.
 | loop gain's CL 0.35 | optimistic by ~0.09 | the flown aircraft departs near CL 0.44 - §75 |
 | transient recovery edge | CL 0.18 | the wing comes back from this; HALF the static edge - §76 |
 | recovery edge vs damping ratio | does not move | 0.182/0.181/0.183 over a 2.6x range - §76 |
+| ratio 0.20's phugoid troughs | 0.481/0.442/0.380/0.287/0.014 | flies THROUGH both edges - §77 |
+| what ends the flight | growth ceasing to be exponential | not a CL threshold at all - §77 |
+| excursion growth per cycle, ratio 0.20 | x1.6 for four cycles | the fifth overshoots it - §77 |
+| ratio 0.20 departure vs aero hold | 96 / 92 / 94 s | INVARIANT over a 4x hold change - §77 |
+| ratio 0.30 excursion at 1800 s, by hold | CL 0.508 / 0.386 / 0.303 | rate near the boundary is NOT - §77 |
+| what the 0.1 s hold can move | the boundary's LOCATION | §39's 0.35-0.30 rests on it - §77 |
 | CANOPY bank as a fraction of coordinated | 38-40% | the roll spring's deflection, NOT a skid - §74 |
 | link bank against coordinated | within 2% | but the link seeks apparent gravity by construction - §74 |
 | sideslip in a steady turn | under 0.1 deg | measured, not inferred; there is no skid - §74 |

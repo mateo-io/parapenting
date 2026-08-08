@@ -638,6 +638,11 @@ void AParapentingGameMode::BeginPlay()
                 TEXT("DeepWaterColor"), FLinearColor(0.003f, 0.035f, 0.055f));
             LakeMaterial->SetVectorParameterValue(
                 TEXT("GrazingWaterColor"), FLinearColor(0.012f, 0.115f, 0.155f));
+            // Lake Thun faces a large bright sky. Cap its reflection separately
+            // from the Aare so calm weather reads as alpine water rather than
+            // a cyan mirror, while the river retains its directional cue.
+            LakeMaterial->SetScalarParameterValue(
+                TEXT("ReflectionStrength"), 0.09f);
             LakeSurface->SetMaterial(0, LakeMaterial);
             WaterMaterialInstances.Add(LakeMaterial);
         }

@@ -292,10 +292,14 @@ the reference Windows GPU. Adjust only after recording hardware and resolution.
 
 ## Level 0 — Baseline, project shell and measurement spine
 
-**Implementation status (2026-08-04): shell established.** `L_FlightLab` is a
+**Implementation status (2026-08-08): shell and Shipping capture path
+established.** `L_FlightLab` is a
 checked-in empty `/Game/Maps` entry map and is now both the editor and game
 default. Runtime world actors remain code-spawned by `AParapentingGameMode`, so
-the shell does not duplicate simulation-owned state into an authored level.
+the shell does not duplicate simulation-owned state into an authored level. A
+staged Mac Shipping build now succeeds through
+`Tools/Visual/stage_mac_visual_qa.sh`; unlike the known-broken archive path, it
+contains runtime libraries and produced an in-game deterministic screenshot.
 
 **Outcome:** the current build is reproducibly measured, it has somewhere to put
 content, and every later visual change has a target, owner and comparison image.
@@ -318,8 +322,10 @@ content, and every later visual change has a target, owner and comparison image.
   including the **procedural terrain rebuild spike**: a route change across
   regions rebuilds up to 64 `UProceduralMeshComponent`s synchronously
   (`ParapentingTerrain.cpp`). Measure it now so Level 3 has a number to beat.
-- [ ] **Package and open a Shipping build on Mac.** Photograph the wing.
-  Confirm or refute fact 3, and inventory anything else that vanishes.
+- [x] **Package and open a Shipping build on Mac.** The reproducible staged
+  build produced a deterministic midday wing capture. Do not use UE 5.8's thin
+  archive output in this environment: it omits runtime libraries; the staging
+  script deliberately validates the runnable artifact instead.
 - [ ] Inventory every visible runtime object, material, Engine dependency and
   procedural spawn path, and mark which are `/Engine` sample content (rule 13).
 - [ ] Write a one-page art bible: naturalistic alpine realism, colour palette,
@@ -800,16 +806,26 @@ temporal artifacts are catalogued and below agreed thresholds.
 
 ## Level 9 — Grindelwald hero region and production world pipeline
 
+**Implementation status (2026-08-08): regional palette foundation.** The
+existing surveyed-region renderer now passes an explicit Grindelwald parameter
+set into terrain classification: a higher alpine transition, restrained valley
+agriculture, cooler rock and a lower north-aspect snow line. It is a reusable
+region parameter, not a duplicate terrain path; authored landmarks and source
+land-cover remain future work.
+
 **Outcome:** a second visually distinct, high-fidelity region proves the world
 pipeline scales beyond one hand-polished corridor.
 
 ### Bite-sized work
 
-- [ ] Apply Levels 3–8 to Grindelwald using reusable tools before adding
+- [~] Apply Levels 3–8 to Grindelwald using reusable tools before adding
   one-off fixes. The region already exists as surveyed ground with its own
-  `TerrainRenderLayout` and both routes on it.
-- [ ] Build region parameter sets for geology, vegetation, settlement,
-  agriculture, snow and atmospheric depth.
+  `TerrainRenderLayout` and both routes on it. Terrain shading now consumes
+  the regional parameter set; the remaining systems are open.
+- [~] Build region parameter sets for geology, vegetation, settlement,
+  agriculture, snow and atmospheric depth. Geology, agriculture and snow now
+  have the first terrain-only parameters; vegetation, settlement and atmosphere
+  remain open.
 - [ ] Author First, Eiger/Mönch/Jungfrau silhouettes and route-critical
   landmarks from licensed sources at appropriate fidelity.
 - [ ] Add validation overlays comparing surveyed anchors, source imagery,
@@ -828,14 +844,22 @@ pipeline/assets; the third-region procedure is demonstrably repeatable.
 
 ## Level 10 — Production canopy and character ecosystem
 
+**Implementation status (2026-08-08): colourway foundation.** The procedural
+renderer now selects an authored presentation colourway for each wing profile,
+and rebuilds the visual skin when a wing is selected. This data is explicitly
+separate from `WingParameters`, so presentation variation cannot alter
+handling, replay inputs or solver data. Fabric/reinforcement asset packages and
+multiple physical canopy topologies remain open.
+
 **Outcome:** equipment presentation supports variety, close inspection and
 future partnerships without cloning the render rig or shader stack.
 
 ### Bite-sized work
 
-- [ ] Define data-driven canopy colourways, fabric families, reinforcement,
-  riser and line-material packages independent of handling data. The wing data
-  packages in `Data/Wings/` are the model for how this should look.
+- [~] Define data-driven canopy colourways, fabric families, reinforcement,
+  riser and line-material packages independent of handling data. The first
+  per-wing colourways are renderer-owned and intentionally separate from
+  handling data; fabric, reinforcement, riser and line packages remain open.
 - [ ] Support multiple authoritative canopy topologies through one renderer —
   the two research wings already differ in cell count, span and aspect ratio.
 - [ ] Add pilot body/clothing/harness variants with fit and clipping tests.
@@ -853,6 +877,13 @@ anchors correctly, survives collapse/launch/landing poses and respects licence
 status; adding a colourway requires data/assets rather than C++ changes.
 
 ## Level 11 — Hero realism at flight scale
+
+**Implementation status (2026-08-08): procedural fabric detail foundation.**
+`M_CanopyFabric` now adds restrained broad/fine weave variation in the
+canopy's own UVs, affecting both albedo and roughness while remaining locked to
+the deforming skin. It introduces no world-space crawling and makes no claim
+of scan-derived material fidelity; licensed hero terrain, imagery and landmark
+assets are still required for the level's outcome.
 
 **Outcome:** selected routes approach contemporary high-end outdoor-game
 fidelity from ground contact to long alpine vistas.

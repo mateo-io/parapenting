@@ -19,15 +19,21 @@ using Layout = Parapenting::Physics::TerrainRenderLayout;
 // baking it again would shade the terrain twice.
 FLinearColor TerrainColour(double X, double Y, double Z,
                            const Parapenting::Physics::Vec3& N,
-                           bool bBakeShading)
+                           bool bBakeShading, bool bGrindelwald)
 {
     // Heights in the simulation frame are relative to Lehn (565 m MSL), not
     // absolute elevations. Classify the landscape in MSL so Interlaken's
     // valley stays green while the upper shelves turn to alpine pasture.
     constexpr double LandingElevationMsl = 565.0;
     const double ElevationMsl = Z + LandingElevationMsl;
+    // Grindelwald's valley floor is already much higher than Interlaken's.
+    // Use region parameters rather than applying the low-valley agriculture
+    // palette unchanged to two geographically distinct surveyed landscapes.
+    const double AlpineStartM = bGrindelwald ? 1120.0 : 1350.0;
+    const double AlpineRangeM = bGrindelwald ? 720.0 : 850.0;
     const float HeightTint = FMath::Clamp(
-        static_cast<float>((ElevationMsl - 1350.0) / 850.0), 0.0f, 1.0f);
+        static_cast<float>((ElevationMsl - AlpineStartM) / AlpineRangeM),
+        0.0f, 1.0f);
     const float Steepness = FMath::Clamp(
         static_cast<float>((0.78 - N.z) / 0.30), 0.0f, 1.0f);
     const float BroadNoise = 0.5f + 0.5f * FMath::PerlinNoise2D(
@@ -44,10 +50,11 @@ FLinearColor TerrainColour(double X, double Y, double Z,
         static_cast<float>((Y - Layout::yMinInterlakenM) / 110.0));
     const float FieldBoundary =
         (ParcelX < 0.025f || ParcelY < 0.035f) ? 1.0f : 0.0f;
-    const float ValleyField = FMath::Clamp(
+    float ValleyField = FMath::Clamp(
         static_cast<float>((260.0 - Z) / 220.0)
             * static_cast<float>((N.z - 0.88) / 0.10),
         0.0f, 1.0f);
+    ValleyField *= bGrindelwald ? 0.18f : 1.0f;
     const float ForestBlend = FMath::Clamp(
         (BroadNoise - 0.44f) * 2.8f
             * (1.0f - Steepness) * (1.0f - ValleyField * 0.65f),
@@ -57,9 +64,9 @@ FLinearColor TerrainColour(double X, double Y, double Z,
         static_cast<float>(0.5 - 0.5 * N.y), 0.0f, 1.0f);
     // Summer snow line in the Bernese Oberland sits around 2600-2900 m MSL,
     // and north-facing bowls hold it a few hundred metres lower.
-    constexpr double SnowLineM = 2650.0;
-    constexpr double NorthAspectDropM = 260.0;
-    constexpr double SnowTransitionM = 340.0;
+    const double SnowLineM = bGrindelwald ? 2440.0 : 2650.0;
+    const double NorthAspectDropM = bGrindelwald ? 320.0 : 260.0;
+    const double SnowTransitionM = bGrindelwald ? 300.0 : 340.0;
     const float SnowBlend = FMath::Clamp(
         static_cast<float>(
             (ElevationMsl - (SnowLineM - NorthAspectDropM * NorthAspect))
@@ -80,16 +87,32 @@ FLinearColor TerrainColour(double X, double Y, double Z,
     const float RockStrata = 0.5f + 0.5f * FMath::Sin(
         static_cast<float>(Z * 0.105 + X * 0.008 - Y * 0.004));
 
-    const FLinearColor Meadow(0.12f, 0.48f, 0.055f);
-    const FLinearColor FieldA(0.28f, 0.54f, 0.075f);
-    const FLinearColor FieldB(0.11f, 0.43f, 0.035f);
-    const FLinearColor ForestFloor(0.025f, 0.15f, 0.025f);
-    const FLinearColor Alpine(0.24f, 0.38f, 0.12f);
+    const FLinearColor Meadow = bGrindelwald
+        ? FLinearColor(0.085f, 0.33f, 0.075f)
+        : FLinearColor(0.12f, 0.48f, 0.055f);
+    const FLinearColor FieldA = bGrindelwald
+        ? FLinearColor(0.18f, 0.37f, 0.09f)
+        : FLinearColor(0.28f, 0.54f, 0.075f);
+    const FLinearColor FieldB = bGrindelwald
+        ? FLinearColor(0.07f, 0.29f, 0.06f)
+        : FLinearColor(0.11f, 0.43f, 0.035f);
+    const FLinearColor ForestFloor = bGrindelwald
+        ? FLinearColor(0.018f, 0.105f, 0.042f)
+        : FLinearColor(0.025f, 0.15f, 0.025f);
+    const FLinearColor Alpine = bGrindelwald
+        ? FLinearColor(0.20f, 0.29f, 0.15f)
+        : FLinearColor(0.24f, 0.38f, 0.12f);
     // Limestone retains lichen and scrub on ledges, but steep exposed faces
     // must remain visibly distinct from grass in the flight view.
-    const FLinearColor RockA(0.25f, 0.265f, 0.22f);
-    const FLinearColor RockB(0.39f, 0.37f, 0.30f);
-    const FLinearColor Snow(0.80f, 0.84f, 0.86f);
+    const FLinearColor RockA = bGrindelwald
+        ? FLinearColor(0.22f, 0.235f, 0.25f)
+        : FLinearColor(0.25f, 0.265f, 0.22f);
+    const FLinearColor RockB = bGrindelwald
+        ? FLinearColor(0.34f, 0.35f, 0.37f)
+        : FLinearColor(0.39f, 0.37f, 0.30f);
+    const FLinearColor Snow = bGrindelwald
+        ? FLinearColor(0.77f, 0.82f, 0.86f)
+        : FLinearColor(0.80f, 0.84f, 0.86f);
 
     FLinearColor Colour = FMath::Lerp(Meadow, Alpine, HeightTint);
     Colour = FMath::Lerp(
@@ -185,6 +208,7 @@ void AParapentingTerrain::BuildTerrainMesh()
     const bool bBakeShading = !Parapenting::bVertexColourMaterialIsLit;
 
     const Layout& Active = ActiveLayout;
+    const bool bGrindelwald = Active.yMaxM < -10000.0;
     const int32 VertexSide = Active.cellsPerTile + 1;
     const double TileWidth =
         (Active.xMaxM - Active.xMinM) / Active.tileCountX;
@@ -251,7 +275,7 @@ void AParapentingTerrain::BuildTerrainMesh()
                     // green (0.48 becomes roughly 0.19 after decoding) and
                     // makes the whole range read blue-black.
                     Colours.Add(
-                        TerrainColour(X, Y, Z, N, bBakeShading)
+                        TerrainColour(X, Y, Z, N, bBakeShading, bGrindelwald)
                             .ToFColor(true));
                 }
             }

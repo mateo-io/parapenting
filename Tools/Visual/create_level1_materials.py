@@ -72,7 +72,12 @@ def make_vertex_lit():
 
 
 def make_canopy_fabric():
-    """Two-sided transmitted-light fabric for the procedural canopy."""
+    """Two-sided transmitted-light fabric for the procedural canopy.
+
+    The weave is evaluated in the canopy's existing UVs, not world space: the
+    field stays locked to the moving/deforming procedural skin and never reads
+    as dirt sliding across the wing.
+    """
     material, created = load_or_create(
         "M_CanopyFabric", unreal.Material, unreal.MaterialFactoryNew()
     )
@@ -142,13 +147,89 @@ def make_canopy_fabric():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         side_scale, "", sided_color, "B"
     )
+    texture_coordinate = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionTextureCoordinate, -520, 600
+    )
+    weave_broad = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -280, 560
+    )
+    weave_broad.set_editor_property("scale", 16.0)
+    weave_broad.set_editor_property("quality", 1)
+    weave_broad.set_editor_property("levels", 1)
+    weave_broad.set_editor_property("output_min", 0.94)
+    weave_broad.set_editor_property("output_max", 1.035)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        texture_coordinate, "", weave_broad, "Position"
+    )
+    weave_fine = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -280, 700
+    )
+    weave_fine.set_editor_property("scale", 72.0)
+    weave_fine.set_editor_property("quality", 1)
+    weave_fine.set_editor_property("levels", 1)
+    weave_fine.set_editor_property("output_min", 0.975)
+    weave_fine.set_editor_property("output_max", 1.025)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        texture_coordinate, "", weave_fine, "Position"
+    )
+    weave = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, -40, 620
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        weave_broad, "", weave, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        weave_fine, "", weave, "B"
+    )
+    woven_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 550, 40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        sided_color, "", woven_color, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        weave, "", woven_color, "B"
+    )
     roughness = scalar(material, "FabricRoughness", 0.68, 100, 440)
-    connect(sided_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
+    woven_roughness = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 320, 440
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        roughness, "", woven_roughness, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        weave_fine, "", woven_roughness, "B"
+    )
+    # Two-sided foliage receives transmitted light, but the underside can
+    # still collapse to near-black under an overcast sky or when the sun is
+    # behind the camera. A restrained sky-fill keeps the coloured fabric
+    # legible without making it an unlit emissive wing.
+    underside_fill = scalar(material, "UndersideSkyFill", 0.16, 100, 560)
+    underside_emissive_mask = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 100, 660
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        underside_mask, "", underside_emissive_mask, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        underside_fill, "", underside_emissive_mask, "B"
+    )
+    underside_emissive = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 350, 620
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        transmitted_color, "", underside_emissive, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        underside_emissive_mask, "", underside_emissive, "B"
+    )
+    connect(woven_color, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
     connect(
         transmitted_color, "", material,
         unreal.MaterialProperty.MP_SUBSURFACE_COLOR
     )
-    connect(roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
+    connect(woven_roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
+    connect(underside_emissive, "", material, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_loaded_asset(material, False)
     return material
@@ -251,9 +332,19 @@ def make_water_surface():
         fine_breakup, "", roughness_breakup, "B"
     )
     specular = scalar(material, "WaterSpecular", 0.50, -40, 220)
+    reflection_strength = scalar(material, "ReflectionStrength", 0.42, -40, 300)
+    restrained_specular = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 180, 220
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        specular, "", restrained_specular, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        reflection_strength, "", restrained_specular, "B"
+    )
     connect(color_breakup, "", material, unreal.MaterialProperty.MP_BASE_COLOR)
     connect(roughness_breakup, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
-    connect(specular, "", material, unreal.MaterialProperty.MP_SPECULAR)
+    connect(restrained_specular, "", material, unreal.MaterialProperty.MP_SPECULAR)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_loaded_asset(material, False)
     return material
@@ -709,13 +800,18 @@ def make_swatches(parent):
         unreal.EditorAssetLibrary.save_loaded_asset(instance, False)
 
 
-unreal.EditorAssetLibrary.make_directory(ROOT)
-make_vertex_lit()
-make_canopy_fabric()
-make_water_surface()
-make_terrain_lit()
-make_error_material()
-surface = make_surface_master()
-make_swatches(surface)
-unreal.EditorAssetLibrary.save_directory(ROOT, False, True)
-unreal.log("Parapenting Level 1 material library created successfully")
+def build_material_library():
+    unreal.EditorAssetLibrary.make_directory(ROOT)
+    make_vertex_lit()
+    make_canopy_fabric()
+    make_water_surface()
+    make_terrain_lit()
+    make_error_material()
+    surface = make_surface_master()
+    make_swatches(surface)
+    unreal.EditorAssetLibrary.save_directory(ROOT, False, True)
+    unreal.log("Parapenting Level 1 material library created successfully")
+
+
+if __name__ == "__main__":
+    build_material_library()

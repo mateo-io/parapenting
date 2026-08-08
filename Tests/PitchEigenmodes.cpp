@@ -4215,6 +4215,467 @@ void RecoveryEdgeCheck(const CanopyGeometry& canopy,
 }
 
 // ---------------------------------------------------------------------------
+// THE POSITIVE VERSION OF SECTION 76, which section 76 did not measure.
+//
+// Section 76 established two things by elimination and one by inference:
+//
+//   * the transient recovery edge is CL 0.18 and does NOT move with
+//     swingDampingRatio - same to 0.002 over a 2.6x range;
+//   * the static envelope edge (section 75) is CL 0.425-0.461, a factor of 2.4
+//     away, so the two are not the same number and the tidy unification failed;
+//   * therefore - and this is the INFERENCE - the coefficient acts on how much
+//     excursion the phugoid PRODUCES, not on how much the wing survives.
+//
+// The third is the useful one and it was never measured. It was arrived at by
+// subtraction: tolerance is fixed, the boundary moves, so excitation must be
+// what moves. That is sound as far as it goes and it is not a measurement of
+// anything. This check measures it, and in a form that can come out wrong.
+//
+// THE CLAIM, stated so it can fail: a departing wing leaves when its phugoid
+// trough crosses the TRANSIENT edge (CL 0.18), not the static one (CL 0.44).
+// So fly each ratio cold and record the CL trough of every phugoid cycle. The
+// sequence of troughs is the whole measurement.
+//
+// FOUR OUTCOMES, THREE OF THEM AGAINST THE CLAIM:
+//
+//   (a) the last trough before the terminal cycle sits near 0.18. The claim
+//       holds, the departure criterion is the transient edge, and section 76's
+//       recovery number - measured from a SURGE kick at STABLE ratios - has
+//       predicted something it shares no arithmetic with.
+//   (b) the last recoverable trough sits near 0.44. The static edge is the
+//       criterion after all, and section 76's factor of 2.4 means a surge
+//       transit and a phugoid transit reach low CL by genuinely different
+//       routes - which would be a finding about the currency, not a null.
+//   (c) the troughs step straight past both - 0.45, 0.30, 0.007 with nothing
+//       resolved near either. Then no scalar CL threshold is the criterion.
+//   (d) a SURVIVING ratio's troughs go below 0.18 and it does not depart. That
+//       refutes the claim outright, at no extra cost, which is why 0.30 and
+//       0.35 are in the table rather than only the departing rows.
+//
+// (c) IS THE OUTCOME TO EXPECT, and saying so in advance is the point of
+// writing it down. Section 53 already found transient amplification G = 13.9
+// while every mode decays, which is a statement that this system's behaviour is
+// not a function of any scalar. A surge kick arrives at CL 0.18 carrying 3.94
+// m/s of excess speed; the phugoid arrives at the same CL slowly, with a
+// different pitch rate and a different link angle. If CL alone were the state
+// variable that mattered, that difference would not exist. So the honest
+// prior is that this returns (c), and (c) names the next instrument: the
+// criterion is two-dimensional, and the projection onto the unstable
+// eigenvector is the currency to try next.
+//
+// THE INSTRUMENT'S OWN CONTROL, and this axis has paid three times for not
+// having one (sections 36, 48, 49: a peak counter on a two-mode signal returns
+// a confident intermediate number and does not fail). The trough SPACING is
+// printed next to every trough. The phugoid is 14-24 s depending on ratio and
+// the fast mode is 1.86 s. A column of spacings near 16 s is the identifier
+// working; a column near 2 s, or one wandering between them, means the extrema
+// being counted are not the mode being discussed and the CL numbers next to
+// them mean nothing. The reader gets to make that call rather than being told
+// the answer survived a filter.
+//
+// Two limits, stated before the run rather than after:
+//
+//   * the hysteresis is a fixed 0.002 in CL, so troughs shallower than that are
+//     not resolved at all. Early cycles of a growing oscillation are below it.
+//     That is deliberate - the claim is about the LAST few cycles, where the
+//     amplitude is large - but it means the table starts partway in and the
+//     count of troughs is not a count of cycles.
+//   * the first 25 s are discarded, the same window `--phugoid` uses, so what
+//     is counted is the phugoid rather than the cold start's fast transient.
+struct Trough
+{
+    double cl = 0.0;
+    double timeS = 0.0;
+    double incidenceDeg = 0.0;
+    double sinceLastS = 0.0;
+};
+
+struct TroughRun
+{
+    std::vector<Trough> troughs;
+    bool departed = false;
+    double departureTimeS = 0.0;
+    double flownSeconds = 0.0;
+};
+
+TroughRun TroughsOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                    double ratio, int maximumSeconds, double hysteresis = 0.002,
+                    int aerodynamicsInterval = 0)
+{
+    const double Hysteresis = hysteresis;  // in CL; see the note above
+    constexpr double SettleInS = 25.0;     // `--phugoid`'s window, same reason
+
+    CoupledParagliderSolver solver(canopy, linePlan);
+    solver.SetSwingDampingRatio(ratio);
+    if (aerodynamicsInterval > 0)
+    {
+        CoupledSchedule schedule = solver.Schedule();
+        schedule.aerodynamicsInterval = aerodynamicsInterval;
+        solver.SetSchedule(schedule);
+    }
+    CoupledState state;
+    TroughRun out;
+
+    bool falling = true;
+    double extreme = 0.0;
+    double extremeTimeS = 0.0;
+    double extremeAlphaDeg = 0.0;
+    double lastTroughTimeS = 0.0;
+    bool started = false;
+
+    const int ticks = maximumSeconds * 120;
+    for (int tick = 0; tick < ticks; ++tick)
+    {
+        solver.Step(state, CoupledControls{}, CoupledAtmosphere{});
+        const CoupledDiagnostics& d = solver.Diagnostics();
+        const double t = (tick + 1) / 120.0;
+        out.flownSeconds = t;
+        if (d.angleOfAttackRad > 0.35)
+        {
+            out.departed = true;
+            out.departureTimeS = t;
+            break;
+        }
+        if (t < SettleInS) continue;
+
+        const double cl = d.liftCoefficient;
+        const double alphaDeg = d.angleOfAttackRad * 180.0 / Pi;
+        if (!started)
+        {
+            started = true;
+            extreme = cl;
+            extremeTimeS = t;
+            extremeAlphaDeg = alphaDeg;
+            continue;
+        }
+        if (falling)
+        {
+            if (cl < extreme)
+            {
+                extreme = cl;
+                extremeTimeS = t;
+                extremeAlphaDeg = alphaDeg;
+            }
+            else if (cl > extreme + Hysteresis)
+            {
+                Trough trough;
+                trough.cl = extreme;
+                trough.timeS = extremeTimeS;
+                trough.incidenceDeg = extremeAlphaDeg;
+                trough.sinceLastS =
+                    lastTroughTimeS > 0.0 ? extremeTimeS - lastTroughTimeS : 0.0;
+                out.troughs.push_back(trough);
+                lastTroughTimeS = extremeTimeS;
+                falling = false;
+                extreme = cl;
+                extremeTimeS = t;
+                extremeAlphaDeg = alphaDeg;
+            }
+        }
+        else
+        {
+            if (cl > extreme)
+            {
+                extreme = cl;
+                extremeTimeS = t;
+                extremeAlphaDeg = alphaDeg;
+            }
+            else if (cl < extreme - Hysteresis)
+            {
+                falling = true;
+                extreme = cl;
+                extremeTimeS = t;
+                extremeAlphaDeg = alphaDeg;
+            }
+        }
+    }
+    return out;
+}
+
+void TroughCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                 int maximumSeconds)
+{
+    std::printf("THE TROUGH SEQUENCE: what does a departing wing's CL actually "
+                "do on the way out?\nSection 76 measured the transient recovery "
+                "edge at CL 0.18 and section 75 the\nstatic envelope edge at CL "
+                "0.425-0.461. A departure has to cross one of them,\nor "
+                "neither. Fly each ratio cold and print the trough of every "
+                "phugoid cycle.\n\n");
+    std::printf("  Static edge 0.425-0.461 (section 75). Transient edge 0.18 "
+                "(section 76).\n\n");
+
+    for (const double ratio : {0.35, 0.30, 0.25, 0.20})
+    {
+        const TroughRun run = TroughsOf(canopy, linePlan, ratio, maximumSeconds);
+        std::printf("ratio %.2f - %s at %.0fs, %zu troughs resolved\n", ratio,
+                    run.departed ? "DEPARTED" : "still flying",
+                    run.departed ? run.departureTimeS : run.flownSeconds,
+                    run.troughs.size());
+        if (run.troughs.empty())
+        {
+            std::printf("  none deeper than the 0.002 hysteresis - the "
+                        "oscillation never grew enough\n  to resolve, which is "
+                        "itself the answer for this row.\n\n");
+            continue;
+        }
+        // THE FIRST RUN OF THIS PRINTED THE LAST TWELVE TROUGHS AND THAT WAS
+        // THE WRONG TWELVE. On a departing row the extrema in the final second
+        // are spaced 0.1-0.7 s apart - they are the collapse itself being
+        // sampled, not cycles of a 16 s mode - so the "last trough before
+        // departure" is a number about the hysteresis. The spacing column said
+        // so immediately, which is what it was put there for.
+        //
+        // So split the list by spacing instead of by position. A trough more
+        // than 8 s after the previous one is a phugoid trough (the mode runs
+        // 14-24 s across this sweep); anything closer is not, whatever it is.
+        // The claim under test is about the phugoid's trough, so the phugoid
+        // troughs are the table and the rest is reported as a count and a
+        // time - because WHEN the wing stops producing clean 16 s cycles is a
+        // physical fact about the departure, not a defect of the instrument.
+        constexpr double PhugoidSpacingS = 8.0;
+        std::vector<std::size_t> slow;
+        std::size_t fast = 0;
+        double firstFastS = 0.0;
+        for (std::size_t i = 0; i < run.troughs.size(); ++i)
+        {
+            const double gap = run.troughs[i].sinceLastS;
+            if (gap == 0.0 || gap >= PhugoidSpacingS) { slow.push_back(i); continue; }
+            if (fast == 0) firstFastS = run.troughs[i].timeS;
+            ++fast;
+        }
+        std::printf("  %zu spaced like the phugoid, %zu closer than %.0fs",
+                    slow.size(), fast, PhugoidSpacingS);
+        if (fast > 0) std::printf(" (first at %.0fs)", firstFastS);
+        std::printf("\n");
+        std::printf("  %6s %10s %9s %10s %12s\n", "#", "trough CL", "at",
+                    "alpha", "since last");
+        const std::size_t from = slow.size() > 12 ? slow.size() - 12 : 0;
+        for (std::size_t k = from; k < slow.size(); ++k)
+        {
+            const Trough& trough = run.troughs[slow[k]];
+            std::printf("  %6zu %10.3f %8.0fs %9.2fd %11.1fs\n", slow[k] + 1,
+                        trough.cl, trough.timeS, trough.incidenceDeg,
+                        trough.sinceLastS);
+        }
+        std::printf("\n");
+    }
+
+    std::printf("  READ THE SPACING COLUMN FIRST. The phugoid is 14-24 s across "
+                "this sweep and the\n  fast mode is 1.86 s. Spacings near 16 s "
+                "mean the extrema counted are the mode\n  under discussion; "
+                "spacings near 2 s, or wandering between the two, mean they\n  "
+                "are not, and every CL beside them is a number about the "
+                "identifier. Sections 36,\n  48 and 49 are three separate "
+                "occasions when that distinction was the whole\n  finding.\n\n");
+    std::printf("  THEN THE LAST TROUGH OF A DEPARTING ROW. Near 0.18 and the "
+                "transient edge is the\n  departure criterion, predicted by a "
+                "surge kick at ratios that do not depart.\n  Near 0.44 and it "
+                "is the static edge instead. Past both, unresolved, and no\n  "
+                "scalar CL threshold is the criterion - which is what section "
+                "53's amplification\n  of 13.9 under decaying modes would "
+                "already lead one to expect.\n\n");
+    std::printf("  THE FALSIFIER IS THE SURVIVING ROWS. If 0.35 or 0.30 troughs "
+                "below 0.18 and keeps\n  flying, the claim is dead where it "
+                "stands, and it cost nothing to include them.\n\n");
+
+    // THE CONTROL ON THE CLOSE-SPACED TROUGHS, and it is not optional.
+    //
+    // Ratio 0.25 produced 415 troughs spaced closer than 8 s, starting at 177 s
+    // and running for the 290 s before it departs. Spaced at 0.1 s. The
+    // aerodynamic solve runs every 12 steps of 120 Hz, which is 0.1 s exactly.
+    // Two readings fit that and they say opposite things:
+    //
+    //   * the wing genuinely stops doing a clean phugoid at 177 s and develops
+    //     structure that the linearisation of §50 would not contain - which
+    //     would be the most interesting thing on this axis in several levels;
+    //   * or dCL/dt has grown until the 0.1 s hold's own steps exceed the
+    //     0.002 hysteresis, and the identifier has started counting the
+    //     discretisation. Nothing about the aircraft at all.
+    //
+    // Two knobs separate them, and each isolates one candidate. Raising the
+    // hysteresis should erase the close troughs if they are small steps riding
+    // on a good phugoid, and leave them if they are real excursions. Changing
+    // the aerodynamic interval should MOVE their spacing if they are the hold,
+    // and leave it if they are the wing. A candidate that survives both is
+    // worth a section; one that fails either is worth a line.
+    //
+    // §36, §48 and §49 are the same lesson three times: the identifier reports
+    // a confident number rather than failing. This is the cheapest place this
+    // axis has ever had to check one, because both knobs already exist.
+    std::printf("CONTROL: are the close-spaced troughs the wing, or the 0.1s "
+                "aerodynamic hold?\n\n");
+    std::printf("%10s %8s %12s %10s %12s %14s\n", "hysteresis", "aero",
+                "phugoid-like", "closer", "first close", "departs");
+    struct Variant { double hysteresis; int interval; };
+    for (const Variant& variant : {Variant{0.002, 0}, Variant{0.010, 0},
+                                   Variant{0.030, 0}, Variant{0.002, 6},
+                                   Variant{0.002, 24}})
+    {
+        const TroughRun run = TroughsOf(canopy, linePlan, 0.25, maximumSeconds,
+                                        variant.hysteresis, variant.interval);
+        std::size_t slow = 0, fast = 0;
+        double firstFastS = 0.0;
+        for (const Trough& trough : run.troughs)
+        {
+            if (trough.sinceLastS == 0.0 || trough.sinceLastS >= 8.0) { ++slow; continue; }
+            if (fast == 0) firstFastS = trough.timeS;
+            ++fast;
+        }
+        std::printf("%10.3f %7.2fs %12zu %10zu %11.0fs %13.0fs\n",
+                    variant.hysteresis,
+                    (variant.interval > 0 ? variant.interval : 12) / 120.0,
+                    slow, fast, firstFastS,
+                    run.departed ? run.departureTimeS : 0.0);
+    }
+    std::printf("\n  The departure time is the row that says whether these "
+                "knobs changed the FLIGHT.\n  The aerodynamic interval does "
+                "change the physics slightly and is expected to move\n  it a "
+                "little; the hysteresis is read-only and must not move it at "
+                "all.\n\n");
+    std::printf("  IT DID NOT MOVE IT A LITTLE. The hysteresis behaved - 415 "
+                "close troughs fall to\n  23 while the phugoid count holds at "
+                "22-24 and the departure stays at 470s to the\n  second, so "
+                "the close troughs are small ripple on a good phugoid and are "
+                "NOT a\n  finding. The aerodynamic interval is a different "
+                "matter: at 0.05s this wing does\n  not depart at all inside "
+                "900s, and at 0.20s it departs at 163s. That is not a\n  "
+                "sampling choice, it is the answer changing. See the sweep "
+                "below.\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// THE QUESTION THE CONTROL RAISED, WHICH IS BIGGER THAN THE ONE IT CONTROLLED.
+//
+// Item 11 has a bullet, several levels old, saying "It is NOT the schedule -
+// solving at 120 Hz instead of 10 Hz moves the 60 s incidence spread from
+// 0.597 to 0.528 degrees, consistent with a physical mode rather than a
+// discretisation artefact."
+//
+// That bullet is true and it does not cover this. It was measured on a SETTLING
+// wing at ratio 0.35 - it asks whether the slow mode's decay is real. It says
+// nothing about a DEPARTING wing at 0.25, because there was no departing wing
+// in it. The stability BOUNDARY has never been checked against the schedule at
+// all, and the trough control above found the departure time moving by a factor
+// of three, in the direction where less discretisation means more stability.
+//
+// There is independent reason to take this seriously rather than treat it as a
+// stray number. §47 found that Phi(T) is not an exponential family - A00 changes
+// sign between T = 0.10 and T = 0.50 - and named the 0.1 s aerodynamic hold as
+// the culprit. So this hold is already on the record as dynamically significant
+// rather than a benign sampling interval. Two independent measurements now point
+// at the same 0.1 s.
+//
+// THE MEASUREMENT: find the boundary ratio at each aerodynamic interval. If it
+// sits at the same ratio, the schedule affects how fast a departure develops and
+// not whether one exists, `swingDampingRatio` = 0.35 stands, and this is a
+// footnote. If the boundary MOVES with the interval, then some part of what 0.35
+// is standing in for is the 10 Hz hold, and item 11 has been searching the
+// physics for a defect in the schedule.
+//
+// WHAT WOULD MAKE THIS WRONG, stated first. A budget that is too short reads
+// "did not depart" off a wing that departs at 1900 s, and the 0.05 s column is
+// exactly where that error would land because it is the slowest one. So the
+// budget is 1800 s - four times the 470 s that 0.10 s takes - and the lowest CL
+// reached is printed beside every row, because a wing that is quietly growing
+// towards a departure looks nothing like one that has settled, and the settle
+// flag alone would not distinguish them.
+struct ScheduleOutcome
+{
+    bool departed = false;
+    bool settled = false;
+    double departureTimeS = 0.0;
+    double lowestCL = 10.0;
+    double finalSpreadDeg = 0.0;
+};
+
+ScheduleOutcome ScheduleOutcomeAt(const CanopyGeometry& canopy,
+                                  const LinePlanSpec& linePlan, double ratio,
+                                  int aerodynamicsInterval, int maximumSeconds)
+{
+    CoupledParagliderSolver solver(canopy, linePlan);
+    solver.SetSwingDampingRatio(ratio);
+    CoupledSchedule schedule = solver.Schedule();
+    schedule.aerodynamicsInterval = aerodynamicsInterval;
+    solver.SetSchedule(schedule);
+
+    CoupledState state;
+    ScheduleOutcome out;
+    constexpr double SpreadToleranceRad = 1.7e-4;
+    double low = 0.0, high = 0.0;
+    int inWindow = 0;
+    for (int second = 0; second < maximumSeconds && !out.departed; ++second)
+    {
+        for (int step = 0; step < 120; ++step)
+        {
+            solver.Step(state, CoupledControls{}, CoupledAtmosphere{});
+            const CoupledDiagnostics& d = solver.Diagnostics();
+            if (d.angleOfAttackRad > 0.35)
+            {
+                out.departed = true;
+                out.departureTimeS = second + (step + 1) / 120.0;
+                break;
+            }
+            out.lowestCL = std::min(out.lowestCL, d.liftCoefficient);
+            if (inWindow == 0) { low = high = d.angleOfAttackRad; }
+            low = std::min(low, d.angleOfAttackRad);
+            high = std::max(high, d.angleOfAttackRad);
+            ++inWindow;
+        }
+        if (inWindow >= 120 * 10)
+        {
+            out.finalSpreadDeg = (high - low) * 180.0 / Pi;
+            if (high - low < SpreadToleranceRad) { out.settled = true; break; }
+            inWindow = 0;
+        }
+    }
+    return out;
+}
+
+void ScheduleBoundaryCheck(const CanopyGeometry& canopy,
+                           const LinePlanSpec& linePlan, int maximumSeconds)
+{
+    std::printf("DOES THE STABILITY BOUNDARY MOVE WITH THE AERODYNAMIC HOLD?\n"
+                "Item 11 records that the schedule is not the slow mode - "
+                "measured on a SETTLING\nwing at ratio 0.35, which is a "
+                "different question from this one. The control\nabove found "
+                "ratio 0.25's departure moving 163s / 470s / never as the hold "
+                "goes\n0.20 / 0.10 / 0.05s. So ask where the boundary is at "
+                "each hold.\n\n");
+    std::printf("%8s %10s %12s %12s %12s %12s\n", "ratio", "hold",
+                "outcome", "at", "lowest CL", "spread");
+    for (const int interval : {6, 12, 24})
+    {
+        for (const double ratio : {0.35, 0.30, 0.25, 0.20})
+        {
+            const ScheduleOutcome outcome = ScheduleOutcomeAt(
+                canopy, linePlan, ratio, interval, maximumSeconds);
+            std::printf("%8.2f %9.2fs %12s ", ratio, interval / 120.0,
+                        outcome.departed ? "DEPARTED"
+                            : outcome.settled ? "settled" : "still moving");
+            if (outcome.departed)
+                std::printf("%11.0fs ", outcome.departureTimeS);
+            else
+                std::printf("%12s ", "-");
+            std::printf("%12.3f %11.3fd\n", outcome.lowestCL,
+                        outcome.finalSpreadDeg);
+        }
+        std::printf("\n");
+    }
+    std::printf("  THE COLUMN THAT DECIDES IT is which ratios depart, not when. "
+                "If the same ratios\n  depart at every hold, the schedule sets "
+                "the RATE of a real instability and 0.35\n  is a property of "
+                "the aircraft. If a ratio departs at 0.20s and survives at "
+                "0.05s,\n  then part of what pins the coefficient is the hold, "
+                "and eleven levels of\n  searching the physics have been "
+                "looking in the wrong place.\n\n");
+    std::printf("  READ 'still moving' AS NEITHER. Its lowest-CL column is the "
+                "tell: a wing quietly\n  growing towards a departure sits well "
+                "below trim CL 0.54 and one that has nearly\n  settled does "
+                "not. A 1800s budget is four times what the 0.10s hold needs, "
+                "and it\n  is still a budget.\n\n");
+}
+
+// ---------------------------------------------------------------------------
 // Pointing item 12 at item 11: is the missing drag the missing stabiliser?
 //
 // Everything above searched the LINK. Section 54 finished that search in the
@@ -5180,6 +5641,7 @@ int main(int argc, char** argv)
     bool pilot = false;
     bool swing = false;
     bool departureCL = false;
+    bool trough = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -5198,6 +5660,7 @@ int main(int argc, char** argv)
         if (argument == "--pilot") pilot = true;
         if (argument == "--swing") swing = true;
         if (argument == "--departure-cl") departureCL = true;
+        if (argument == "--trough") trough = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -5361,6 +5824,25 @@ int main(int argc, char** argv)
         const int maximum = settleSeconds < 420 ? 180 : 900;
         DepartureCLCheck(canopy, linePlan, maximum);
         RecoveryEdgeCheck(canopy, linePlan, maximum);
+    }
+
+    if (trough)
+    {
+        // 900 s, chosen rather than inherited. It is the shortest budget that
+        // contains every event this check reads: 0.20 departs at 92 s, 0.25 at
+        // 469 s, and 0.30 is still growing at 885 s, which is exactly the row
+        // whose troughs have to be watched all the way to the end without
+        // departing. 0.35 settles at 410 s and simply stops producing troughs.
+        //
+        // NOT the amplitude block's 3600. That budget exists so "0.30 does not
+        // settle" is a statement about the aircraft rather than the clock -
+        // a question this check does not ask, and taking it from the
+        // neighbouring block is the forty-minute mistake §76 recorded.
+        TroughCheck(canopy, linePlan, settleSeconds < 420 ? 180 : 900);
+        // 1800, not 900, and for a reason this check has that the one above
+        // does not: it must be able to tell "does not depart" from "departs
+        // later than I watched", and the 0.05 s hold is the slowest column.
+        ScheduleBoundaryCheck(canopy, linePlan, settleSeconds < 420 ? 300 : 1800);
     }
 
     if (drag)

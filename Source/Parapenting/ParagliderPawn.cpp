@@ -46,6 +46,54 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
+namespace
+{
+struct CanopyColourway
+{
+    Parapenting::Physics::WingProfileId wing;
+    FLinearColor body;
+    FLinearColor centre;
+    FLinearColor tip;
+};
+
+// Presentation data deliberately lives beside the renderer rather than in
+// WingParameters: changing a colourway must never change handling, replay
+// inputs, or the authoritative wing package.
+const CanopyColourway& ColourwayFor(
+    Parapenting::Physics::WingProfileId Wing)
+{
+    static const CanopyColourway Colourways[] = {
+        {Parapenting::Physics::WingProfileId::TrainingA,
+            FLinearColor(0.92f, 0.74f, 0.045f),
+            FLinearColor(0.98f, 0.91f, 0.28f),
+            FLinearColor(0.045f, 0.10f, 0.18f)},
+        {Parapenting::Physics::WingProfileId::AlpineAPlus,
+            FLinearColor(0.74f, 0.10f, 0.32f),
+            FLinearColor(0.97f, 0.68f, 0.77f),
+            FLinearColor(0.10f, 0.045f, 0.16f)},
+        {Parapenting::Physics::WingProfileId::Epic2MLResearch,
+            FLinearColor(0.92f, 0.16f, 0.035f),
+            FLinearColor(1.0f, 0.56f, 0.035f),
+            FLinearColor(0.055f, 0.10f, 0.18f)},
+        {Parapenting::Physics::WingProfileId::CrossCountryB,
+            FLinearColor(0.035f, 0.40f, 0.42f),
+            FLinearColor(0.50f, 0.82f, 0.72f),
+            FLinearColor(0.025f, 0.09f, 0.12f)},
+        {Parapenting::Physics::WingProfileId::SportB,
+            FLinearColor(0.38f, 0.72f, 0.055f),
+            FLinearColor(0.78f, 0.92f, 0.15f),
+            FLinearColor(0.035f, 0.055f, 0.045f)},
+        {Parapenting::Physics::WingProfileId::AdvanceEpsilonDls28Research,
+            FLinearColor(0.09f, 0.30f, 0.74f),
+            FLinearColor(0.48f, 0.72f, 0.98f),
+            FLinearColor(0.055f, 0.075f, 0.16f)},
+    };
+    for (const CanopyColourway& Colourway : Colourways)
+        if (Colourway.wing == Wing) return Colourway;
+    return Colourways[2];
+}
+}
+
 AParagliderPawn::AParagliderPawn()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -2036,6 +2084,7 @@ void AParagliderPawn::BuildCanopyMesh()
     Normals.Init(FVector::UpVector, SurfaceVertexCount * 2);
     UVs.SetNum(SurfaceVertexCount * 2);
     Colors.SetNum(SurfaceVertexCount * 2);
+    const CanopyColourway& Colourway = ColourwayFor(SelectedWing);
 
     for (int32 S = 0; S < SpanCount; ++S)
     {
@@ -2080,12 +2129,15 @@ void AParagliderPawn::BuildCanopyMesh()
                 0.04f, 0.22f, AbsSpan);
             const float PanelValue = (S % 2) == 0 ? 1.0f : 0.91f;
             FLinearColor Panel = FMath::Lerp(
-                FLinearColor(0.92f, 0.16f, 0.035f),
-                FLinearColor(1.0f, 0.56f, 0.035f), CentrePanel);
+                Colourway.body, Colourway.centre, CentrePanel);
             Panel = FMath::Lerp(
-                Panel, FLinearColor(0.055f, 0.10f, 0.18f), TipPanel);
+                Panel, Colourway.tip, TipPanel);
             Panel *= PanelValue;
-            Colors[Index] = Panel.ToFColor(false);
+            // Vertex colours are stored as 8-bit sRGB and decoded by the
+            // material. Match the terrain path's explicit linear-to-sRGB
+            // conversion; raw linear bytes made the canopy colourways read
+            // almost black in the packaged Metal renderer.
+            Colors[Index] = Panel.ToFColor(true);
             Colors[Index + SurfaceVertexCount] = Colors[Index];
         }
     }
@@ -2660,6 +2712,7 @@ void AParagliderPawn::SelectWing(Parapenting::Physics::WingProfileId Id)
 {
     SelectedWing = Id;
     ApplyEquipmentConfiguration();
+    BuildCanopyMesh();
     ResetFlight();
 }
 

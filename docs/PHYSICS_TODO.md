@@ -631,9 +631,13 @@ stands in for, and it is checkable against a real wing in a way "the period is
   that a residual at 60 s "could not be a decaying mode", when the mode
   actually decaying has a fifth of that damping and five times the period.
   Two modes, and only the fast one had ever been characterised.
-- **It is not the schedule.** Solving the aerodynamics at 120 Hz instead of
-  10 Hz moves the 60 s spread from 0.597° to 0.528°. Consistent with a
-  physical mode rather than a discretisation artefact.
+- **It is not the schedule — for the SLOW MODE, which is all this measured.**
+  Solving the aerodynamics at 120 Hz instead of 10 Hz moves the 60 s spread
+  from 0.597° to 0.528°. Consistent with a physical mode rather than a
+  discretisation artefact. **Scope, added by §77: this was run on a settling
+  wing at ratio 0.35 and contains no departure, so it says nothing about the
+  stability boundary.** The boundary was tested separately and the answer is
+  split — classes invariant, rate not. See the schedule sweep below.
 - **It is not the section's stall hysteresis.** Hands-up the wing flies at
   4.9° against a section stall near 12°, so that loop is nowhere near active.
 - Settled properly at 960 s: hands-up **4.925°**, 25% brake **5.724°**. Brake
@@ -1049,6 +1053,58 @@ stands in for, and it is checkable against a real wing in a way "the period is
   outside what a linearisation claims — not a contradiction, not reconciled
   either.~~ **Closed by §49 and §50:** it was the peak counter, and the flown
   trace is in the span of the two known modes to a few per cent.
+- **The departure is not a threshold crossing (§77).** `pitch_eigenmodes
+  --trough` prints the CL trough of every phugoid cycle. Ratio 0.20, on clean
+  14.8–17.8 s spacing: **0.481, 0.442, 0.380, 0.287, 0.014**. The wing flies
+  *through* §75's static edge (0.425–0.461) and keeps flying, and the terminal
+  cycle goes past §76's transient edge (0.18) without resolving near it.
+  **Neither edge is the criterion.** The excursion grows ×1.6 per cycle for four
+  cycles and then the fifth overshoots that geometry — the departure is where
+  the growth stops being exponential.
+- That was predicted in advance for §53's reason: amplification G = 13.9 under
+  decaying modes says the behaviour is not a function of any scalar. §76's
+  factor of 2.4 between the two edges was never two estimates of one quantity.
+- **The close-spaced troughs are ripple, and the control says so.** Ratio 0.25
+  shows 415 troughs spaced at 0.1 s — the aerodynamic hold exactly. Raising the
+  hysteresis 0.002 → 0.030 takes them 415 → 91 → 23 while the phugoid count
+  holds at 22–24 and the departure stays at 470 s to the second. Not a finding,
+  and checked before the number was read rather than after (§36, §48, §49).
+- **THE BULLET ABOVE SAYING "It is not the schedule" DOES NOT COVER THE
+  BOUNDARY.** It was measured on a *settling* wing at ratio 0.35 — there is no
+  departure in it. `--trough`'s schedule sweep, 1800 s, is the first time the
+  stability boundary has been tested against the aerodynamic hold:
+
+| ratio | hold 0.05 s | hold 0.10 s | hold 0.20 s |
+|---|---|---|---|
+| 0.35 | settled, CL 0.511 | settled, CL 0.507 | settled, CL 0.497 |
+| 0.30 | moving, CL 0.508, 0.69° | moving, CL 0.386, 5.9° | moving, CL 0.303, 10.2° |
+| 0.25 | moving, CL 0.224, 6.9° | DEPARTED 470 s | DEPARTED 163 s |
+| 0.20 | DEPARTED 96 s | DEPARTED 92 s | DEPARTED 94 s |
+
+- **The stability classes are schedule-invariant and the instability is real.**
+  0.35 settles at every hold; **0.20 departs at 96 / 92 / 94 s across a fourfold
+  change in the hold**, which is the cleanest control row here.
+  `swingDampingRatio` = 0.35 is not an artefact.
+- **The RATE near the boundary is not invariant.** Ratio 0.30's excursion at
+  1800 s runs CL 0.508 → 0.386 → 0.303 as the hold coarsens — nearly settled to
+  strongly growing. **§39 located the boundary between 0.35 and 0.30 on 0.30
+  failing to settle inside a budget, and that is exactly the quantity that
+  moves.** The location has been quoted to two digits for several levels and
+  should not be, until it is re-derived at a stated hold.
+- **A window statement of mine was corrected by its own instrument, and it is
+  on the record because it nearly became the headline.** Over 900 s, ratio 0.25
+  "did not depart" at the 0.05 s hold. At 1800 s it is at CL 0.224 with a 6.9°
+  spread against a trim CL of 0.54 — not stable, slower. The lowest-CL column
+  was put in the table before the run precisely so "still moving" could not be
+  read as "settled". Fourth instance of §73/§74/§75's pattern; the only one that
+  cost nothing.
+- **Next:** re-derive §39's boundary location at a stated aerodynamic hold, and
+  find out whether the ×1.6 per-cycle growth rate — which is a *rate*, the
+  quantity the coefficient actually acts on per §76 — is the right currency for
+  the boundary. It is measurable at every ratio that oscillates at all,
+  including the stable ones where it should be below 1.0, which makes it the
+  first quantity on this axis that is continuous across the boundary rather than
+  a yes/no departure.
 - Done when: the wing settles in a time a pilot would recognise with a damping
   ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
   aircraft from departing.

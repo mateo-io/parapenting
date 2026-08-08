@@ -499,36 +499,10 @@ void AParapentingGameMode::BeginPlay()
         LakeSurface->SetCastShadow(false);
         LakeSurface->RegisterComponent();
 
-        // A tapered shoreline silhouette replaces the kilometre-scale engine
-        // plane whose rectangular edge drew a ruler-straight horizon through
-        // the Amisbuehl corridor. Coordinates remain in the same surveyed
-        // route frame and the water elevation remains -6.8 m in the Lehn
-        // datum (558 m MSL).
         // swissALTI3D samples the lake at about -7.34 m in the Lehn datum.
         // Keep a 4 cm render-only lift to avoid z fighting without making the
         // lake look like a cyan slab floating above the surveyed shore.
         constexpr float LakeHeightCm = -730.0f;
-        const TArray<FVector2D> ShoreM = {
-            // Derived from the contiguous -7 m water footprint in the
-            // surveyed Interlaken heightfield, simplified only enough to keep
-            // the procedural shoreline light. The previous 3 km fragment was
-            // north-west of this footprint and therefore almost never entered
-            // a normal Amisbuehl flight view.
-            // Convex, survey-aligned silhouette: keeping it convex is
-            // intentional because this lightweight mesh uses a centre fan;
-            // a future exact shoreline uses an ear-clipped/vector import.
-            FVector2D(2040.0f, 4500.0f),
-            FVector2D(4980.0f, 4500.0f),
-            FVector2D(5020.0f, 4100.0f),
-            FVector2D(4800.0f, 3000.0f),
-            FVector2D(4720.0f, 700.0f),
-            FVector2D(4340.0f, -100.0f),
-            FVector2D(3780.0f, -700.0f),
-            FVector2D(2720.0f, -1900.0f),
-            FVector2D(2540.0f, -1700.0f),
-            FVector2D(1800.0f, 2500.0f),
-            FVector2D(1960.0f, 3100.0f)
-        };
         TArray<FVector> LakeVertices;
         TArray<int32> LakeTriangles;
         TArray<FVector> LakeNormals;
@@ -540,10 +514,17 @@ void AParapentingGameMode::BeginPlay()
         // broad polygon that visibly poured cyan water over adjacent fields.
         constexpr float WaterThresholdM = -6.5f;
         constexpr float CellSizeM = 20.0f;
-        for (float Y = -1900.0f; Y < 4500.0f; Y += CellSizeM)
+        constexpr float LakeMinXM = 1740.0f;
+        constexpr float LakeMinYM = -1900.0f;
+        constexpr int32 LakeCellCountX = 165;
+        constexpr int32 LakeCellCountY = 320;
+        TSet<FIntPoint> WaterCells;
+        for (int32 YIndex = 0; YIndex < LakeCellCountY; ++YIndex)
         {
-            for (float X = 1740.0f; X < 5040.0f; X += CellSizeM)
+            const float Y = LakeMinYM + YIndex * CellSizeM;
+            for (int32 XIndex = 0; XIndex < LakeCellCountX; ++XIndex)
             {
+                const float X = LakeMinXM + XIndex * CellSizeM;
                 const float H00 = static_cast<float>(
                     Parapenting::Physics::TerrainModel::HeightM(X, Y));
                 const float H10 = static_cast<float>(
@@ -556,6 +537,8 @@ void AParapentingGameMode::BeginPlay()
                 if (FMath::Max(FMath::Max(H00, H10), FMath::Max(H11, H01))
                     > WaterThresholdM) continue;
 
+                WaterCells.Add(FIntPoint(XIndex, YIndex));
+
                 const int32 Base = LakeVertices.Num();
                 for (const FVector2D PointM : {
                          FVector2D(X, Y), FVector2D(X + CellSizeM, Y),
@@ -566,8 +549,8 @@ void AParapentingGameMode::BeginPlay()
                         PointM.X * 100.0f, PointM.Y * 100.0f, LakeHeightCm));
                     LakeNormals.Add(FVector::UpVector);
                     LakeUVs.Add(FVector2D(
-                        (PointM.X - 1740.0f) / 3300.0f,
-                        (PointM.Y + 1900.0f) / 6400.0f));
+                        (PointM.X - LakeMinXM) / 3300.0f,
+                        (PointM.Y - LakeMinYM) / 6400.0f));
                     LakeColors.Add(FColor::White);
                     LakeTangents.Add(FProcMeshTangent(FVector::ForwardVector, false));
                 }
@@ -601,18 +584,14 @@ void AParapentingGameMode::BeginPlay()
         }
 
         // A narrow wet bank breaks the perfect water/terrain cut without
-        // modifying the surveyed heightfield used by flight physics. The
-        // inner edge hugs the water datum; the outer edge samples terrain so
-        // the strip naturally disappears into steeper banks.
+        // modifying the surveyed heightfield used by flight physics. Unlike
+        // the retired hand-drawn shore polygon, this generates only on the
+        // exposed edges of the same surveyed cells that make the lake.
         UProceduralMeshComponent* Shoreline =
             NewObject<UProceduralMeshComponent>(Lake, TEXT("LakeThunShoreline"));
         Shoreline->SetupAttachment(LakeSurface);
         Shoreline->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Shoreline->SetCastShadow(false);
-        // The shoreline's previous broad approximation is kept only as an
-        // implementation reference. The surveyed cell mesh supplies the
-        // accurate terrain-water edge, so do not draw an offset second shore.
-        Shoreline->SetVisibility(false);
         Shoreline->RegisterComponent();
         TArray<FVector> ShoreVertices;
         TArray<int32> ShoreTriangles;
@@ -620,35 +599,62 @@ void AParapentingGameMode::BeginPlay()
         TArray<FVector2D> ShoreUVs;
         TArray<FColor> ShoreColors;
         TArray<FProcMeshTangent> ShoreTangents;
-        const FVector2D ShoreCentreM(3400.0f, 2400.0f);
-        constexpr float ShoreWidthM = 18.0f;
-        for (int32 PointIndex = 0; PointIndex < ShoreM.Num(); ++PointIndex)
+        constexpr float WetBankWidthM = 9.0f;
+        auto AddWetBankEdge = [&ShoreVertices, &ShoreTriangles, &ShoreNormals,
+            &ShoreUVs, &ShoreColors, &ShoreTangents, LakeHeightCm](
+                const FVector2D& InnerA, const FVector2D& InnerB,
+                const FVector2D& Outward)
         {
-            const FVector2D InnerM = ShoreM[PointIndex];
-            const FVector2D Outward =
-                (InnerM - ShoreCentreM).GetSafeNormal();
-            const FVector2D OuterM = InnerM + Outward * ShoreWidthM;
-            const float OuterGroundM = static_cast<float>(
-                Parapenting::Physics::TerrainModel::HeightM(
-                    OuterM.X, OuterM.Y));
-            ShoreVertices.Add(FVector(
-                InnerM.X * 100.0f, InnerM.Y * 100.0f,
-                LakeHeightCm + 3.0f));
-            ShoreVertices.Add(FVector(
-                OuterM.X * 100.0f, OuterM.Y * 100.0f,
-                OuterGroundM * 100.0f + 8.0f));
-            ShoreNormals.Append({FVector::UpVector, FVector::UpVector});
-            ShoreUVs.Append({
-                FVector2D(PointIndex / static_cast<float>(ShoreM.Num()), 0.0f),
-                FVector2D(PointIndex / static_cast<float>(ShoreM.Num()), 1.0f)});
-            ShoreColors.Append({FColor::White, FColor::White});
-            ShoreTangents.Append({
+            const FVector2D OuterA = InnerA + Outward * WetBankWidthM;
+            const FVector2D OuterB = InnerB + Outward * WetBankWidthM;
+            const float OuterHeightA = FMath::Max(
+                LakeHeightCm + 5.0f,
+                static_cast<float>(Parapenting::Physics::TerrainModel::HeightM(
+                    OuterA.X, OuterA.Y)) * 100.0f + 8.0f);
+            const float OuterHeightB = FMath::Max(
+                LakeHeightCm + 5.0f,
+                static_cast<float>(Parapenting::Physics::TerrainModel::HeightM(
+                    OuterB.X, OuterB.Y)) * 100.0f + 8.0f);
+            const int32 Base = ShoreVertices.Num();
+            ShoreVertices.Append({
+                FVector(InnerA.X * 100.0f, InnerA.Y * 100.0f, LakeHeightCm + 5.0f),
+                FVector(InnerB.X * 100.0f, InnerB.Y * 100.0f, LakeHeightCm + 5.0f),
+                FVector(OuterB.X * 100.0f, OuterB.Y * 100.0f, OuterHeightB),
+                FVector(OuterA.X * 100.0f, OuterA.Y * 100.0f, OuterHeightA)});
+            ShoreNormals.Append({FVector::UpVector, FVector::UpVector,
+                FVector::UpVector, FVector::UpVector});
+            ShoreUVs.Append({FVector2D::ZeroVector, FVector2D(1.0f, 0.0f),
+                FVector2D(1.0f, 1.0f), FVector2D(0.0f, 1.0f)});
+            ShoreColors.Append({FColor::White, FColor::White,
+                FColor::White, FColor::White});
+            ShoreTangents.Append({FProcMeshTangent(FVector::ForwardVector, false),
+                FProcMeshTangent(FVector::ForwardVector, false),
                 FProcMeshTangent(FVector::ForwardVector, false),
                 FProcMeshTangent(FVector::ForwardVector, false)});
-            const int32 Next = (PointIndex + 1) % ShoreM.Num();
-            ShoreTriangles.Append({
-                PointIndex * 2, Next * 2 + 1, Next * 2,
-                PointIndex * 2, PointIndex * 2 + 1, Next * 2 + 1});
+            // Clockwise, matching the lake and terrain front-face convention.
+            ShoreTriangles.Append({Base, Base + 2, Base + 1,
+                Base, Base + 3, Base + 2});
+        };
+        for (int32 YIndex = 0; YIndex < LakeCellCountY; ++YIndex)
+        {
+            for (int32 XIndex = 0; XIndex < LakeCellCountX; ++XIndex)
+            {
+                if (!WaterCells.Contains(FIntPoint(XIndex, YIndex))) continue;
+                const float X = LakeMinXM + XIndex * CellSizeM;
+                const float Y = LakeMinYM + YIndex * CellSizeM;
+                if (!WaterCells.Contains(FIntPoint(XIndex, YIndex - 1)))
+                    AddWetBankEdge(FVector2D(X, Y), FVector2D(X + CellSizeM, Y),
+                        FVector2D(0.0f, -1.0f));
+                if (!WaterCells.Contains(FIntPoint(XIndex + 1, YIndex)))
+                    AddWetBankEdge(FVector2D(X + CellSizeM, Y),
+                        FVector2D(X + CellSizeM, Y + CellSizeM), FVector2D(1.0f, 0.0f));
+                if (!WaterCells.Contains(FIntPoint(XIndex, YIndex + 1)))
+                    AddWetBankEdge(FVector2D(X + CellSizeM, Y + CellSizeM),
+                        FVector2D(X, Y + CellSizeM), FVector2D(0.0f, 1.0f));
+                if (!WaterCells.Contains(FIntPoint(XIndex - 1, YIndex)))
+                    AddWetBankEdge(FVector2D(X, Y + CellSizeM), FVector2D(X, Y),
+                        FVector2D(-1.0f, 0.0f));
+            }
         }
         Shoreline->CreateMeshSection(
             0, ShoreVertices, ShoreTriangles, ShoreNormals, ShoreUVs,

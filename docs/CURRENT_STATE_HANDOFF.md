@@ -36,17 +36,26 @@ the list.
 twist and flying the aircraft gives 0.0272 rad/s per degree, linear, so a real
 wing's 0.20 rad/s wants about **seven degrees** — but **the aircraft spirally
 departs at four**. A stable turn tops out near 0.09 rad/s. **Perfect canopy
-torsion would not reach a real wing's turn**, so item 25 — the turn envelope —
-is in front of item 21, and it needs no new level to work on. That is the
-recommended next thread.
+torsion would not reach a real wing's turn**, so a stability problem is in
+front of item 21.
 
-§73 also reported that every stable turn banks only 38–40% of its own
-coordinated bank and read that as a skid. **§74 measured it and there is no
-skid**: sideslip is under 0.1°, and the payload link — where 95 of the 105 kg
-hangs — sits at the coordinated bank within 2%. The canopy sits inboard by
-exactly the deflection the line roll spring needs to carry the twist's steady
-roll moment. `bankRad` is the canopy's angle and the coordinated-bank formula
-is about the link's. Item 25 is the spiral alone.
+**That problem has a name, and it is item 11** (§74, §75). §73 opened item 25
+for it — a spiral departure plus a skid in every turn — and both halves have
+since been measured and closed:
+
+- **There is no skid** (§74). Sideslip is under 0.1°, measured rather than
+  inferred. `bankRad` is the CANOPY's bank; the payload link, where 95 of the
+  105 kg hangs, sits at the coordinated bank within 2%. The canopy sits inboard
+  by exactly the line roll spring's deflection under the twist's steady roll
+  moment. §73 compared the canopy's angle against a formula about the link's.
+- **The spiral is the pitch divergence** (§75). Walked to the edge, the turn
+  envelope ends at CL 0.461; the accelerator — same aircraft, same CL scale,
+  no turn at all — ends at CL 0.425. Indistinguishable at the resolution
+  either sweep has, so it is one mechanism reached two ways.
+
+**So the recommended next thread is item 11**, which was already the top of the
+list. Also worth carrying: the loop gain's CL 0.35 is an optimistic static
+estimate — the flown aircraft departs near **CL 0.44** by either route.
 
 ## Product direction
 

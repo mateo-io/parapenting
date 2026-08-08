@@ -95,10 +95,11 @@ flight and clearance continue to query `TerrainModel`. Its dedicated
 with restrained world-space broad and fine breakup; weather changes its
 roughness and specular response through a dynamic material instance;
 the Aare reuses it through a darker, rougher dynamic instance on a continuous
-terrain-following ribbon. Lake Thun's water edge is softened by an 18 m
-render-only wet-bank strip: its inner edge follows the water datum and its outer
-edge samples `TerrainModel`, without changing collision or flight height
-queries. Brienz and less uniform authored shoreline variation remain later
+terrain-following ribbon. Lake Thun's water edge is softened by a 9 m
+render-only wet-bank strip generated from each exposed surveyed-water cell:
+its inner edge follows the water datum and its outer edge samples
+`TerrainModel`, without changing collision or flight height queries. Brienz
+and less uniform authored shoreline variation remain later
 Level 3 work.
 
 The fixed midday capture showed that the broad straight blue division remains

@@ -3529,6 +3529,62 @@ torsion still would not reach it. What is gone is the hypothesis that the
 spiral and the skid might be one fault — there is no second fault to be the
 same one.
 
+## 75. The spiral is not a spiral: it is the pitch divergence, and the turn is just another way of reaching it
+
+§73 found the aircraft departing between 3° and 4° of imposed twist, called it
+a spiral departure on the strength of the turn rate reaching 3.48 rad/s, and
+left it as item 25 — a stability problem in front of the canopy-torsion level.
+The same run reported incidence falling from 4.7° to below zero and speed
+climbing past 21 m/s, which is the signature of a mechanism this stack has
+carried a name for since the item 10 rewrite.
+
+**Both departure boundaries are the same lift coefficient.**
+
+| twist | settled CL | | bar | settled CL |
+|---|---|---|---|---|
+| 3.0° | 0.508 | | 0% | 0.551 |
+| 3.4° | 0.491 | | 10% | 0.486 |
+| 3.6° | 0.480 | | 15% | 0.478 |
+| 3.8° | **0.461** | | 20% | **0.425** |
+| 4.0° | departs | | 25% | departs |
+
+The accelerator drives the same aircraft down the same CL scale with **no turn
+at all**, so its boundary is the pitch axis's own. The two agree to 0.036,
+which is *smaller than either sweep's own last step in CL* — 0.019 on twist,
+0.053 on bar. They cannot be distinguished, and the test is written against
+that resolution rather than against the gap that came out.
+
+So **item 25's remaining half folds into item 11.** The turn is not a separate
+instability; it is a second route to the same pitch divergence. That is the
+whole of item 25 closed across §74 and §75: the skid was never there, and the
+spiral is not its own fault.
+
+### The CL 0.35 is optimistic by about 0.09
+
+Both boundaries sit near **CL 0.44**, and the loop-gain analysis
+(`a·c·Cm/(k·CL²)`, passing one at **CL 0.35**) is where the record has put the
+divergence since the calibration work. That number is a static estimate off
+the wing's own polar. The flown aircraft lets go about 0.09 of CL earlier, by
+either route. Worth keeping, because 0.35 has been used to explain which
+conditions are reachable — full bar as "a CL 0.31 condition" — and it makes
+the envelope sound wider than it is.
+
+### The argument that nearly carried this, and should not have
+
+The first version asked a question of *order*: does CL cross 0.35 before the
+turn rate runs away? It does — at 25.2 s against 25.9 s. **0.7 s out of 25,
+between two quantities that are both running away exponentially by then.**
+Which threshold trips first is a property of where the thresholds were put,
+not of the aircraft. It would have given the right answer here for a reason
+that does not generalise, and one change of threshold would have reversed it.
+
+That is the same failure as §73's constant ratio and §74's wrong angle, in a
+third costume: a number that *points at* the conclusion, accepted because the
+conclusion was already believed. The fix each time is the same — find the
+version of the claim that can come out the other way. Here that was the
+accelerator control, which had no turn in it at all, and which was allowed to
+refute the tidy answer right up until it didn't.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3562,7 +3618,10 @@ same one.
 | twist-to-roll gain | 8543 N·m/rad | linear to 0.03%; divides a roll requirement into a twist |
 | twist worth of full brake | ~10 deg | superseded by the aircraft measurement below - §72 |
 | turn rate per degree of twist | 0.0272 rad/s | linear to 3 deg; **0.20 rad/s wants ~7 deg** - §73 |
-| stable turn ceiling | ~0.09 rad/s | 4 deg of twist spirals to 3.48 rad/s - §73 |
+| stable turn ceiling | ~0.09 rad/s | 4 deg of twist departs - and it is a PITCH departure - §75 |
+| departure CL, by twist | 0.461 last stable | the turn envelope's edge - §75 |
+| departure CL, by accelerator | 0.425 last stable | the SAME edge, no turn involved - §75 |
+| loop gain's CL 0.35 | optimistic by ~0.09 | the flown aircraft departs near CL 0.44 - §75 |
 | CANOPY bank as a fraction of coordinated | 38-40% | the roll spring's deflection, NOT a skid - §74 |
 | link bank against coordinated | within 2% | but the link seeks apparent gravity by construction - §74 |
 | sideslip in a steady turn | under 0.1 deg | measured, not inferred; there is no skid - §74 |

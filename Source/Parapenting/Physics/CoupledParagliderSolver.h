@@ -342,6 +342,13 @@ struct CoupledDiagnostics
     // skid, and until this existed the skid could only be inferred from the
     // bank falling short of the coordinated one.
     double sideslipRad = 0.0;
+    // The whole wing's lift coefficient, from the exchanged aerodynamic force
+    // resolved perpendicular to the relative wind. The pitch-divergence
+    // argument this stack has carried since the item 10 rewrite is stated
+    // entirely in CL - the loop gain is a c Cm / (k CL^2), and it passes one
+    // at CL 0.35 - and until this existed nothing reported the quantity that
+    // argument is about. See `PHYSICS_LEARNINGS` §75.
+    double liftCoefficient = 0.0;
     // The nose-up rotation the shortened brake line commands geometrically,
     // before the section's nose-down couple has argued with it. Item 11 is the
     // gap between this and `payloadSwingRad`.

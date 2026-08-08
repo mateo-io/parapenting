@@ -1779,7 +1779,9 @@ at 0.20 rad/s. Found by `parapenting_model_agreement` (§70).
     safety envelope never engages; this is the model's own behaviour.
   - So a **stable turn tops out near 0.09 rad/s**, and a real wing's 0.2–0.3
     is on the far side of a departure. **Perfect canopy torsion would not
-    reach it.** Item 25 is in front of this item, and needs no new level.
+    reach it.** What is in front of this item is **item 11**: §75 measured
+    that the departure is the pitch divergence reached through a turn, at the
+    same CL the accelerator departs at. Not a new level, and not a new item.
 
 **24. `vsmConverged` is false in ordinary straight flight, so it gates
 nothing.** Counting over 40 s of settled hands-up flight, 4180 steps of 4180
@@ -1794,13 +1796,27 @@ tolerance and is not trying to; the flag compares against it anyway.
   aiming at. Either makes the flag mean something.
 - Nothing currently gates on it, which is the only reason this is small.
 
-**25. The aircraft has almost no stable turn envelope.** Halved by §74: the
-skid half was a false finding and is closed, the spiral half stands and is
-unowned. Item 21 is still behind it.
+**25. CLOSED — both halves, and neither was what it looked like.** §74 closed
+the skid (it was never there); §75 closed the spiral (it is item 11's pitch
+divergence, reached through a turn instead of through the accelerator). What
+was a new unowned stability problem is one already-owned one plus a reading
+error. **Item 21 is behind item 11 now, not behind a separate item 25.**
 
-- **Spiral departure between 3° and 4° of imposed twist**, i.e. between 0.086
-  and 0.19 rad/s of turn. A real EN-B holds 0.2–0.3 rad/s as an ordinary,
-  sustainable turn. This one departs before reaching it.
+- **The turn envelope's edge and the accelerator's edge are the same CL.** Last
+  stable: **0.461** at 3.8° of twist, **0.425** at 20% of bar. They differ by
+  0.036, less than either sweep's own step in CL (0.019 and 0.053), so they
+  cannot be told apart. The accelerator run has no turn in it at all, which is
+  what makes it the control.
+- **So the stable turn ceiling near 0.09 rad/s is a pitch limit**, not a roll
+  or spiral one. Nothing about canopy torsion, roll damping or yaw would move
+  it. Fixing item 11 moves it.
+- **And CL 0.35 is optimistic by about 0.09.** The loop-gain analysis puts the
+  divergence there; the flown aircraft departs near **CL 0.44** by either
+  route. Anywhere the record uses 0.35 to say what is reachable — "full bar is
+  a CL 0.31 condition" — the real envelope is narrower than that implies.
+- The earlier framing, kept because it was measured: departure between 3° and
+  4° of imposed twist, i.e. between 0.086 and 0.19 rad/s of turn, where a real
+  EN-B holds 0.2–0.3 rad/s as an ordinary sustainable turn.
 - **The skid is closed and was never there (§74).** Sideslip measured directly
   is under 0.1°, and the payload link — where 95 of the 105 kg hangs, so the
   angle that actually turns the aircraft — sits at the coordinated bank within
@@ -1812,15 +1828,18 @@ unowned. Item 21 is still behind it.
   canopy's banked lift, to 10%. The side force is real and large — 71 N at 3°,
   two thirds of the turn — and it appears **at zero sideslip**, because an
   arched canopy loaded antisymmetrically produces side force without slip.
-- The "one fault or two" hypothesis is closed with it: there is no second
-  fault. **The spiral is item 25 entire.**
-- **Why this still outranks item 21's remaining half**: it needs no new level
-  to measure, it is upstream of the turn authority the geometric channel was
-  meant to supply, and building canopy torsion without it would deliver a
-  channel whose output the aircraft cannot use.
-- It is also the most likely thing standing behind Level 8's unverified gate
-  — *"asymmetric separation produces spin/spiral behaviour"* (item 23) —
-  which is the other exit gate the sweep flagged as high-risk.
+- The "one fault or two" hypothesis is closed twice over: there was no second
+  fault, and there turned out to be no *first* one either.
+- **What inherits item 25's priority is item 11.** The argument for putting a
+  stability problem in front of the canopy-torsion level survives intact — it
+  is upstream of the turn authority the geometric channel was meant to supply,
+  and building torsion without it would deliver a channel whose output the
+  aircraft cannot use. Only the name of the blocker changes, and item 11 was
+  already the top of the list.
+- Level 8's unverified gate — *"asymmetric separation produces spin/spiral
+  behaviour"* (item 23) — loses its suspected cause with this. The aircraft
+  has no spiral mode of its own to be behind it; what it has is a pitch
+  divergence, which is a different thing to gate against.
 
 **22. The geometry-driven stack departs at 22% of speed bar, not at full bar.**
 The record says full bar is the pitch-divergent condition because

@@ -1031,11 +1031,26 @@ several degrees under a 300 N row-tension difference?*
 - Level 7's convergence gate passes again, re-run rather than inherited.
 - Turn rate against a pilot's number, not against a coefficient.
 
-**And the gate itself is now behind a stability problem** (§73). *"Turn rate
-against a pilot's number"* cannot be met at all: the aircraft spirally departs
-at 0.19 rad/s, below the 0.2-0.3 a real EN-B holds as an ordinary turn, and
-every stable turn it flies carries a 60% bank deficit. Neither is caused by the
-channel and neither is fixed by it. See item 25.
+**And the gate itself is now behind the PITCH axis** (§73, corrected by §74 and
+§75). *"Turn rate against a pilot's number"* cannot be met at all: the aircraft
+departs at 0.19 rad/s, below the 0.2-0.3 a real EN-B holds as an ordinary turn.
+Not caused by the channel and not fixed by it.
+
+Two things §73 said about that are wrong and are corrected here, because both
+pointed at work that does not need doing:
+
+- The "60% bank deficit" is not a bank deficit. `bankRad` is the canopy's
+  angle; the payload link, carrying 95 of the 105 kg, sits at the coordinated
+  bank within 2%, and the measured sideslip is under 0.1°. The canopy sits
+  inboard by exactly the line roll spring's deflection under the twist's steady
+  roll moment. **There is no skid to fix** (§74).
+- The departure is not a spiral. Walked to the edge, the turn envelope ends at
+  CL 0.461 and the *accelerator* — same aircraft, same CL scale, no turn at all
+  — ends at CL 0.425, indistinguishable at the resolution either sweep has.
+  **It is item 11's pitch divergence reached through a turn** (§75).
+
+So the blocker in front of this gate is **item 11**, and it was already the top
+of the list. Nothing here waits on a roll, yaw or spiral mechanism.
 
 **Split by §72, because the two halves now fail for different reasons.** The
 aerodynamic gates are met: the channel exists, carries the right sign, is

@@ -1793,6 +1793,233 @@ int main()
               "Level 11's to represent and is not evidence for anything here");
     }
 
+    // IS THE SPIRAL A SPIRAL? §73 found the aircraft departs between 3 and 4
+    // degrees of imposed twist and called it a spiral departure, on the
+    // strength of the turn rate winding up to 3.48 rad/s. But the same run
+    // reports incidence falling steadily from 4.7 degrees to BELOW ZERO and
+    // speed climbing from 10.7 m/s past 21, and that is the signature of
+    // something this stack already has a name and a mechanism for.
+    //
+    // The wing's pitch feedback - steepen the path, lose incidence, lose CL,
+    // lose more incidence - has a loop gain of a*c*Cm/(k*CL^2), which passes
+    // ONE at CL 0.35. It is why full bar departs (a CL 0.31 condition), why
+    // 22% of bar departs, and why Level 8's benchmarks had to move to hands
+    // up. All of that is item 11's, and it is stated entirely in CL.
+    //
+    // The first version of this asked a question of ORDER - does CL cross 0.35
+    // before the turn rate runs away? It does, by 0.7 s out of 25, and that is
+    // NOT ENOUGH: by then both quantities are running away together, so which
+    // threshold trips first is a property of where the thresholds were put.
+    // It is kept below, reported and labelled weak, because a reader who saw
+    // only the conclusion would otherwise reach for exactly that argument.
+    //
+    // What the section rests on instead is a BOUNDARY, and a control. Walk the
+    // twist up to the edge of the stable envelope and read the CL there; then
+    // walk the ACCELERATOR - which drives the same aircraft down the same CL
+    // scale with no turn at all - up to its own edge and read that. Same CL,
+    // one mechanism. Different CL, and the turn is contributing something the
+    // pitch axis is not.
+    //
+    // Nothing reported CL until now, which is why this was never checked.
+    {
+        constexpr double Degree = 3.14159265358979 / 180.0;
+        constexpr double DivergenceCL = 0.35;
+
+        struct Departure
+        {
+            double clCrossTime = -1.0;   // when CL first goes below 0.35
+            double windUpTime = -1.0;    // when the turn passes twice its
+                                         // largest STABLE value
+            double settledCL = 0.0;
+            double settledIncidenceDeg = 0.0;
+            // Incidence leaving the band the wing flies in. This is the
+            // departure detector that works for BOTH inputs - the accelerator
+            // case has no turn rate to run away, so a turn-rate threshold
+            // cannot compare the two boundaries, and comparing them is the
+            // whole point.
+            double pitchDepartureTime = -1.0;
+            // The lowest CL the wing reached while it was still in that band,
+            // which is the number the loop-gain argument is about.
+            double lowestFlyingCL = 10.0;
+        };
+
+        // The largest stable turn measured is 0.086 rad/s at 3 degrees, so
+        // "running away" is generously twice that. The point is the ORDER of
+        // two events, and it has to survive the threshold being moved.
+        const auto departureOf = [&](double twistDeg, double runawayRadps,
+                                     double accelerator = 0.0)
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            CoupledState state;
+            Fly(wing, handsOff, 60.0, &state);
+            wing.SetImposedSpanwiseTwistRad(twistDeg * Degree);
+            CoupledControls held = handsOff;
+            held.accelerator = accelerator;
+            const CoupledAtmosphere air;
+            const double dt = wing.Schedule().timeStepS;
+            const int steps = static_cast<int>(60.0 / dt);
+            Departure out;
+            for (int step = 0; step < steps; ++step)
+            {
+                wing.Step(state, held, air);
+                const CoupledDiagnostics& d = wing.Diagnostics();
+                const double t = (step + 1) * dt;
+                if (out.clCrossTime < 0.0 && d.liftCoefficient < DivergenceCL)
+                    out.clCrossTime = t;
+                if (out.windUpTime < 0.0
+                    && std::fabs(d.turnRateRadps) > runawayRadps)
+                    out.windUpTime = t;
+                const double incidenceDeg = d.angleOfAttackRad / Degree;
+                if (out.pitchDepartureTime < 0.0
+                    && (incidenceDeg < -2.0 || incidenceDeg > 25.0))
+                    out.pitchDepartureTime = t;
+                if (out.pitchDepartureTime < 0.0)
+                    out.lowestFlyingCL =
+                        std::min(out.lowestFlyingCL, d.liftCoefficient);
+                out.settledCL = d.liftCoefficient;
+                out.settledIncidenceDeg = incidenceDeg;
+            }
+            return out;
+        };
+
+        const Departure stable = departureOf(3.0, 0.172);
+        const Departure diverging = departureOf(4.0, 0.172);
+        std::printf("The departure, in the order things happen:\n");
+        std::printf("  3 deg (stable):    CL below 0.35 at %s, wind-up at %s; "
+                    "ends CL %.3f at %+.2f deg\n",
+                    stable.clCrossTime < 0.0 ? "never"
+                        : "see below", stable.windUpTime < 0.0 ? "never"
+                        : "see below",
+                    stable.settledCL, stable.settledIncidenceDeg);
+        std::printf("  4 deg (departing): CL below 0.35 at %.1f s, "
+                    "wind-up at %.1f s; ends CL %.3f at %+.2f deg\n",
+                    diverging.clCrossTime, diverging.windUpTime,
+                    diverging.settledCL, diverging.settledIncidenceDeg);
+
+        // The stable turn is the control: it must do neither.
+        Check(stable.clCrossTime < 0.0 && stable.windUpTime < 0.0,
+              "the 3 degree turn stays above the divergence CL and never winds "
+              "up - so the pair of events below belongs to the departure and "
+              "not to turning as such");
+
+        Check(diverging.clCrossTime > 0.0 && diverging.windUpTime > 0.0,
+              "the 4 degree case does both, so there is an order to measure");
+
+        // CL crosses first, but only by 0.7 s in a run that takes 25 s to get
+        // there - and BOTH quantities are running away on the same timescale
+        // by then, so which threshold trips first depends on where the
+        // thresholds are put. Reported, and deliberately NOT gated: an
+        // ordering that a change of threshold could reverse is not evidence,
+        // and treating it as evidence is the mistake §73 and §74 are about.
+        Check(diverging.clCrossTime < diverging.windUpTime,
+              "CL crosses the divergence value before the turn rate runs away "
+              "- WEAK, by 0.7 s out of 25, and the boundary test below is what "
+              "this section actually rests on");
+
+        // THE TEST THAT CAN FAIL. If the departure is the pitch loop gain,
+        // then the edge of the stable turn envelope should sit at the CL where
+        // that gain passes one - CL 0.35 - and not at some turn rate, bank
+        // angle or twist that has nothing to do with pitch. So walk the twist
+        // up to the edge and read the CL there.
+        //
+        // This can come out wrong in a way the ordering cannot: if the last
+        // stable turn settles at CL 0.5 and the first departure starts from
+        // CL 0.5, the pitch threshold is not what is being hit.
+        std::printf("Walking up to the edge of the stable turn envelope:\n");
+        double lastStableCL = 0.0;
+        double lastStableTwist = 0.0;
+        double firstDepartingTwist = 0.0;
+        for (const double twistDeg : {3.0, 3.2, 3.4, 3.6, 3.8, 4.0})
+        {
+            const Departure point = departureOf(twistDeg, 0.172);
+            const bool departed = point.windUpTime > 0.0;
+            std::printf("  twist %.1f deg: settles CL %.3f at %+.2f deg "
+                        "incidence%s\n",
+                        twistDeg, point.settledCL, point.settledIncidenceDeg,
+                        departed ? "   DEPARTS" : "");
+            if (!departed)
+            {
+                lastStableCL = point.settledCL;
+                lastStableTwist = twistDeg;
+            }
+            else if (firstDepartingTwist == 0.0)
+            {
+                firstDepartingTwist = twistDeg;
+            }
+        }
+        std::printf("  -> last stable twist %.1f deg at CL %.3f, first "
+                    "departure at %.1f deg; the pitch loop gain passes one at "
+                    "CL %.2f\n",
+                    lastStableTwist, lastStableCL, firstDepartingTwist,
+                    DivergenceCL);
+
+        Check(firstDepartingTwist > 0.0 && lastStableTwist > 0.0,
+              "the edge of the stable envelope is inside the swept range, so "
+              "there is a boundary to read a CL off");
+        Check(lastStableCL > DivergenceCL,
+              "every turn the aircraft holds settles ABOVE the CL at which its "
+              "pitch feedback has a loop gain of one - so the pitch axis is at "
+              "least a candidate for what ends the turn envelope");
+
+        // AND THE CONTROL, which is what makes the number above mean anything.
+        // The accelerator drives the same aircraft down the same CL scale with
+        // NO turn at all, so its departure boundary is the pitch axis's own.
+        // If the twist boundary and the bar boundary are the same CL, one
+        // mechanism. If the turn departs at a HIGHER CL, the turn is
+        // contributing something of its own and item 25 is not item 11.
+        std::printf("The same walk on the ACCELERATOR - no turn, same CL "
+                    "scale:\n");
+        double lastStableBarCL = 0.0;
+        double lastStableBar = 0.0;
+        for (const double bar : {0.00, 0.05, 0.10, 0.15, 0.20, 0.25})
+        {
+            const Departure point = departureOf(0.0, 1.0e9, bar);
+            const bool departed = point.pitchDepartureTime > 0.0;
+            std::printf("  bar %.0f%%: settles CL %.3f at %+.2f deg "
+                        "incidence%s\n",
+                        100.0 * bar, point.settledCL,
+                        point.settledIncidenceDeg,
+                        departed ? "   DEPARTS" : "");
+            if (!departed)
+            {
+                lastStableBarCL = point.settledCL;
+                lastStableBar = bar;
+            }
+        }
+        std::printf("  -> LAST STABLE CL: %.3f on twist (%.1f deg), %.3f on "
+                    "bar (%.0f%%)\n",
+                    lastStableCL, lastStableTwist,
+                    lastStableBarCL, 100.0 * lastStableBar);
+
+        // The comparison, and it was allowed to come out either way.
+        //
+        // The tolerance is NOT picked to fit: neither sweep locates its
+        // boundary better than its own last step in CL, which is 0.019 on the
+        // twist side (3.6 -> 3.8 deg) and 0.053 on the bar side (15% -> 20%).
+        // Two boundaries cannot be said to differ by less than the coarser of
+        // those, so 0.053 is the resolution available and the test is written
+        // against it rather than against the gap that came out.
+        constexpr double SweepResolutionCL = 0.053;
+        Check(lastStableBarCL > 0.0,
+              "the accelerator sweep found a stable point to read a CL off");
+        Check(std::fabs(lastStableCL - lastStableBarCL) < SweepResolutionCL,
+              "and the two boundaries are the SAME boundary to the resolution "
+              "either sweep can locate one - the turn stops being holdable at "
+              "the CL the accelerator also stops being flyable at. So §73's "
+              "spiral departure is item 11's pitch divergence reached through "
+              "a turn, and item 25's remaining half folds into item 11");
+
+        // AND THE 0.35 IS OPTIMISTIC. Both boundaries sit around CL 0.44,
+        // where the loop-gain analysis puts the divergence at 0.35. That
+        // number is a static one taken off the wing's own polar; the flown
+        // aircraft lets go about 0.09 of CL earlier, by either route.
+        Check(lastStableCL > DivergenceCL + 0.05
+              && lastStableBarCL > DivergenceCL + 0.05,
+              "and BOTH boundaries sit well above CL 0.35 - so the loop gain "
+              "passing one at 0.35 is an optimistic static estimate of where "
+              "the flown aircraft actually departs, by about 0.09 of CL");
+    }
+
     // THERE IS NO SKID. §73 measured that every stable turn banks 38-40% of
     // its own coordinated bank, called the constant fraction "a missing
     // mechanism" and concluded the aircraft holds a steady sideslip in every

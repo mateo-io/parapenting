@@ -1556,6 +1556,22 @@ structureSolve:
     diagnostics.aeroPitchMomentNm = exchangedMomentBody.y;
     diagnostics.aeroRollMomentNm = exchangedMomentBody.x;
     diagnostics.aeroSideForceN = exchangedForceBody.y;
+    // Lift is the component of the aerodynamic force PERPENDICULAR to the
+    // relative wind, so it is the force less its along-wind part. Computed
+    // here rather than from weight over q S, because the two agree only in
+    // trimmed flight and the interesting cases are the untrimmed ones.
+    if (dynamicPressure > 1.0e-6 && airspeed > 1.0e-6)
+    {
+        const Vec3 windDir = airspeedBody / airspeed;
+        const Vec3 liftVec = exchangedForceBody
+            - windDir * Dot(windDir, exchangedForceBody);
+        diagnostics.liftCoefficient =
+            Length(liftVec) / (dynamicPressure * ReferenceAreaM2);
+    }
+    else
+    {
+        diagnostics.liftCoefficient = 0.0;
+    }
     diagnostics.payloadSwingRad = swing;
     diagnostics.payloadSwingLateralRad = lateralSwing;
     // The rate a pilot feels as the surge is the fore-aft one, and it is read

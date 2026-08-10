@@ -1053,6 +1053,177 @@ void ReportSlowMode(const CanopyGeometry& canopy, const LinePlanSpec& linePlan)
                            static_cast<std::size_t>(peaks[analysisEnd]),
                            massKg, periodS, classicalPeriodS, dampingRatio);
 }
+
+// -- ITEM 24: WHY A STALL RECOVERY IS ONE MOVEMENT ------------------------
+//
+// A pilot flying this build reports that a stall recovery is a single slow
+// surge, and the SAME single surge however hard the stall was. A real recovery
+// is a decaying sequence - big surge, pitch back, smaller surge - over several
+// cycles.
+//
+// Three terms in the solver can flatten that sequence and they compound:
+//
+//   1. structural angular damping, 1.6 /s on the canopy's rate, a 0.62 s time
+//      constant, whose own comment used to say it exists so the pendulum does
+//      not ring;
+//   2. the 1.4 rad swing limit, which ZEROES the link rate when it engages and
+//      so discards the pendulum's whole kinetic energy in one step;
+//   3. `swingDampingRatio` at 0.35, item 11's known ~0.18 above the ~0.06 that
+//      pilot and line drag imply.
+//
+// ARGUING ABOUT WHICH ONE DOMINATES IS AVOIDABLE, because each is a power and
+// power integrates to joules. This measures where the surge's energy actually
+// goes rather than reasoning about which coefficient looks largest, and it
+// sweeps stall severity because amplitude-INdependence is a clamp's signature
+// and cannot be produced by a damper.
+//
+// Nothing here asserts, for item 11's reason: this is an open disagreement with
+// a real wing and gating it would only teach the model to agree with itself.
+struct SurgeRun
+{
+    int halfSwings = 0;
+    double firstHalfSwingRad = 0.0;
+    double decayPerHalfSwing = 0.0;
+    double structuralJ = 0.0;
+    double swingDamperJ = 0.0;
+    double clampJ = 0.0;
+    int clampEngagements = 0;
+    bool envelopeEngaged = false;
+    bool departed = false;
+};
+
+SurgeRun MeasureSurge(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                      double stallBrake, double structuralPerS,
+                      bool projectClamp, double swingRatio)
+{
+    SurgeRun out;
+    CoupledParagliderSolver solver(canopy, linePlan);
+    solver.SetSwingDampingRatio(swingRatio);
+    solver.SetStructuralAngularDampingPerS(structuralPerS);
+    solver.SetSwingLimitRateHandling(
+        projectClamp ? CoupledParagliderSolver::SwingLimitRateHandling::Project
+                     : CoupledParagliderSolver::SwingLimitRateHandling::Zero);
+    solver.ResetSwingLimitEngagements();
+    CoupledState state;
+
+    constexpr double StepS = 1.0 / 120.0;
+    std::vector<double> swing;
+    auto run = [&](double brake, double seconds, bool record)
+    {
+        CoupledControls controls;
+        controls.leftBrake = brake;
+        controls.rightBrake = brake;
+        const int ticks = static_cast<int>(seconds * 20.0);
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            for (int step = 0; step < 6; ++step)
+            {
+                solver.Step(state, controls, CoupledAtmosphere{});
+                const auto& d = solver.Diagnostics();
+                if (record)
+                {
+                    // Joules, not watts: the question is where the surge's
+                    // energy WENT, and a peak power says nothing about that.
+                    out.structuralJ += d.structuralDampingPowerW * StepS;
+                    out.swingDamperJ += d.swingDampingPowerW * StepS;
+                    out.clampJ += d.swingLimitDiscardedPowerW * StepS;
+                }
+                if (d.aerodynamicsRejected) out.envelopeEngaged = true;
+            }
+            if (record) swing.push_back(solver.Diagnostics().payloadSwingRad);
+            if (solver.Diagnostics().angleOfAttackRad > 0.60)
+                out.departed = true;
+        }
+    };
+
+    // Settle, stall, release, watch. The settle is 40 s rather than the 410 s
+    // item 11 needs for a TRIM, and that is deliberate: this measures a fast
+    // decaying oscillation, and the slow mode's residual drift is removed by
+    // reading PEAK-TO-PEAK amplitudes below rather than absolute ones.
+    run(0.0, 40.0, false);
+    run(stallBrake, 3.0, false);
+    solver.ResetSwingLimitEngagements();
+    out.structuralJ = out.swingDamperJ = out.clampJ = 0.0;
+    run(0.0, 30.0, true);
+    out.clampEngagements = solver.SwingLimitEngagements();
+    if (swing.size() < 40) return out;
+
+    // Successive extrema, then peak-to-peak between them. Differencing
+    // neighbouring extrema is what makes this insensitive to the slow mode
+    // still drifting underneath - a drift moves both ends of a half swing
+    // together and cancels, where an amplitude measured against a fixed datum
+    // would not. §33 and the second correction in item 11 are both mistakes of
+    // exactly that shape, read off a spread rather than an amplitude.
+    std::vector<double> extrema;
+    for (std::size_t i = 1; i + 1 < swing.size(); ++i)
+    {
+        const bool up = swing[i] >= swing[i - 1] && swing[i] > swing[i + 1];
+        const bool down = swing[i] <= swing[i - 1] && swing[i] < swing[i + 1];
+        if (up || down) extrema.push_back(swing[i]);
+    }
+    // A pilot notices something like half a degree of pitch; below that the
+    // wing is not visibly surging whatever the trace says.
+    constexpr double NoticeableRad = 0.5 * 3.14159265358979 / 180.0;
+    std::vector<double> halfSwings;
+    for (std::size_t i = 0; i + 1 < extrema.size(); ++i)
+    {
+        const double amplitude = std::fabs(extrema[i + 1] - extrema[i]);
+        if (amplitude > NoticeableRad) halfSwings.push_back(amplitude);
+        else break;
+    }
+    out.halfSwings = static_cast<int>(halfSwings.size());
+    if (!halfSwings.empty()) out.firstHalfSwingRad = halfSwings.front();
+    if (halfSwings.size() >= 2)
+        out.decayPerHalfSwing = halfSwings[1] / halfSwings[0];
+    return out;
+}
+
+void ReportSurge(const CanopyGeometry& canopy, const LinePlanSpec& linePlan)
+{
+    std::printf("\n\nITEM 24: WHERE A STALL RECOVERY'S ENERGY GOES\n");
+    std::printf("A pilot reports one surge per stall, the same one however "
+                "hard the stall.\nA real recovery is several, decaying. These "
+                "are the three terms that can do that,\nmeasured in joules "
+                "removed over the 30 s after the brake is released.\n\n");
+    std::printf("  Deg is the first half swing, peak to peak. Cycles counts "
+                "half swings above\n  half a degree. Ratio is the second half "
+                "swing over the first - near 1 rings,\n  near 0 is the "
+                "reported single movement.\n\n");
+
+    struct Config { const char* name; double structural; bool project;
+                    double ratio; };
+    const Config configs[] = {
+        {"shipped        ", 1.6, false, 0.35},
+        {"no structural  ", 0.0, false, 0.35},
+        {"clamp projects ", 1.6, true,  0.35},
+        {"ratio 0.06     ", 1.6, false, 0.06},
+        {"all three      ", 0.0, true,  0.06},
+    };
+    const double severities[] = {0.70, 0.85, 1.00};
+
+    for (const Config& config : configs)
+    {
+        for (double brake : severities)
+        {
+            const SurgeRun r = MeasureSurge(canopy, linePlan, brake,
+                                            config.structural, config.project,
+                                            config.ratio);
+            std::printf("  %s stall %.2f: cycles %2d  deg %6.2f  ratio %5.2f"
+                        "  |  structural %8.1f J  damper %8.1f J  clamp "
+                        "%8.1f J  (clamp fired %d)%s%s\n",
+                        config.name, brake, r.halfSwings,
+                        r.firstHalfSwingRad * 180.0 / 3.14159265358979,
+                        r.decayPerHalfSwing, r.structuralJ, r.swingDamperJ,
+                        r.clampJ, r.clampEngagements,
+                        r.envelopeEngaged ? "  ENVELOPE ENGAGED" : "",
+                        r.departed ? "  DEPARTED" : "");
+        }
+    }
+    std::printf("\n  ENVELOPE ENGAGED means guiding rule 12 applies and that "
+                "row is not flight\n  behaviour. Rows carrying it are reported "
+                "so the reader can see WHICH rows are\n  unusable, not "
+                "suppressed.\n");
+}
 }
 
 int main(int argc, char** argv)
@@ -1073,6 +1244,11 @@ int main(int argc, char** argv)
     const CanopyGeometry canopy;
     const LinePlanSpec linePlan = Epic2MlLinePlan();
 
+    if (mode == "--surge")
+    {
+        ReportSurge(canopy, linePlan);
+        return 0;
+    }
     if (mode == "--fast-mode-dump")
     {
         MeasureFastMode(canopy, linePlan, 0.35, 30, true);

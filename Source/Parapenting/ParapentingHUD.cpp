@@ -158,6 +158,12 @@ void AParapentingHUD::DrawCompactHUD(
     const FLinearColor Cyan(0.42f, 0.88f, 1.0f, 1.0f);
     const FLinearColor Panel(0.008f, 0.02f, 0.035f, 0.72f);
     const float Agl = static_cast<float>(Glider->GetGroundClearanceM());
+    const float Vario = static_cast<float>(State.velocityWorldMps.z);
+    const FLinearColor VarioColour = Vario > 0.25f
+        ? FLinearColor(0.35f, 1.0f, 0.58f)
+        : (Vario < -0.25f
+            ? FLinearColor(1.0f, 0.52f, 0.20f)
+            : FLinearColor(0.72f, 0.82f, 0.88f));
 
     if (bMinimal)
     {
@@ -171,7 +177,7 @@ void AParapentingHUD::DrawCompactHUD(
             ANSI_TO_TCHAR(Glider->GetActiveWaypointName()),
             Navigation.distanceM / 1000.0,
             Navigation.predictedArrivalHeightM),
-            White, X + 14.0f, Y + 10.0f, GEngine->GetSmallFont(), 0.95f);
+            VarioColour, X + 14.0f, Y + 10.0f, GEngine->GetSmallFont(), 0.95f);
     }
     else
     {
@@ -186,7 +192,7 @@ void AParapentingHUD::DrawCompactHUD(
         DrawText(FString::Printf(
             TEXT("%3.0f km/h    %+3.1f m/s    %3.0f m AGL"),
             T.airspeedMps * 3.6, State.velocityWorldMps.z, Agl),
-            White, Left + 16.0f, Top + 42.0f,
+            VarioColour, Left + 16.0f, Top + 42.0f,
             GEngine->GetMediumFont(), 0.92f);
         DrawText(FString::Printf(TEXT("BRAKES  L %.0f N   R %.0f N"),
             T.leftBrakeForceN, T.rightBrakeForceN),
@@ -201,6 +207,20 @@ void AParapentingHUD::DrawCompactHUD(
         DrawRect(FLinearColor(0.2f, 0.76f, 1.0f, 1.0f),
             Left + 184.0f, Top + 100.0f,
             145.0f * Controls.rightBrake, 8.0f);
+        // A compact centred vario scale makes lift/sink readable peripherally
+        // without needing to parse the telemetry line during a turn.
+        const float VarioCenterX = Left + 172.0f;
+        const float VarioWidth = 7.0f;
+        const float VarioHeight = 36.0f;
+        const float VarioCentreY = Top + 118.0f;
+        DrawRect(FLinearColor(0.10f, 0.16f, 0.20f, 0.96f),
+            VarioCenterX, VarioCentreY - VarioHeight * 0.5f,
+            VarioWidth, VarioHeight);
+        const float VarioAmount = FMath::Min(FMath::Abs(Vario) / 5.0f, 1.0f)
+            * (VarioHeight * 0.5f);
+        DrawRect(VarioColour,
+            VarioCenterX, Vario >= 0.0f ? VarioCentreY - VarioAmount : VarioCentreY,
+            VarioWidth, VarioAmount);
         DrawText(FString::Printf(TEXT("%s  %.0f m  %s %2.0f%%"),
             ANSI_TO_TCHAR(Glider->GetRouteDisplayName()),
             Glider->GetDistanceToTargetM(),
@@ -373,6 +393,9 @@ void AParapentingHUD::DrawHUD()
     // Photo mode is intentionally just a clean presentation surface. It does
     // not change camera state, simulation, replay stepping or scalability.
     if (Glider && Glider->IsPhotoMode()) return;
+    // Review must be possible without any interface assistance. Unlike the
+    // compact Minimal mode, OFF draws no flight deck, briefing or telemetry.
+    if (Glider && Glider->GetHudMode() == 3) return;
 
     if (Glider && Glider->GetHudMode() != 1)
     {

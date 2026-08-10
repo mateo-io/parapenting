@@ -186,6 +186,14 @@ CoupledParagliderSolver::LineStiffness
 CoupledParagliderSolver::LineStiffnessAt(double loadN) const
 {
     if (StiffnessCurve.empty()) return LineStiffness{};
+    // The diagnostic pitch scale, applied on every path out of this function
+    // so no caller can reach an unscaled spring. 1.0 leaves the curve exactly
+    // as measured. See `SetPitchStiffnessScale`.
+    const auto apply = [this](LineStiffness s)
+    {
+        s.pitchNmPerRad *= PitchStiffnessScale;
+        return s;
+    };
     const double load = std::max(0.0, loadN);
     // Below the lowest sample the spring is scaled down in proportion, because
     // that is what an unloaded geometric spring does: no tension, no restoring
@@ -198,7 +206,7 @@ CoupledParagliderSolver::LineStiffnessAt(double loadN) const
         LineStiffness scaled = first.stiffness;
         scaled.pitchNmPerRad *= scale;
         scaled.rollNmPerRad *= scale;
-        return scaled;
+        return apply(scaled);
     }
     for (std::size_t i = 1; i < StiffnessCurve.size(); ++i)
     {
@@ -219,9 +227,9 @@ CoupledParagliderSolver::LineStiffnessAt(double loadN) const
             mix(lo.stiffness.pitchHingeArmM, hi.stiffness.pitchHingeArmM);
         blended.rollHingeArmM =
             mix(lo.stiffness.rollHingeArmM, hi.stiffness.rollHingeArmM);
-        return blended;
+        return apply(blended);
     }
-    return StiffnessCurve.back().stiffness;
+    return apply(StiffnessCurve.back().stiffness);
 }
 
 CoupledSchedule FullFidelitySchedule()
@@ -1501,13 +1509,27 @@ structureSolve:
     linkDirWorld = Normalized(linkDirWorld + Cross(linkRate, linkDirWorld) * dt);
 
     // The lines cannot push, so the pilot cannot swing above the wing's own
-    // level. Well outside anything short of an SIV manoeuvre, and it is a
-    // geometric limit rather than a handling number.
+    // level. It is a geometric limit rather than a handling number.
+    //
+    // "WELL OUTSIDE ANYTHING SHORT OF AN SIV MANOEUVRE", THIS COMMENT USED TO
+    // SAY - AND ITEM 24 IS A REPORT ABOUT STALL RECOVERIES, WHICH ARE SIV
+    // MANOEUVRES. So the qualifier was never a reason not to look: it named the
+    // exact regime in which this fires, and nothing counted how often it did.
+    // It now counts, and what it does to the swing RATE is selectable.
+    //
+    // Zeroing the rate discards the pendulum's entire kinetic energy in one
+    // step, and the energy audit below cannot see it. That is the one candidate
+    // in item 24 that explains a recovery which is the SAME single movement
+    // however hard the stall - a clamp does that, a damper cannot.
     constexpr double SwingLimitRad = 1.4;
     angles = relativeAngles(linkDirWorld);
+    double swingLimitDiscardedJ = 0.0;
     if (std::fabs(angles.x) > SwingLimitRad
         || std::fabs(angles.y) > SwingLimitRad)
     {
+        ++SwingLimitEngagementCount;
+        const double swingKineticBeforeJ =
+            0.5 * payloadArmInertiaKgM2 * Dot(linkRate, linkRate);
         const double clampedX =
             std::clamp(angles.x, -SwingLimitRad, SwingLimitRad);
         const double clampedY =
@@ -1517,7 +1539,38 @@ structureSolve:
                 - std::sin(clampedY) * std::sin(clampedY)));
         linkDirWorld = Normalized(state.attitude.Rotate(Vec3{
             std::sin(clampedX), std::sin(clampedY), -vertical}));
-        linkRate = Vec3{};
+        if (SwingLimitRateHandlingValue == SwingLimitRateHandling::Zero)
+        {
+            // Shipped. Everything the pendulum was carrying is dropped here.
+            linkRate = Vec3{};
+        }
+        else
+        {
+            // A limit the lines impose is an INEQUALITY - they cannot push, so
+            // they can stop the swing deepening and cannot stop it returning.
+            // Removing the whole rate treats it as an equality and is why the
+            // shipped branch destroys energy the pendulum should have kept.
+            //
+            // The swing angle is the angle between the canopy's own down and
+            // the link, and it grows about the axis
+            // `n = normalize(canopyDown x linkDir)` at exactly `dot(linkRate,
+            // n)` - so that dot product IS the rate of deepening, and only its
+            // POSITIVE part is what the lines resist. Subtracting a projection
+            // along `linkDirWorld` instead would do nothing at all: spin about
+            // the link's own axis is already projected out above.
+            const Vec3 canopyDown = state.attitude.Rotate(Vec3{0.0, 0.0, -1.0});
+            const Vec3 deepenAxis = Cross(canopyDown, linkDirWorld);
+            const double axisLength = Length(deepenAxis);
+            if (axisLength > 1.0e-9)
+            {
+                const Vec3 n = deepenAxis / axisLength;
+                const double deepeningRate = Dot(linkRate, n);
+                if (deepeningRate > 0.0)
+                    linkRate = linkRate - n * deepeningRate;
+            }
+        }
+        swingLimitDiscardedJ = swingKineticBeforeJ
+            - 0.5 * payloadArmInertiaKgM2 * Dot(linkRate, linkRate);
         angles = relativeAngles(linkDirWorld);
     }
     state.payloadDirWorld = linkDirWorld;
@@ -1660,9 +1713,33 @@ structureSolve:
         -dampingNmPerRadps.z * state.angularVelocityBodyRadps.z};
     const Vec3 momentBody = undampedMomentBody + damped;
     // Structural damping: the wing is not a rigid body and its rotations are
-    // resisted by the lines it hangs on. Without this the pendulum rings.
-    const double damping = std::clamp(1.0 - 1.6 * dt, 0.0, 1.0);
+    // resisted by the lines it hangs on.
+    //
+    // THE SENTENCE THAT USED TO END THIS COMMENT WAS "Without this the pendulum
+    // rings", AND THAT IS ITEM 24'S REPORTED DEFECT WRITTEN DOWN AS AN
+    // INTENTION. A real wing's pendulum DOES ring - a stall recovery is a
+    // decaying sequence of surges, not one movement - and a pilot flying this
+    // build reports the sequence is absent.
+    //
+    // At the shipped 1.6 /s this is a 0.62 s time constant on the canopy's
+    // angular rate, all three axes, every step: over one 1.86 s pendulum period
+    // it leaves 5% of the rate. It is not derived from the lines it claims to
+    // represent, it is in no registry and no test, and it is now reachable via
+    // `SetStructuralAngularDampingPerS` so it can be measured instead of
+    // assumed. Default unchanged; see `PHYSICS_TODO` item 24.
+    const double damping = std::clamp(
+        1.0 - StructuralAngularDampingPerS * dt, 0.0, 1.0);
+    const auto rotationalKineticJ = [&](const Vec3& rate)
+    {
+        return 0.5 * (inertia.x * rate.x * rate.x
+                      + inertia.y * rate.y * rate.y
+                      + inertia.z * rate.z * rate.z);
+    };
+    const double rotationalBeforeDampingJ =
+        rotationalKineticJ(state.angularVelocityBodyRadps);
     state.angularVelocityBodyRadps = state.angularVelocityBodyRadps * damping;
+    const double rotationalAfterDampingJ =
+        rotationalKineticJ(state.angularVelocityBodyRadps);
     state.attitude = IntegrateAttitude(
         state.attitude, state.angularVelocityBodyRadps, dt);
 
@@ -1680,6 +1757,17 @@ structureSolve:
             * Dot(linkRate - damperReferenceRate,
                   linkRate - damperReferenceRate);
     diagnostics.swingDampingPowerW = swingDampingPowerW;
+    // Item 24. Reported beside the residual, not folded into it: these are the
+    // rotational sinks the residual's translational terms cannot see.
+    diagnostics.rotationalKineticEnergyJ =
+        rotationalKineticJ(state.angularVelocityBodyRadps);
+    diagnostics.swingKineticEnergyJ =
+        0.5 * payloadArmInertiaKgM2 * Dot(linkRate, linkRate);
+    diagnostics.structuralDampingPowerW =
+        (rotationalBeforeDampingJ - rotationalAfterDampingJ)
+        / std::max(1.0e-9, dt);
+    diagnostics.swingLimitDiscardedPowerW =
+        swingLimitDiscardedJ / std::max(1.0e-9, dt);
     const double workDone = Dot(aeroWorld, state.velocityWorldMps * dt);
     diagnostics.kineticEnergyJ = kineticAfter;
     diagnostics.potentialEnergyJ = potentialAfter;

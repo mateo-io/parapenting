@@ -29,10 +29,26 @@ open none:
   benchmark cannot adjudicate between them. **Item 12 has no route around
   Level 11.**
 
-What is left, in order: close items 11 and 12 together (the drag half now
-blocked behind the wake, the pitch half's moment-arm lead still open); get the
-stack flying across a stated envelope, which is the highest-value *unblocked*
-item and the one a pilot has independently asked for (item 19); then Level 11.
+**The ordering changed again at §80, and this time item 19 goes first.** Item
+11's pitch half has run out of candidate mechanisms — the last one was
+eliminated in both directions — and its exit criterion has been rewritten
+because the old one was unreachable rather than merely hard (see item 11). Item
+12's drag half is blocked behind the wake. So the pair that used to lead this
+list is one part re-scoped and one part blocked, and neither is advanced by a
+fifth instrument.
+
+**A REFERENCE IN THIS PARAGRAPH WAS WRONG AND IS CORRECTED.** It used to read
+"get the stack flying across a stated envelope … (item 19)". Item 19 is not
+that — it is *the legacy pitch axis has no gravity-referenced pendulum*. The
+stated-envelope work is item 17's, and it is blocked. The two were conflated
+because both are pilot-facing, and the mistake sent a session at the wrong item.
+
+What is left, in order: **item 19 and item 24 together** — the legacy pitch
+axis, which is what a pilot actually flies and where the only two handling
+reports this project has ever received both land; then item 12's shielding
+number on its own evidence; then Level 11, which unblocks the rest of item 12.
+Item 17 (retire the legacy path) stays blocked behind the geometry stack's two
+departures and its dead weight-shift control, and is not a route around either.
 
 **Item 10 is closed and it closed item 0 with it.** The rigid motion no longer
 counts gravity's restoring torque twice. Hands-up trim is 39.4 km/h against a
@@ -455,6 +471,330 @@ surge.
 - Done when: a recovered collapse's pitch excursion differs from the one the
   same force change produces symmetrically, and the energy accounting still
   closes across it.
+
+**24. THE SURGE DOES NOT OSCILLATE, AND A PILOT REPORTED IT BEFORE ANY
+INSTRUMENT DID.** Reported from flying the build: after a stall the recovery is
+slow, it is a *single* forward movement, and it is the same single movement
+however hard the stall was. A real recovery is a decaying pendulum — big surge,
+pitch back, smaller surge, pitch back — over several cycles. That sequence is
+absent.
+
+**This is the first handling defect on this axis that came from a pilot rather
+than from a sweep, and it arrived one session after §80 concluded that flight
+data was the likelier source of item 11's missing mechanism.** It is evidence
+about `swingDampingRatio` of a kind four instrument runs could not produce.
+
+**THE FIRST DIAGNOSIS OF THIS ITEM WAS WRITTEN AGAINST THE WRONG MODEL, AND THE
+CORRECTION IS THE MOST USEFUL THING IN IT.** The three dissipators listed below
+are in `CoupledParagliderSolver`. **The pawn does not fly the coupled solver** —
+`ParagliderPawn` holds a `ParagliderDynamics`, exactly as item 7 says in
+writing, and item 7 is two screens above this one. A report from *flying* is a
+report about the legacy lumped model, and the first pass spent its effort on a
+solver the pilot has never felt. Guiding rule 11 is not a footnote: while item 7
+is open, "what the pilot saw" and "what the physics stack does" are two
+different aircraft, and every handling report has to be routed to the model that
+produced it before a line of it is believed.
+
+**A SECOND DIAGNOSIS WAS WRITTEN HERE FROM ARITHMETIC OFF THE SHIPPED CONSTANTS,
+AND MEASURING IT REFUTED MOST OF IT.** It is kept in outline because the way it
+failed is the reusable part. It claimed the pitch axis was nearly critically
+damped (ζ ≈ 0.69 from `pitchStiffness` 165, `pitchDamping` 220, inertia 120+34),
+that `canopyPitchDampingRatio` 0.55 left 1.6% per cycle, and that the
+`recoverySurge` clamp at [−0.2, 0.45] rad plus `pitchRateLimit` produced the
+amplitude-independence. Measured in `physics_tests`, full brake to a stall then
+hands off:
+
+- **THE RECOVERY RINGS. It does not creep.** Horizontal speed, which is what
+  "surge" means to a pilot, oscillates peak-to-peak **5.25, 6.35, 4.61, 3.25
+  m/s** at roughly a 4–5 s period, decaying over about 20 s. The
+  canopy-relative angle rings too: 48°, −23, +15, −18, +18, −12, +6. **A
+  second-order damping ratio computed from three constants predicted 0.25% per
+  cycle and the model delivers a visible decaying sequence.** The constants do
+  not compose the way that arithmetic assumed — the incidence loop feeds the
+  axis and the ratio is not the closed-loop one.
+- **NEITHER CLAMP EVER FIRES.** `recoverySurge` pinned for **0 steps** and
+  `pitchRateLimit` for **0 steps** through the whole recovery. The
+  amplitude-independence was attributed to two limiters that are not reached.
+- **WHAT DOES SATURATE IS THE STALL ITSELF, AND THAT IS THE ANSWER.**
+  `deepStallTarget = state.deepBrakeTime > 0.9 ? 1.0 : 0.0` — a **binary**
+  target, relaxed toward at rate 1.7, so `deepStall` reaches 1.0 in one to two
+  seconds and then cannot go further. Measured, holding full brake for 2, 3 and
+  5 seconds gives stalled sink **5.44, 5.41, 5.37 m/s** — the same stall — and
+  therefore the same recovery:
+
+| full brake held | stalled sink | surge peak-to-peak, m/s |
+|---|---|---|
+| 1 s | 3.86 | 8.23, 3.62 |
+| 2 s | 5.44 | 11.44, 5.09, 6.18, 4.40, 3.04 |
+| 3 s | 5.41 | 12.04, 5.25, 6.35, 4.61, 3.25 |
+| 5 s | 5.37 | 5.37, 6.46, 4.75, 3.38, 2.21 |
+
+- **"No matter how hard the stall it just recovers in one movement" is the STALL
+  being amplitude-independent, not the recovery.** Past about two seconds of
+  deep brake every stall in this model is the identical stall, so every recovery
+  is the identical recovery. That is a different defect from the one this item
+  was opened on, it is one line rather than six constants, and no amount of
+  retuning dampers would have touched it.
+- **The fix is that stall severity has to be carried by a state that can hold
+  it.** A binary target plus a first-order relaxation cannot represent "how far
+  past the stall" — depth, duration and energy all collapse onto one saturating
+  scalar. Done when a harder or longer stall produces a measurably bigger first
+  surge.
+
+**FIXED, AND THE AXIS IT WAS FIXED ON IS NOT THE ONE THIS ITEM NAMED.** The
+diagnosis above is written entirely about DURATION — the 2/3/5 s table — and
+duration turns out not to be the defect. Two corrections, both from measuring:
+
+- **THE DURATION TABLE ABOVE IS A MEASUREMENT ARTEFACT.** It reads the surge as
+  a peak-to-peak between successive extrema, which has no leading extremum to
+  difference against when the stall is released at 0.1 m/s: the recovery rises
+  smoothly from the release speed to its first peak, and the pairwise measure
+  skips that rise entirely and reports the *second* swing. Scored as the
+  excursion from the release speed — which is what a pilot feels — the shipped
+  model's duration axis was **already monotone**: 8.15, 11.03, 12.02, 12.38,
+  12.39 m/s at holds of 1, 2, 3, 5, 8 s. The 12.05 → 5.39 "inversion" was the
+  metric, not the model. It flattens past 3 s because `vmin` is already 0.10
+  m/s — the wing has no speed left to lose — and that is a floor rather than a
+  clamp.
+- **DEPTH WAS THE DEFECT, AND NOTHING ABOVE MEASURED IT.** `symmetricBrake >
+  0.86` made the entire top eighth of the brake range one case. Shipped, a 3 s
+  hold at 0.88 / 0.92 / 0.96 / 1.00 gave stalled sinks 5.58 / 5.52 / 5.50 /
+  5.43 and first surges 11.80 / 11.86 / 12.00 / 12.02 — a **0.22 m/s spread,
+  1.9%**, across a control range the pilot moves by hand. That is the "same
+  stall however hard" the report describes, and it is a step function, not a
+  saturating relaxation.
+
+The change is in `ParagliderDynamics::Step`: `brakeStallDepth` is continuous in
+brake past 0.78, it scales both the `deepBrakeTime` accrual and the `deepStall`
+target, and full brake is unchanged at both ends (depth 1.0, target 1.0,
+accrual 1.0/s) so every shipped full-brake number stays where it was. Measured
+after:
+
+| brake, 3 s hold | 0.88 | 0.92 | 0.96 | 1.00 |
+|---|---|---|---|---|
+| stalled sink, m/s | 7.26 | 5.98 | 5.65 | 5.43 |
+| first surge, m/s | 9.88 | 11.31 | 11.87 | 11.98 |
+| ringing cycles | 7 | 7 | 4 | 6 |
+
+Spread 0.22 → **2.10 m/s**, monotone, and the duration axis stays monotone at
+11.00 / 11.98 / 12.34 / 12.36. Ringing is not traded away for it.
+
+**A SECOND TERM WAS BUILT, MEASURED, AND REMOVED, and it is the more useful
+half of the session.** `canopyPitchTarget` follows `previousHangTiltRad`, which
+is an ACCELERATION, so it decays to zero once the stalled descent steadies and
+the canopy drifts forward while the wing is still fully stalled — the release
+angle falls from 0.843 rad at a 3 s hold to 0.695 at 5 s. That looks exactly
+like the defect, and a severity-integrating state driving an aft bias holds the
+canopy back through the stall precisely as designed. **It bought nothing**: the
+duration axis it was built to fix was already monotone under the honest metric,
+and holding the wing aft into the recovery turned a dive-and-ring into one long
+dive, dropping ringing from 6 cycles to 2. It was reverted, and with it the
+`stallSeverity` state, which then had no consumer. The lesson is the one this
+item already learned twice: **the metric was wrong before the model was**, and
+a term that improves a number by degrading the criterion next to it is not a
+fix. `deepStall` now carries severity itself; a second state was not needed.
+
+**THE THIRD CLAMP, FOUND ON THE WAY.** This item records that `recoverySurge`
+and `pitchRateLimit` pin for 0 steps. `canopyRelativePitchRad` pins at its
+±0.85 bound for **over a second of every deep stall** — from 1.5 s into a full
+brake hold until release. It is not currently causing the reported symptom, but
+it is the one clamp on this axis that a pilot actually reaches, and the "no
+clamp ever fires" line above should not be read as covering it.
+- ~~**STILL OPEN, and it needs the pilot rather than the suite:** the model
+  rings four to five times over twenty seconds and the report says one
+  movement. Either the oscillation is not reaching the screen, or the in-game
+  brake range cannot reach the stalls measured here.~~ **ANSWERED, AND BY
+  NEITHER BRANCH.**
+
+**THE BRAKE IS QUANTISED AND ONLY THE TOP RUNG STALLS.**
+`AParagliderPawn::ControlStep` is **0.2**, and every brake action binds
+`IE_Pressed` — one discrete step per key press, no analog hold. The keyboard
+brake is therefore a six-rung ladder, {0.0, 0.2, 0.4, 0.6, 0.8, 1.0}, and
+nothing between the rungs is reachable. Measured at exactly those rungs, 3 s
+holds:
+
+| rung | 0.0 | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 |
+|---|---|---|---|---|---|---|
+| `deepStall` | 0 | 0 | 0 | 0 | **0** | 0.957 |
+| stalled sink, m/s | 1.14 | 1.11 | 1.62 | 4.02 | 7.52 | 5.43 |
+| first surge, m/s | 0.03 | 1.12 | 3.12 | 4.95 | 8.01 | 11.98 |
+
+**`deepStall` is nonzero at exactly one rung.** 0.8 is not a stall at all — it
+is a deep-braked mush at 7.52 m/s of sink. So a keyboard pilot has **one stall
+in the game**, and it is full brake.
+
+*"No matter how hard the stall it just recovers in one movement"* is therefore
+literally true, and it was never a statement about the physics. Every stall the
+pilot has ever flown is the same input: brake 1.0, `deepStall` 0.957, first
+surge 11.98 m/s. They all feel identical because they **are** identical.
+Amplitude-independence was in the INPUT.
+
+- The old branch B — *"the brake range cannot reach the stalls"* — is false as
+  stated. The range reaches the stall. It contains exactly one of them.
+- The old branch A — *"the oscillation is not reaching the screen"* — was then
+  checked on its own merits, and the render path is **intact**.
+  `canopyRelativePitchRad` reaches `CanopyVisual` twice over: as a
+  `SetRelativeRotation`, and as a translation onto the arc that
+  `EvaluateCanopySwingOffset` computes in the physics layer. The camera is a
+  chase cam 8.5 m behind and 2.6 m above the root with the canopy 7.3 m up and
+  in frame, and its position/rotation smoothing (`VInterpTo` 2.8,
+  `RInterpTo` 3.6, time constants ~0.36 s and ~0.28 s) is an order of
+  magnitude faster than the 4 s pitch mode, so it tracks the swing rather than
+  filtering it. A 44.5-degree first swing is on screen. **Caveat: this is the
+  data path verified by reading, not by flying and looking** — but nothing in
+  it now needs to carry the explanation.
+- **The gamepad path is already continuous.** `SetControllerLeftBrake` /
+  `SetControllerRightBrake` bind `BindAxis` and clamp an analog value to
+  [0, 1], and `AppliedControls` takes the max of keyboard and controller. The
+  depth axis fixed above is fully available on a stick and **invisible on a
+  keyboard**, where it spans two rungs, one of which does not stall.
+
+**THE REMEDY IS A GAME-FEEL DECISION AND IS NOT TAKEN HERE.** What a finer
+ladder would buy, measured:
+
+| brake | 0.80 | 0.85 | 0.90 | 0.95 | 1.00 |
+|---|---|---|---|---|---|
+| `deepStall` | 0 | 0 | 0.614 | 0.822 | 0.957 |
+| first surge, m/s | 8.01 | 8.57 | 10.85 | 11.83 | 11.98 |
+
+`ControlStep` 0.1 puts two distinguishable stalls in the pilot's hands (0.90 at
+10.85 m/s against 1.00 at 11.98); 0.05 puts four there. **But `ControlStep` is
+one constant used at all fourteen step-control sites in the pawn** — brakes,
+weight shift, accelerator — so halving it doubles the presses to reach full
+brake on every axis, not just this one. That is a control-feel judgement for
+the pilot, exactly like the `canopyPitchDampingRatio` target, and the
+alternative (a brake-only step, or a held-key ramp) is a design choice rather
+than a tuning one. **Not changed here.**
+- Done when, for the legacy model: a stall recovery shows more than one
+  surge-pitch cycle, the excursion scales with the stall rather than saturating
+  at a clamp, and whichever constants moved are justified against the
+  pilot-visible criterion the `canopyPitchDampingRatio` note already states.
+- **THIS IS ITEM 19'S AXIS, FROM THE SAME PILOT, AND THE TWO DIAGNOSES
+  INTERLOCK.** Item 19 found that `pitchStiffness` is referenced to
+  **incidence** rather than gravity — the weathercock and the pendulum folded
+  into one spring — so nothing in the legacy pitch axis references gravity at
+  all. **A pendulum needs two things to ring: a gravity-referenced restoring
+  term, and damping low enough to let it.** Item 19 is the missing (a); this
+  item is the violated (b), at ζ 0.69 with two clamps on top. Neither alone
+  explains the report and neither alone fixes it — a gravity term added under
+  ζ 0.69 would creep to the new attitude instead of swinging, and lowering the
+  damping without a gravity term leaves nothing to swing *about*.
+- **So the routing is: item 19 near-term, item 17 properly.** Item 19 is
+  already diagnosed and is blocked on exactly one thing — *"the target numbers
+  want a pilot's judgement rather than a plausible constant"*. That judgement is
+  now available: the pilot has described the target behaviour twice, in
+  pendulum terms both times. Item 17 (Level 10's exit gate) is the structural
+  fix and is **blocked** — the geometry-driven stack departs at 37% brake and
+  22% bar with weight shift at 0.01 rad/s, and item 19 already records that it
+  "cannot fly a stall recovery either, so it is not a swap-in fix."
+- **Do not wait for item 17 for this.** Four hand-tuned dampers and two clamps
+  on one axis is what a lumped model costs, and the coupled solver carries the
+  angle as a real degree of freedom — but that is a Level 10 exit gate behind
+  two departures and a dead control, and this is a defect a pilot hits on every
+  stall today.
+
+**THE COUPLED SOLVER HAS ITS OWN VERSION OF THIS, FOUND ON THE WAY, AND IT IS
+STILL WORTH HAVING** — it is what item 7 will migrate onto, so it will become
+the pilot's aircraft. Diagnosis from reading the solver, with arithmetic — not
+yet measured, and NOT the cause of the flight report above:
+
+1. **`1.0 - 1.6 * dt` on the canopy's angular rate**, every step, all three
+   axes (`CoupledParagliderSolver.cpp`, the `Structural damping` block). A
+   0.62 s time constant. Over one 1.86 s pendulum period it takes the wing's
+   rotation rate to `exp(-1.6 x 1.86)` — **5% left per swing**. Its own comment
+   says *"Without this the pendulum rings"*, which is the reported symptom
+   written down as an intention. **The literal `1.6` appears exactly once in
+   the repository: no registry entry, no derivation, no test, no sweep.** Every
+   other coefficient in this stack has been argued over for levels.
+2. **The 1.4 rad swing clamp sets `linkRate` to zero**, discarding the whole
+   swing kinetic energy in one step. Its comment says "well outside anything
+   short of an SIV manoeuvre" — and a hard stall recovery IS one. **This is the
+   only candidate that explains amplitude-independence:** a damper makes a
+   harder stall surge proportionally harder for the same number of cycles,
+   whereas a clamp makes every stall above threshold recover identically.
+   Appears in no test.
+3. **`swingDampingRatio` at 0.35**, item 11's known ~0.18. A mode at ζ 0.35
+   keeps 10% per cycle — one movement. At the ~0.06 that pilot and line drag
+   imply it keeps 69% — five to eight decaying swings. **The pilot's
+   description is the ~0.06 behaviour, quantitatively**, which is the outside
+   evidence item 11 has never had.
+
+- **Why the eigenmode programme never saw it.** The fast mode is 1.86 s at
+  ζ≈0.09 and is predominantly *link swing*; the post-stall surge is
+  predominantly *canopy pitch rotation*, and (1) acts on the canopy rate. The
+  instrument and the pilot are watching different coordinates of the same axis.
+- **Worse, the tool was told to discard it.** Item 11's rule is *"treat
+  anything with ζ > 0.5 from this tool as discretisation until it survives a
+  change of T"*. A 1.86 s mode decaying at 1.6/s has an equivalent **ζ ≈ 0.47**,
+  rising for anything slower. That rule was written for spurious rows at T=2 and
+  may have been eating a real over-damped canopy-pitch mode ever since. It is
+  now a testable question, not a worry: **zero the structural damping and the
+  ζ > 0.5 rows either move or they do not.**
+- **The energy audit has a blind spot exactly where all three live.**
+  `energyResidualW` is translational KE + PE against aerodynamic work. Canopy
+  *rotational* KE and pendulum *swing* KE are in neither term. Its comment —
+  "a subsystem that creates energy cannot hide from this" — is true for
+  creation and false for destruction: all three of these dissipate rotational
+  energy invisibly. **That is why nine levels of energy accounting never
+  flagged a term that removes 95% of the wing's rotational energy per swing.**
+- Done when, for the coupled solver: a stall recovery shows **more than one**
+  surge-pitch cycle, the cycle count and decay follow the stall's severity
+  rather than being pinned by a clamp, and the rotational and swing energy are
+  inside the audit so a dissipator on this axis cannot hide again.
+- Bounded in `coupled_tests` by surge-peak count, so a regression to the single
+  movement registers.
+- **Instrument built, not yet run: `pitch_axis_trace --surge`.** Sweeps the
+  three coupled-solver terms against three stall severities and reports the
+  energy each removes in JOULES rather than the coefficient each carries, so
+  which one dominates is measured rather than argued. It prints the safety
+  envelope flag per row, because at `aerodynamicsInterval` 6 a nominal frontal
+  now engages it (item 25) and a recovery measured through the envelope is not
+  flight behaviour.
+- **A LESSON ABOUT THIS FILE, not about the wing.** Item 7 states in writing
+  that the pawn flies `ParagliderDynamics`, and the first pass at this item read
+  three levels of pitch-axis history without checking which model the reporter
+  was flying. §80 recorded the same shape of failure one session earlier —
+  reaching for an instrument the file had already superseded — and called it a
+  retrieval failure rather than a knowledge one. **Twice now, and both times the
+  fact needed was in this file.** The cheap guard is a question, asked before any
+  reading: *which model produced this observation?*
+
+**25. THE SCHEDULE FIX IS NOT FREE, AND "ALL TWELVE SUITES GREEN" DID NOT HOLD
+AT THE INTERVAL IT SHIPPED.** `aerodynamicsInterval` went 12 → 6 on §79/§80's
+evidence. Bisected by running `coupled_tests` at both intervals with nothing
+else different: **4 checks fail at 6, all pass at 12.**
+
+- Three are **stale expectations**, and re-deriving them is routine: §68's
+  iteration-cap gates pin break times and residuals identified at the 0.1 s
+  hold, and a different hold moves them. No conclusion of §68's changes — the
+  finding was that fifteen times the iteration budget breaks on the *same*
+  tick, and that is a statement about iterations, not about the hold.
+- **The fourth is not stale.** It is §69's **control**:
+  `!shipped.safetyEnvelopeEngaged` on the 4 m/s symmetric frontal. At 12 the
+  shipped wing flies it with the envelope idle; **at 6 it engages.** Two
+  consequences, and the second is worse than the first:
+  - By guiding rule 12, a shipped wing that needs the numerical safety envelope
+    in a **nominal** incident is a larger fact than the stability boundary
+    moving 0.01. This is the wing getting harder to represent, not a number
+    getting better.
+  - It removes the control that makes §69's two drag rows mean anything. **Item
+    12's "no route around Level 11" currently rests on a benchmark whose own
+    control fails**, so that conclusion is suspended rather than wrong.
+- **Not reverted.** §78/§79/§80's three measurements that the 0.1 s hold
+  manufactures departures not in the aircraft are untouched by this, and the
+  case for a finer hold stands on them. What does not stand is the claim the
+  change was clean.
+- **The decision has not been taken**, and it is a scoping call rather than a
+  physics one: re-derive the three §68 gates and fix or accept the frontal; or
+  hold the schedule at 12 until Level 11 and keep the finer hold as a
+  measurement instrument only. The second is cheap and honest and costs the
+  ~0.05 of boundary §78/§79 bought.
+- **Consequence for item 24, which is why this was found now:** any stall
+  recovery measured at interval 6 must print the envelope flag beside it. A
+  recovery that passes through the safety envelope is not flight behaviour, and
+  the surge-count measurement item 24 needs would be meaningless through it.
+- Done when: the suite is green at the interval that ships, and which of the
+  two routes was taken is written down with its cost.
 
 **4. A cravat has never formed in the coupled solve.** It forms in
 `collapse_tests`, from the built graph's real 0.178 m tip line gap against a
@@ -1139,16 +1479,121 @@ stands in for, and it is checkable against a real wing in a way "the period is
   because the flown answer said 0.35–0.30. The flown answer was taken at the
   10 Hz hold. The eigenvalues were too, so there is no reason yet why they
   should agree — §40 is what stops this being written up as a result.
-- **Next, and it is specific:** recompute the spectrum (`--sweep`) at 0.025 and
-  0.05 s aerodynamic holds and find where the eigenvalue crossing goes. If it
-  is hold-invariant while the flown crossing moves onto it, **§39's verdict
-  inverts and the eigenvalue was right all along** — which would retire the
-  "biased stable, the eigenvalue loses" note that three later sections lean on.
-  Everything needed exists: `--sweep` already takes the spectrum through the
-  boundary, and `SetSchedule` is already wired into this file.
-- Done when: the wing settles in a time a pilot would recognise with a damping
-  ratio derived from pilot and line drag (~0.06) rather than chosen to keep the
-  aircraft from departing.
+- **DONE (§79), and §39's verdict inverted.** `pitch_eigenmodes --holds` takes
+  the spectrum through the boundary at four aerodynamic holds, converted to
+  §78's per-cycle currency so the two instruments print in the same units.
+
+| ratio | 0.025 s | 0.05 s | 0.10 s | 0.20 s | spread |
+|---|---|---|---|---|---|
+| 0.35 | 0.710 | 0.709 | 0.716 | 0.708 | 1.1% |
+| 0.30 | 0.881 | 0.880 | 0.887 | 0.876 | 1.3% |
+| 0.28 | 0.966 | 0.965 | 0.972 | 0.961 | 1.1% |
+| 0.25 | 1.117 | 1.116 | 1.124 | 1.110 | 1.3% |
+
+- **The eigenvalue does not move; the flown measurement does.** 1.1–1.3%
+  non-monotone scatter against the flown `g`'s 12% monotone move at ratio 0.30.
+  **The eigenvalue crossing is between 0.28 and 0.25 at every hold.**
+- **So `swingDampingRatio` = 0.35 was pinned partly by a schedule-contaminated
+  instrument.** §39's outside confirmation (`pitch_axis_trace --slow-mode`) was
+  taken at the same 0.1 s hold as the flown fit it agreed with — two instruments
+  sharing a defect agreed with each other, and it was read as confirmation.
+- **What §39 got right:** the eigenvalue *is* biased stable — 0.711 vs the
+  converged flown 0.774 at ratio 0.35, 0.881 vs 0.959 at 0.30. The
+  characterisation was correct; the verdict about which instrument to trust was
+  backwards. **The converged flown boundary is between 0.30 and 0.28**, which
+  needs no correction factor: at a converged hold ratio 0.30 decays at 0.959.
+- **Recorded, NOT claimed:** converged-flown-over-eigenvalue is 1.0890 at ratio
+  0.35 and 1.0885 at 0.30 — the same factor to four digits, at two ratios whose
+  `g` differ by 24%. Two points, not predicted in advance, and the only two
+  ratios where a converged flown `g` exists. Test is more ratios.
+- **§47's attribution is REFUTED, and it came free with this run.** §47 blamed
+  the 0.1 s aerodynamic hold for Φ(T) not being an exponential family. That
+  predicts the T-dependence shrinks at a finer hold. Spread between σ at
+  T = 0.25 and T = 0.10, ratio 0.35: **0.0038 / 0.0041 / 0.0044 / 0.0043** over
+  holds 0.025 → 0.20 s. An eightfold finer hold leaves it within 12% of where it
+  started. §47's *observation* stands; its *diagnosis* does not.
+- **THE LAST NAMED CANDIDATE IS ELIMINATED (§80), AND ITEM 11 NOW HAS NONE.**
+  `pitch_eigenmodes --stiffness` and `--soft` test whether n's *value* sets the
+  boundary's *location* — a question §35 and §38/§40 never asked, since both
+  were about n as the crossing variable.
+
+| spring | glide | g at 0.35 | 0.30 | boundary |
+|---|---|---|---|---|
+| ×1 | 10.97 | 0.788 | 0.977 | ~0.28 |
+| ×2 | 10.49 | 0.985 | 1.225 dep. | ~0.32 |
+| ×4 | 6.52 | 1.001 | departed | ≥0.35 |
+| ×0.5 | **0.11** | departed | departed | not flying |
+| ×0.25 | **0.71** | no amplitude | — | not flying |
+
+- **Stiffening moves the boundary UP** — sign reversed against the prediction,
+  §55's shape for the third time on this axis. **Softening destroys the trim**
+  (glide 0.11 against a published 9.5) before it can inform on anything, so the
+  lever is one-sided and §55's confound withheld the licence. Eliminated in
+  both directions.
+- **So the ~0.18 of unexplained coefficient has no candidate mechanism**, and
+  item 11's exit criterion remains unreachable as written: at ratio 0.06 this
+  wing departs. **That is now a scoping decision rather than a physics question**
+  — see the note under "what it did not close".
+- **Kept from the run:** the shipped 10 Hz hold makes the ×2/×4/×8 springs
+  depart at 329/202/113 s reaching 20–25° incidence, and *none* of them departs
+  at 0.025 s — the third distinct occasion (§78, §79, this) that the schedule
+  manufactures a departure not in the aircraft. And a trim-free,
+  schedule-converged boundary curve that did not exist before: ratio 0.35 →
+  0.788, 0.30 → 0.977, 0.25 → 1.235, 0.20 → 1.586, 0.15 → 2.132.
+- **Unresolved and now un-leverable:** §34 reads the flat lift curve as the
+  defect; §35 found dα/dV going −1.27 → −1.72 as the ratio *rises*, i.e. more
+  tracking with more stability. They point opposite ways, have done for dozens
+  of sections, and the lever that would have separated them is the one just
+  eliminated.
+- **Next, two candidates and they are separable.** (1) The **120 Hz base
+  timestep** — the one schedule quantity that has never moved, held fixed in
+  every run here and in §47. Vary `timeStepS` and the T-spread either follows or
+  it does not; `CoupledSchedule::timeStepS` already exists. (2) **Hidden
+  states**, which would make this structural rather than numerical: the solver
+  carries membrane, pressure, line-network and damping-probe state outside the
+  six reduced coordinates, and a 6×6 Φ(T) read off a higher-dimensional system
+  is a projection — generically *not* an exponential family, as a matter of
+  mathematics rather than discretisation. If (2), no schedule refinement fixes
+  it, §47's advice ("quote it with its T") was right for the wrong reason, and
+  §50's residual outside the two-mode span is the same thing from another side.
+- **THE OLD EXIT CRITERION WAS UNREACHABLE AND IS REPLACED (§80).** It read:
+  *"the wing settles in a time a pilot would recognise with a damping ratio
+  derived from pilot and line drag (~0.06) rather than chosen to keep the
+  aircraft from departing."* At ratio 0.06 **this wing departs** — the
+  schedule-converged boundary is between 0.30 and 0.28 (§79), and the trim-free
+  curve at 0.15 is already growing at 2.132 per cycle. So the criterion asked
+  the item to close at a ratio five times below where a trim exists, which no
+  amount of narrowing could deliver: the item could only ever recede. It has
+  receded through four sections, and that is the criterion's fault rather than
+  the aircraft's.
+- **What replaced it, and why it is weaker on purpose.** After §80 there is no
+  named candidate mechanism for the ~0.18 of unexplained coefficient, so an
+  exit that requires *deriving* the ratio is an exit conditioned on an
+  unstarted discovery. What can honestly be asked is that the number be
+  **bounded, attributed and gated** rather than derived — and if it is later
+  derived, that is a bonus, not the gate.
+- Done when, all three:
+  1. **The boundary is quoted at a converged schedule with its instrument
+     named.** Met as of §79/§80: 0.30–0.28 flown at the 0.05 s hold, with the
+     eigenvalue's 0.28–0.25 recorded as biased stable and *not* averaged in.
+  2. **`swingDampingRatio` is labelled for what it is** in the coefficient
+     registry. Met as of §80 — the entry now says margin-above-a-boundary
+     rather than smallest-value-that-damps, and carries the superseded 10 Hz
+     reading as superseded — a stability margin above a measured departure boundary, not a
+     derived damping — with the gap to the ~0.06 that pilot and line drag imply
+     recorded as an open disagreement of known size (~0.18) and no candidate
+     mechanism.
+  3. **The margin itself is chosen against the boundary rather than inherited.**
+     0.35 sits ~0.06 above a boundary of 0.29. Whether that is the right margin
+     is a scoping call — state it, gate it in `calibration_tests` in the
+     direction the model is wrong, and it can regress noticeably.
+- **What this deliberately does NOT close.** The ~0.18 stays open and stays
+  attributed to nothing. §34 and §35 still point opposite ways about the flat
+  lift curve, and the lever that would have separated them is eliminated. The
+  next instrument, if there is one, is the 120 Hz base timestep or the hidden
+  states above — **and neither is worth a fifth run before the wing has been
+  flown** (item 19). Real handling data is now more likely to name the missing
+  mechanism than another sweep is.
 
 **Two corrections on the record, because both were written into these docs and
 acted on before being checked.**
@@ -1735,6 +2180,81 @@ the oscillation, not a measurement of it.
 - Still open: 25% brake does not settle even given 1500 s after its input.
   Deep brake and full bar do reach a steady state, but a fully separated one at
   86–91° of incidence — a steady state, not a trim point.
+
+## Level 11 — unsteady wake (STARTED, strand 1 of 4 landed)
+
+**Budget 36 hours, and it took four sessions to specify before any of it was
+written.** The master plan's work list is four strands. They are not equally
+blocked and they are not equally expensive, so this records the ordering and
+the reason rather than leaving the next session to re-derive it.
+
+**The entry criterion is a separated solve that is SINGLE-VALUED** (§68). Not a
+stabler one and not a better-iterated one: 40, 200 and 600 iteration caps break
+on the same tick, so the solve is not short of iterations — it has nothing to
+converge to. `coupled_tests` already holds the gate that would show it fixed:
+the symmetric frontal must not lose mirror symmetry on an aerodynamic tick, and
+a drag correction landing the published glide must not engage the safety
+envelope.
+
+**26. Strand 1: unsteady circulation lag. DONE and validated.**
+
+- `WagnerLag` in `VortexStepMethodSolver.h` — R. T. Jones' two-exponential
+  approximation to Wagner's function, `Phi(s) = 1 - 0.165 e^(-0.0455 s) -
+  0.335 e^(-0.30 s)`, in reduced time `s` = semichords travelled. Named source,
+  per guiding rule 13; deviation from Wagner's exact function is under 1% and
+  is the standard engineering form.
+- Written as two first-order states rather than a convolution, which is what
+  makes it affordable in a flight loop — the exponential form integrates
+  exactly, so any `ds` is a closed-form step and there is no history to store.
+- **Checked against published values rather than against itself**, marched
+  rather than evaluated: 0.5000 / 0.5942 / 0.6655 / 0.7938 / 0.8786 / 0.9328 at
+  s = 0, 1, 2, 5, 10, 20. Plus `Phi(0) = 0.5` exactly, monotonicity to s = 100,
+  no transient from a settled start, and that reduced time counts semichords
+  and not seconds. In `aerodynamics_tests`.
+- **Two of those reference values were wrong when first written, and the code
+  was right.** Worth recording: the failing check was the test's arithmetic,
+  not the implementation, and the only reason that was visible in one step is
+  that the reference was computed independently instead of captured from the
+  code's own output. A golden-output test would have frozen the error.
+- **NOT WIRED INTO THE FORCE ASSEMBLY, and that is strand 2, not an oversight.**
+  The VSM builds section forces from the polar's lift coefficient and lets
+  circulation enter only through the induced velocity. Lagging one without the
+  other reports a wing whose lift and downwash disagree. The indicial response
+  was landed alone because it is the part with a published answer to check
+  against, and checking it inside a coupled solve would have been strictly
+  harder for no benefit.
+
+**27. Strand 2: wire the lag into the circulation solve.** The real work, and
+the one that touches the blocker. The Γ↔Cl relationship has to be lagged
+consistently: `Γ = ½ V c Cl`, so lagging the circulation and reading an
+unlagged polar is not a smaller version of the right answer, it is a wing whose
+downwash and lift come from different instants.
+
+- **Why this is the strand that can move the blocker.** A circulation that is a
+  STATE does not need a fixed point — it integrates forward. The separated
+  regime's missing single-valued solution is a property of the *steady* solve,
+  and the honest treatment named in item 6 is exactly this.
+- Not proven, and should not be assumed: it is possible the lag makes the
+  transient well posed while the underlying branch selection stays ambiguous.
+  The gate above decides it, and it already exists.
+- Done when: the symmetric frontal holds mirror symmetry through the tick that
+  currently breaks it, at the shipped schedule.
+
+**28. Strand 3: shed and convect a free wake.** Trailing-edge vorticity shed and
+convected, the canopy flying through its own wake, with adaptive near-field
+lattice → far-field particle conversion so cost stays bounded. This is the
+expensive strand and the one the 36-hour budget is mostly about.
+
+**29. Strand 4: the exit gate's flight behaviours.** A spiral showing genuine
+wake re-encounter on the inner wing; wingovers showing circulation lag rather
+than instant response; a brake release with correct overshoot timing and no
+tuned delay; wake cost inside the frame budget for 60 s of aggressive
+manoeuvring. Strand 4 is mostly measurement once 2 and 3 are in.
+
+- **Note for whoever takes strand 2:** item 25 is unresolved, and at
+  `aerodynamicsInterval` 6 the §69 control gate fails. Strand 2's own gate is
+  in the same suite. Settle item 25 first or every strand-2 measurement will be
+  read against a benchmark whose control is red.
 
 ## Data gaps
 

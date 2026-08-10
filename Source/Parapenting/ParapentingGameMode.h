@@ -32,6 +32,7 @@ private:
     float VisualQAWarmupSeconds = 4.0f;
     double VisualQALocalHour = 13.0;
     int32 VisualQAWeatherPreset = INDEX_NONE;
+    int32 VisualQACameraMode = 0;
     FString VisualQACaptureName;
     FString VisualQACapturePath;
 

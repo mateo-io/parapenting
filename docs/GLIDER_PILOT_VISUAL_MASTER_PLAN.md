@@ -28,19 +28,20 @@ credibility because:
 - the pilot is assembled from Engine cubes, cylinders and spheres rather than
   a human skeleton with stable joint lengths and anatomical limits;
 - `PilotPose` now carries pelvis, chest, head, hip, knee and ankle targets
-  alongside shoulder, elbow and hand, but still has no wrist orientation, grip
-  state, hand inertia or two-handed coordination, and drives bone translation
-  only — so limbs do not twist and the skin shears at shoulder and wrist;
+  alongside shoulder, elbow and hand, plus wrist axes and explicit open /
+  acquire / wrapped / loaded grip state. Wrist roll follows the solved pulley
+  direction when a skeletal pilot is present; authored finger poses still wait
+  on that asset;
 - brake handles are scaled spheres, not loops held by fingers;
 - risers exist as drawn geometry — `RiserTopLocalCm` places four groups
   (A, A', B, C) 45 cm above the carabiner with a fore/aft spread, drawn as two
   webbing rails plus a maillon bar, with harness and shoulder webbing below —
-  but the webbing is a straight rail pair that cannot bend or twist, and there
-  is no brake pulley, keeper or accelerator routing;
-- the suspension renderer (`AddSuspensionSegment`) turns every segment into a
-  four-sided tube with a fixed world-space radius, which makes sub-millimetre
-  line groups read like rods at normal camera distance and gives no
-  screen-space thickness floor at range;
+  but the webbing is a straight rail pair that cannot bend or twist. Brake
+  pulleys, keeper rings and ankle-to-A-riser speed-bar routing now render from
+  achieved fixed-step state;
+- the suspension renderer still uses four-sided tubes, but now applies a
+  conservative camera-distance width floor so fine lines remain traceable at
+  range. Analytic camera-facing coverage and LODs remain to do;
 - cloth deformation communicates global state, and local brake pull now reaches
   the matching trailing-edge stations, but the canopy is still a single skin
   rather than sewn cell/rib topology;
@@ -113,6 +114,10 @@ from the same deterministic replay.
 Exit gate: golden captures and measurements exist for every reference replay;
 the close chase view contains pilot, both hands, risers, line fan and canopy.
 
+Gate status: replay recording, the named rig diagnostic, and rear / close /
+side evaluation cameras exist. Golden and measurement captures require running
+the Unreal project and remain a release-QA gate.
+
 ### Stage 1 — continuous kinematic chain
 
 - Introduce `GliderRigSnapshot` and render interpolation.
@@ -125,6 +130,10 @@ the close chase view contains pilot, both hands, risers, line fan and canopy.
 
 Exit gate: zero visible endpoint gaps in all reference replays; no limb or
 riser changes length; a brake handle never moves before its hand.
+
+Gate status: timestamped snapshots, bounded interpolation, achieved travel,
+pole-vector limb solving and length contracts are implemented and headless
+tested. The visual zero-gap check remains part of Unreal replay QA.
 
 ### Stage 2 — production pilot and harness
 
@@ -163,8 +172,8 @@ does not resolve and the primitive blockout is what renders. See
 
 - Model left/right brake loops with a real grip and wrist orientation.
 - Carabiners, maillons and A / split Baby-A / B / C risers already exist as
-  drawn geometry; add the brake pulley, keeper magnets/snaps and accelerator
-  lines, and give the hardware real cross-sections.
+  drawn geometry; brake pulleys, keeper rings and accelerator lines are now
+  rendered with real cross-sections from the achieved snapshot.
 - Skin riser webbing so it bends and twists while maintaining length, replacing
   the current straight rail pair.
 - Animate fingers between open, acquire, wrapped, loaded and released states.
@@ -175,6 +184,11 @@ Exit gate: every line can be visually traced to real hardware; the left and
 right systems remain independent; hands-up, half-brake and flare read without
 HUD assistance.
 
+Gate status: the causal hardware path is now present, including a single brake
+line through the actual pulley and an ankle-to-A-riser speed-bar path. The
+grip contract is covered by headless tests; finger animation, flexible riser
+webbing and the live skeletal-asset visual check remain open.
+
 ### Stage 4 — suspension line renderer
 
 - Render the authoritative graph, including mains, cascades, upper galleries
@@ -182,7 +196,9 @@ HUD assistance.
   brake fan now iterates `LineGraph` brake attachments, so editing the line
   plan changes what is drawn.
 - Replace the fixed world-space tube radius with a screen-space width floor so
-  a line stays visible at range without becoming a rod up close.
+  a line stays visible at range without becoming a rod up close. **First pass
+  done:** `AddSuspensionSegment` clamps radius to a conservative
+  camera-distance floor; analytic coverage remains open.
 - Use camera-facing analytic lines or ribbons with stable sub-pixel coverage,
   row-aware colour and physically based highlight response.
 - Derive sag from solved slack and tension. Add only small deterministic
@@ -193,12 +209,18 @@ HUD assistance.
 Exit gate: lines survive a Shipping build, remain readable at chase distance,
 do not shimmer in motion and meet every hand, riser, cascade and canopy node.
 
+Gate status: the authoritative graph, load/slack sag, deterministic flutter
+and a distance width floor are in place. Analytic camera-facing coverage,
+cross-faded LODs and the Shipping capture matrix remain runtime work.
+
 ### Stage 5 — canopy as sewn, pressurised fabric
 
 - Upgrade to cell/rib topology with distinct upper and lower skins, open
   leading-edge intakes, closed tips and a continuous trailing edge.
 - Add panel seams, diagonal/rib structure, reinforcements and subtle ripstop
-  normal response at physically plausible scale.
+  normal response at physically plausible scale. **First pass done:** each
+  rendered cell rib carries a 1.15 cm pressure-preserving seam crown; diagonal
+  structure, reinforcements and ripstop response remain open.
 - Skin all authoritative attachment points into the fabric topology.
 - Map brake fan shortening into local trailing-edge displacement at the actual
   attachment stations before smoothing displacement through neighbouring
@@ -212,6 +234,13 @@ do not shimmer in motion and meet every hand, riser, cascade and canopy node.
 Exit gate: asymmetric brake visibly starts at the matching hand, travels
 through its line fan and pulls only the matching trailing edge; cell volume is
 preserved in normal flight and folds remain attached to line geometry.
+
+Gate status: double skins, intake back-walls, closed tips, pressure thickness,
+attachment-driven brake deformation and stable collapse modes are implemented.
+The remaining seam/reinforcement art and visual exit check require material and
+runtime review. An interim generated ripstop/reinforcement source is available
+at `Content/ArtSource/Canopy/`; see
+[GENERATED_CANOPY_ART.md](GENERATED_CANOPY_ART.md) for its import contract.
 
 ### Stage 6 — human secondary motion
 
@@ -227,12 +256,21 @@ preserved in normal flight and folds remain attached to line geometry.
 Exit gate: neutral flight is alive but quiet; turbulence increases corrective
 activity; identical replays produce identical hero-camera motion.
 
+Gate status: fixed-step breathing and head-look are deterministic, workload
+suppressed, and covered by headless contracts; existing pelvis-led leg and
+torso motion, brake effort, and recovery pose response supply the other
+secondary-motion paths. Clothing/strap skin deformation awaits the character
+asset, and the exit check needs a live skeletal pilot.
+
 ### Stage 7 — camera and player readability
 
 - Author a glider-focused chase camera that composes the pilot low-centre and
-  canopy high-centre while preserving terrain sight lines.
+  canopy high-centre while preserving terrain sight lines. **Done:** all live
+  camera modes now aim at the measured payload-to-canopy interval instead of
+  fixed pitch/yaw presets.
 - Add a close technical view for hands, risers and brake travel, and a side
-  view for pitch/surge analysis.
+  view for pitch/surge analysis. **Done:** Close Technical is a three-quarter
+  hardware view; Side Technical frames the payload-to-canopy interval.
 - Use existing `CameraFeedback` for filtered motion and respect Full, Comfort
   and Minimal Motion accessibility modes.
 - Adjust framing with canopy–payload separation rather than changing physical
@@ -240,6 +278,15 @@ activity; identical replays produce identical hero-camera motion.
 
 Exit gate: hands-up, one-sided input, flare, weight shift and surge can each be
 identified in a two-second silent clip with the HUD off.
+
+Gate status: rear chase, Close Technical, Side Technical and Scenic Wing use
+the same snapshot-driven composition; Full, Comfort and Minimal Motion feed
+the same camera-feedback path. TAB now cycles a true HUD OFF mode. The final
+silent-clip assessment requires an Unreal replay capture. Shipping capture is
+automated with `-VisualQACapture=<name> -VisualQACamera=0..3`
+(`0` Rear Chase, `1` Close Technical, `2` Side Technical, `3` Scenic Wing);
+the game hides the HUD, fixes weather/time and writes a PNG under
+`Saved/VisualQA/` before exiting.
 
 ### Stage 8 — incidents and edge cases
 
@@ -302,27 +349,20 @@ Use structured review from experienced paraglider pilots for posture, riser
 routing, grip and incident behaviour. Label visual and physical approximations
 until reference video or instrumented data supports them.
 
-## Immediate build order
+## Remaining closure work below Stage 7
 
-The next implementation slice should be Stage 0 plus Stage 1, not a character
-asset purchase. It fixes the causal and timing foundation that every later
-asset depends on:
+The causal rig, hardware, canopy and deterministic secondary-motion foundation
+is complete through Stage 6. The remaining closure items are:
 
-1. Define the timestamped snapshot and interpolation tests.
-2. Move achieved hand/grip, carabiner, riser and attachment transforms into it.
-3. Add diagnostic nodes and the three evaluation cameras.
-4. Record the reference replay matrix and baseline captures.
-5. Remove endpoint gaps and limb-length changes before replacing meshes.
-
-After that foundation is stable, Stage 2 and Stage 3 can be produced in
-parallel as character/harness art and control-hardware art, then integrated
-against the same rig contract.
-
-Stage 2's licensed character is a procurement decision, not a code dependency.
-Do not let it block the stage: build the harness mesh, IK rig, retargeter and
-pose-family state machine against the UE5 Mannequin, and swap the pilot in as a
-data change once it is approved. See
-[PILOT_CHARACTER_ASSET_GUIDE.md](PILOT_CHARACTER_ASSET_GUIDE.md).
+1. Put the licensed skeletal pilot and its licence in `Content/Characters/`
+   and assign it through `PilotMeshOverride`.
+2. Retarget the provided targets through an IK Rig and author the finger and
+   clothing/strap responses on that mesh.
+3. Replace the current tube renderer with analytic camera-facing coverage and
+   add cross-faded line LODs; finish flexible riser webbing and canopy
+   reinforcement art.
+4. Run the reference replay matrix in an Unreal Shipping build, capture the
+   Stage 0/1/4/5/6 visual gates, and fix anything those captures expose.
 
 ## Definition of done
 

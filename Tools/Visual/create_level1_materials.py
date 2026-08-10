@@ -325,6 +325,45 @@ def make_water_surface():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         world_position, "", fine_breakup, "Position"
     )
+    # A second, UV-panned ripple field provides visible but restrained motion.
+    # Lake and river meshes both carry continuous UVs, so it moves as one
+    # surface rather than making the individual surveyed lake cells shimmer.
+    water_uv = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionTextureCoordinate, -520, 410
+    )
+    ripple_pan = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionPanner, -300, 410
+    )
+    ripple_pan.set_editor_property("speed_x", 0.009)
+    ripple_pan.set_editor_property("speed_y", -0.014)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        water_uv, "", ripple_pan, "Coordinate"
+    )
+    moving_ripples = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionNoise, -70, 390
+    )
+    moving_ripples.set_editor_property("scale", 26.0)
+    moving_ripples.set_editor_property("quality", 1)
+    moving_ripples.set_editor_property("levels", 1)
+    moving_ripples.set_editor_property("output_min", 0.88)
+    moving_ripples.set_editor_property("output_max", 1.10)
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        ripple_pan, "", moving_ripples, "Position"
+    )
+    ripple_strength = scalar(material, "WindRippleStrength", 0.38, -70, 500)
+    neutral_ripple = scalar(material, "NeutralRipple", 1.0, -70, 580)
+    weather_ripple = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 160, 400
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        neutral_ripple, "", weather_ripple, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        moving_ripples, "", weather_ripple, "B"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        ripple_strength, "", weather_ripple, "Alpha"
+    )
     breakup = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionMultiply, -70, 220
     )
@@ -334,6 +373,15 @@ def make_water_surface():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         fine_breakup, "", breakup, "B"
     )
+    ripple_breakup = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 160, 300
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        breakup, "", ripple_breakup, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        weather_ripple, "", ripple_breakup, "B"
+    )
     color_breakup = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionMultiply, 180, -40
     )
@@ -341,7 +389,7 @@ def make_water_surface():
         water_color, "", color_breakup, "A"
     )
     unreal.MaterialEditingLibrary.connect_material_expressions(
-        breakup, "", color_breakup, "B"
+        ripple_breakup, "", color_breakup, "B"
     )
     roughness = scalar(material, "WaterRoughness", 0.19, -40, 140)
     roughness_breakup = unreal.MaterialEditingLibrary.create_material_expression(
@@ -351,7 +399,7 @@ def make_water_surface():
         roughness, "", roughness_breakup, "A"
     )
     unreal.MaterialEditingLibrary.connect_material_expressions(
-        fine_breakup, "", roughness_breakup, "B"
+        weather_ripple, "", roughness_breakup, "B"
     )
     specular = scalar(material, "WaterSpecular", 0.50, -40, 220)
     reflection_strength = scalar(material, "ReflectionStrength", 0.42, -40, 300)

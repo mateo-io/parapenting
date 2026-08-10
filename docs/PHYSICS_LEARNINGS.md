@@ -1933,6 +1933,13 @@ falls** — which would at last explain §39's recorded anomaly, a flown boundar
 at ratio 0.35–0.30 against an eigenvalue boundary at 0.28–0.25, the eigenvalue
 biased stable against the flown wing.
 
+> **§79: most of that anomaly was not the aircraft.** The flown boundary moves
+> with the aerodynamic hold and the eigenvalue's does not, so the 0.35–0.30
+> figure was schedule-contaminated and the converged flown boundary is
+> 0.30–0.28. A gap remains — the eigenvalue is biased stable by a constant
+> factor — but it is much smaller than the one this paragraph set out to
+> explain. The G result below is measured directly and stands on its own.
+
 **Half of that is confirmed and it is new.** This aircraft amplifies a
 disturbance about **tenfold while every one of its modes is decaying** — G 9.0
 to 13.9 across the sweep against an eigenvalue prediction of 0.96 to 1.00. Ten
@@ -3913,6 +3920,201 @@ being written up. The test it names is specific: **recompute the spectrum at
 crossing is hold-invariant while the flown one moves onto it, §39's verdict
 inverts and the eigenvalue was right all along.
 
+## 79. The eigenvalue was the hold-robust instrument all along, and §47 blamed the wrong culprit
+
+§78 named this step: recompute the spectrum at finer aerodynamic holds and see
+where the eigenvalue crossing goes. §39 had put the eigenvalue crossing at ratio
+0.28–0.25 and the flown one at 0.35–0.30 and **ruled against the eigenvalue** —
+"biased stable; the eigenvalue loses" — a verdict three later sections lean on.
+§78 then found the flown crossing is not a property of the wing: it moves below
+0.30 as the hold converges.
+
+Both numbers were taken at the same 0.1 s hold, so §78 refused to claim the
+inversion. This decides it, in **§78's currency** — the eigenvalue converted to
+a per-cycle growth factor `g = exp(σ·period)` — so the two instruments print in
+the same units and the disagreement is a number rather than two overlapping
+brackets.
+
+### The eigenvalue does not move. The flown measurement does.
+
+`g` from the eigenvalue, across an eightfold range of hold:
+
+| ratio | 0.025 s | 0.05 s | 0.10 s | 0.20 s | spread |
+|---|---|---|---|---|---|
+| 0.35 | 0.710 | 0.709 | 0.716 | 0.708 | **1.1%** |
+| 0.30 | 0.881 | 0.880 | 0.887 | 0.876 | **1.3%** |
+| 0.28 | 0.966 | 0.965 | 0.972 | 0.961 | 1.1% |
+| 0.25 | 1.117 | 1.116 | 1.124 | 1.110 | 1.3% |
+
+Against §78's flown `g` at ratio 0.30: 0.977 → 0.994 → 1.029 → 1.100, a **12%**
+move. And the character differs, not just the size — the eigenvalue's 1% is
+non-monotone scatter (0.10 s is the high point in every row, 0.20 s comes back
+down), while the flown series is monotone and first-order in *h*.
+
+**The eigenvalue crossing is between 0.28 and 0.25 at every hold** — σ negative
+at 0.28 and positive at 0.25 in all four blocks. It does not move at all.
+
+**So §39's verdict inverts on the question it actually turned on.** The
+eigenvalue was the hold-robust instrument; the flown trace was measuring the
+aircraft *plus its schedule*, and the outside number §39 leaned on
+(`pitch_axis_trace --slow-mode`) was taken at the same 0.1 s hold as the flown
+fit it agreed with. Two instruments sharing a defect agreed with each other,
+and their agreement was read as confirmation.
+
+### What §39 got right, and it is not nothing
+
+The eigenvalue is *still* biased stable. Against §78's converged flown `g`
+(Richardson, three concordant pairs): 0.711 against 0.774 at ratio 0.35, and
+0.881 against 0.959 at 0.30. So §39's **characterisation** was correct even
+though its verdict about which instrument to trust was backwards. The boundary
+is not at 0.28–0.25 either.
+
+**The converged flown boundary is between 0.30 and 0.28**, and that needs no
+correction factor to state: at a converged hold ratio 0.30 decays at `g` = 0.959.
+
+### Recorded, not claimed: the bias is a constant factor
+
+Converged flown over eigenvalue: **1.0890** at ratio 0.35 and **1.0885** at
+ratio 0.30. The same factor to four digits, at two ratios whose `g` differ by
+24%.
+
+**Not claimed.** It was not predicted in advance, it rests on **two ratios**,
+and those are the only two where a converged flown `g` exists — 0.40 sat below
+the amplitude floor and 0.25 departs before converging. A constant multiplicative
+offset between a linearisation and a flown trace would be a real and useful
+thing to know, and it is exactly the shape of result §40 exists to stop being
+written up on two points. The test is more ratios with converged flown `g`.
+
+### §47's attribution is refuted, and that came free
+
+§47 found Φ(T) is not an exponential family — A₀₀ changing sign between T = 0.10
+and T = 0.50 — and **blamed the 0.1 s aerodynamic hold**. That blame was never
+tested and it makes a prediction: at a finer hold the T-dependence must shrink.
+
+Spread between σ at T = 0.25 and T = 0.10, at ratio 0.35:
+
+| hold | 0.025 s | 0.05 s | 0.10 s | 0.20 s |
+|---|---|---|---|---|
+| spread | 0.0038 | 0.0041 | 0.0044 | 0.0043 |
+
+**It does not shrink.** An eightfold finer hold leaves the T-dependence within
+12% of where it started, and nowhere near zero. §47's *observation* stands and
+is confirmed here — σ moves ~20% between the two transition times at every hold
+— but **its diagnosis is wrong**. The aerodynamic hold is not what makes Φ
+non-exponential.
+
+Two candidates remain, and they are separable:
+
+- **The 120 Hz base timestep**, which was held fixed in every run here and in
+  §47. It is the one schedule quantity that has never moved. Vary `timeStepS`
+  and the spread either follows or it does not.
+- **Hidden states, which would make this structural rather than numerical.**
+  The solver carries membrane, pressure, line-network and damping-probe state
+  outside the six reduced coordinates. A 6×6 Φ(T) read off a higher-dimensional
+  linear system is a *projection*, and a projected transition operator is
+  generically not an exponential family — that is a mathematical fact, not a
+  discretisation artefact, and no schedule refinement would fix it.
+
+If the second is right, §47's operational advice — "quote it with its T; do not
+chase it" — was correct for the wrong stated reason, and the residual §50 found
+outside the two-mode span is the same thing seen from another side.
+
+## 80. The pitch spring is eliminated in both directions, and item 11 has no candidate left
+
+The ledger after §79. The gap between the shipped `swingDampingRatio` = 0.35 and
+this item's physical estimate of ~0.06 is 0.29, of which schedule and
+measurement artefact account for ~0.05 (§78, §79), pilot-referenced drag plus
+the lines sweeping 0.01 (§60, §63), and a credible pilot drag magnitude 0.05
+(§59). **About 0.18 is unexplained**, and item 11's stated exit is unreachable
+as written: at ratio 0.06 this wing departs, because the converged boundary is
+0.29–0.30. Both named physical terms together moved that boundary by 0.01, so
+whatever is missing is roughly **twenty times** their combined size.
+
+Four eliminations pointed at one quantity — §76 (the coefficient acts on what
+the phugoid *produces*), §45 (`d(surge)/d(surge)`, which is speed stability),
+§39/§40 (retracted then re-supported), and §51/§54/§76 clearing everything
+link-side. The quantity is §34's lift exponent, n = 0.171 against a classical 2,
+because the canopy rotates nose-up on its lines at −1.69°/(m/s).
+
+**The question was new even though n is not.** §35 asked whether n *crosses
+zero*; §38 and §40 whether n or d *trend with the ratio*. Both are about n as
+the crossing **variable** and both were answered correctly. Whether n's
+**value** sets the boundary's **location** — n as a parameter — had never been
+asked.
+
+### Refuted, with the sign reversed
+
+`SetPitchStiffnessScale`, a §6 diagnostic device (never to ship), multiplies the
+line network's pitch spring. Trim-free per-cycle growth (§78) at the converged
+0.025 s hold:
+
+| spring | glide | g at 0.35 | 0.30 | 0.25 | boundary |
+|---|---|---|---|---|---|
+| ×1 | 10.97 | 0.788 | 0.977 | 1.235 | ~0.28 |
+| ×2 | 10.49 | **0.985** | **1.225** dep. | departed | **~0.32** |
+| ×4 | 6.52 | **1.001** | departed | departed | **≥0.35** |
+
+**Stiffening moves the boundary up.** A wing whose canopy rotates *less* on its
+lines needs *more* artificial damping. The prediction's direction was wrong —
+the third time on this axis after §55's drag (+15% predicted, −21% measured).
+
+### And the other side is untestable, which closes the lever rather than leaving it open
+
+If stiffer is worse, softer is the interesting direction, and a two-sided lever
+tested on one side is a half-run experiment. It was run:
+
+| spring | glide | every ratio 0.35 → 0.10 |
+|---|---|---|
+| ×0.5 | **0.11** | departed, no cycles |
+| ×0.25 | **0.71** | no amplitude — not flying |
+
+Against ×1's 10.97 and a published 9.5. **Softening the pitch spring destroys
+the trim before it can inform on the boundary.** Those rows are the device
+wrecking the aircraft, not a measurement of it — §55's confound, flagged before
+the first run, swamping the soft side entirely. The glide column is the licence
+and it withheld it.
+
+**So the pitch spring is eliminated as item 11's mechanism in both directions:
+stiffer is measurably worse, and softer is unmeasurable.** The 0.18 has no
+candidate left.
+
+### What was worth having anyway
+
+**The 10 Hz hold manufactures departures, a third time.** At the shipped hold
+the ×2, ×4 and ×8 springs departed at 329, 202 and 113 s, reaching incidence
+20–25° and glide 0.89–2.93. At 0.025 s none of them departs at all. After §78
+(ratio 0.25) and §79 (the flown boundary), this is the third distinct occasion
+the shipped schedule has produced a departure that is not in the aircraft.
+
+**The boundary curve, trim-free and schedule-converged**, which did not exist
+before: ratio 0.35 → 0.788, 0.30 → 0.977, 0.25 → 1.235, 0.20 → 1.586,
+0.15 → 2.132, 0.10 → departs before a cycle completes.
+
+**A note on §34 and §35 that stands unresolved.** §34 reads the flat lift curve
+as why the mode is weakly restored and lightly damped — a defect. §35 found
+dα/dV going −1.27 to −1.72 as the ratio *rises*, i.e. more tracking alongside
+more stability. Those two have sat in the same item for dozens of sections
+pointing opposite ways, and this section noticed it without being able to
+resolve it, because the lever that would have is the one just eliminated.
+
+### Method note: two of four runs were my own instrument, and both lessons were already in this file
+
+The first run returned six blocks of "no trim" and could not say why. Two causes,
+both self-inflicted:
+
+- It asked for **own trims at ratios 0.30 and below**, which §78 had already
+  shown do not settle. §79 had solved this — settle once at 0.35 and sweep off
+  that state — and the structure was not reused.
+- It collapsed *departed*, *still moving* and *budget exhausted* into one
+  boolean, which is exactly the distinction §77 built its lowest-CL column to
+  preserve. Applied there, dropped here.
+
+And the third run reached for the **eigenvalue**, which needs a trim, for rows
+whose defining property is having none — when §78 had built a trim-free
+instrument for that case two sections earlier. **The failure mode is not
+ignorance of the lesson but failure to retrieve it**, three times in one
+investigation, each time on a lesson written down in this same document.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |
@@ -3965,6 +4167,19 @@ inverts and the eigenvalue was right all along.
 | g extrapolated to zero hold | 0.774 (r 0.35), 0.959 (r 0.30) | three Richardson pairs agree to 0.002 - §78 |
 | ratio 0.30 at holds <= 0.05 s | STABLE, measured directly | no extrapolation in this one - §78 |
 | converged boundary, by g | near 0.28-0.29 | where the EIGENVALUE put it - unclaimed - §78 |
+| eigenvalue g vs aero hold | 1.1-1.3%, non-monotone | HOLD-INVARIANT over 8x - §79 |
+| flown g vs aero hold, same ratio | 12%, monotone | the flown trace carries the schedule - §79 |
+| eigenvalue crossing vs hold | 0.28-0.25 at every hold | does not move at all - §79 |
+| §39's "the eigenvalue loses" | INVERTED | it was the hold-robust one - §79 |
+| converged flown boundary | between 0.30 and 0.28 | needs no correction factor - §79 |
+| converged flown / eigenvalue g | 1.0890 and 1.0885 | same factor, two ratios, UNCLAIMED - §79 |
+| §47's blame on the 0.1 s hold | REFUTED | T-spread 0.0038 to 0.0044 over 8x - §79 |
+| what makes Phi non-exponential | base timestep, or hidden states | both untested; separable - §79 |
+| boundary vs pitch spring x1/x2/x4 | ~0.28 / ~0.32 / >=0.35 | STIFFER IS WORSE - refuted, sign reversed - §80 |
+| pitch spring x0.5 / x0.25 | glide 0.11 / 0.71 | softer is UNMEASURABLE; lever is one-sided - §80 |
+| flown g, x1, converged hold | 0.788/0.977/1.235/1.586/2.132 | ratios 0.35 to 0.15, trim-free - §80 |
+| stiff springs at the 10 Hz hold | depart at 329/202/113 s | numerical; none departs at 0.025 s - §80 |
+| item 11's unexplained remainder | ~0.18 of coefficient | NO candidate mechanism left - §80 |
 | CANOPY bank as a fraction of coordinated | 38-40% | the roll spring's deflection, NOT a skid - §74 |
 | link bank against coordinated | within 2% | but the link seeks apparent gravity by construction - §74 |
 | sideslip in a steady turn | under 0.1 deg | measured, not inferred; there is no skid - §74 |
@@ -4003,8 +4218,9 @@ inverts and the eigenvalue was right all along.
 | its damping at ratio 0.25 / 0.20 | -0.017 / -0.042 | boundary is between 0.25 and 0.30 |
 | fast mode's real part, ratio 0.90 to 0.10 | -0.357 to -0.291 /s | it never crosses; not the departure - §38 |
 | mode whose damping DOES cross | the 16 s phugoid | not the pendulum - §38 |
-| where it crosses, FLOWN | ratio 0.35 to 0.30 | the number to use - §39 |
-| where it crosses, by eigenvalue | ratio 0.28 to 0.25 | biased stable; the eigenvalue loses - §39 |
+| where it crosses, FLOWN | ratio 0.35 to 0.30 | SUPERSEDED: taken at the 0.1 s hold - §79 |
+| where it crosses, by eigenvalue | ratio 0.28 to 0.25 | hold-invariant; §39's verdict INVERTED - §79 |
+| where it crosses, converged | between 0.30 and 0.28 | the number to use - §79 |
 | phugoid period, ratio 0.90 to 0.10 | 23.9 s to 14.0 s | the frequency never goes imaginary |
 | lowest ratio with a trim at all | 0.30 | 0.25 departs at 348 s of its own settle |
 | slow mode at 0.35, flown | 16.38 s, zeta 0.0299 | against 16.39 / 0.031 from a 1200 s trace |

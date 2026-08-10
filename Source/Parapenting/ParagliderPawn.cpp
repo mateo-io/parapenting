@@ -245,27 +245,49 @@ void AParagliderPawn::BeginPlay()
     RenderRigSnapshot = CurrentRigSnapshot;
     RefreshReplayCatalogue();
 
-    const auto TintPart = [](UStaticMeshComponent* Part, const FLinearColor& Color)
+    UMaterialInterface* SurfaceMaterial = LoadObject<UMaterialInterface>(
+        nullptr, TEXT("/Game/Materials/M_SurfaceMaster.M_SurfaceMaster"));
+    const auto TintPart = [SurfaceMaterial](UStaticMeshComponent* Part,
+                                            const FLinearColor& Color,
+                                            float Roughness = 0.86f)
     {
         if (!Part) return;
+        if (SurfaceMaterial)
+            Part->SetMaterial(0, SurfaceMaterial);
         if (UMaterialInstanceDynamic* Material =
                 Part->CreateAndSetMaterialInstanceDynamic(0))
         {
+            Material->SetVectorParameterValue(TEXT("BaseColor"), Color);
             Material->SetVectorParameterValue(TEXT("Color"), Color);
+            Material->SetScalarParameterValue(TEXT("Roughness"), Roughness);
         }
     };
-    TintPart(PilotTorso, FLinearColor(0.06f, 0.20f, 0.38f));
-    TintPart(PilotHead, FLinearColor(0.78f, 0.49f, 0.31f));
-    TintPart(HarnessVisual, FLinearColor(0.025f, 0.035f, 0.055f));
+    // Saturated safety colours are intentionally restricted to the small
+    // pilot read: they make the human/harness contact point legible against
+    // meadow, rock and water without turning the landscape into UI.
+    TintPart(PilotTorso, FLinearColor(0.025f, 0.14f, 0.28f), 0.82f);
+    TintPart(PilotHead, FLinearColor(0.90f, 0.30f, 0.045f), 0.62f);
+    TintPart(HarnessVisual, FLinearColor(0.012f, 0.018f, 0.030f), 0.95f);
     for (UStaticMeshComponent* Limb : {
         LeftUpperArm.Get(), RightUpperArm.Get(),
         LeftForearm.Get(), RightForearm.Get()})
-        TintPart(Limb, FLinearColor(0.06f, 0.20f, 0.38f));
+        TintPart(Limb, FLinearColor(0.025f, 0.14f, 0.28f), 0.84f);
     for (UStaticMeshComponent* Limb : {
         LeftThigh.Get(), RightThigh.Get(), LeftShin.Get(), RightShin.Get()})
-        TintPart(Limb, FLinearColor(0.035f, 0.045f, 0.065f));
-    TintPart(LeftBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
-    TintPart(RightBrakeHandle, FLinearColor(0.85f, 0.04f, 0.02f));
+        TintPart(Limb, FLinearColor(0.018f, 0.026f, 0.045f), 0.90f);
+    TintPart(LeftBrakeHandle, FLinearColor(0.95f, 0.035f, 0.012f), 0.56f);
+    TintPart(RightBrakeHandle, FLinearColor(0.95f, 0.035f, 0.012f), 0.56f);
+    if (HarnessMesh && SurfaceMaterial)
+    {
+        HarnessMesh->SetMaterial(0, SurfaceMaterial);
+        if (UMaterialInstanceDynamic* Material =
+            HarnessMesh->CreateAndSetMaterialInstanceDynamic(0))
+        {
+            Material->SetVectorParameterValue(
+                TEXT("BaseColor"), FLinearColor(0.01f, 0.016f, 0.025f));
+            Material->SetScalarParameterValue(TEXT("Roughness"), 0.96f);
+        }
+    }
     // The licensed pilot is assigned in the editor, not found by path here. A
     // MetaHuman lands under its own character name, so no constructor path can
     // guess it - and the promise made in the plan was that swapping the pilot
@@ -931,8 +953,10 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     float BaseFov = 88.0f;
     if (CameraMode == 1)
     {
-        CameraBase = FVector(-570.0f, 0.0f, 105.0f);
-        BaseFov = 94.0f;
+        // Three-quarter technical: this exposes both hands, the riser stack
+        // and the brake routing without turning the review into a free cam.
+        CameraBase = FVector(-580.0f, -360.0f, 125.0f);
+        BaseFov = 90.0f;
     }
     else if (CameraMode == 2)
     {
@@ -966,13 +990,24 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         static_cast<float>(Telemetry.harnessPitchRad * 120.0) * MotionScale);
     Camera->SetRelativeLocation(FMath::VInterpTo(
         Camera->GetRelativeLocation(), CameraTarget, DeltaSeconds, 2.8f));
-    const float CameraBasePitch = CameraMode == 2 ? 8.0f
-        : (CameraMode == 3 ? -2.0f : 3.0f);
-    const float CameraBaseYaw = CameraMode == 2 ? 79.0f
-        : (CameraMode == 3 ? 38.0f : 0.0f);
+    // Frame the span between payload and canopy rather than relying on a
+    // fixed pitch preset. This leaves the physical transforms alone while
+    // keeping the pilot low-centre and the wing high-centre through surge,
+    // landing composition and the side technical view.
+    const FVector PilotFocus = PilotRigToActor().TransformPosition(
+        FVector(RenderRigSnapshot.pilot.chestCm.x,
+                RenderRigSnapshot.pilot.chestCm.y,
+                RenderRigSnapshot.pilot.chestCm.z));
+    constexpr float CanopyFocusHeightCm = 730.0f;
+    const FVector CanopyFocus(0.0f, 0.0f, CanopyFocusHeightCm);
+    const float CanopyFocusBlend = CameraMode == 1 ? 0.28f
+        : (CameraMode == 2 ? 0.46f : 0.43f);
+    const FVector CameraFocus = FMath::Lerp(PilotFocus, CanopyFocus,
+        CanopyFocusBlend);
+    const FRotator FocusRotation = (CameraFocus - CameraTarget).Rotation();
     const FRotator CameraRotationTarget(
-        CameraBasePitch + static_cast<float>(CameraResponse.pitchDegrees),
-        CameraBaseYaw + static_cast<float>(CameraResponse.yawDegrees),
+        FocusRotation.Pitch + static_cast<float>(CameraResponse.pitchDegrees),
+        FocusRotation.Yaw + static_cast<float>(CameraResponse.yawDegrees),
         static_cast<float>(CameraResponse.rollDegrees));
     Camera->SetRelativeRotation(FMath::RInterpTo(
         Camera->GetRelativeRotation(), CameraRotationTarget, DeltaSeconds, 3.6f));
@@ -1098,6 +1133,40 @@ void AParagliderPawn::Tick(float DeltaSeconds)
             RiserTopLocalCm(Parapenting::Physics::RearRiserIndex(
                 RenderRigSnapshot.riserCount), bLeft),
             FColor(48, 52, 60), 0.5f);
+        // A small keeper below the brake pulley gives the released handle a
+        // real place to park. It is deliberately separate from the pulley:
+        // the keeper retains the toggle, it does not redirect the brake line.
+        const FVector KeeperCentre = PulleyCentre - RigUp * 5.0f;
+        AddRing(KeeperCentre, RigFore * 1.05f, RigUp * 1.45f, 8,
+            FColor(106, 112, 122), 0.3f);
+        AddSuspensionSegment(PulleyCentre - RigUp * 2.0f, KeeperCentre,
+            FColor(42, 46, 54), 0.45f);
+
+        // Speed-bar lines have their own continuous route: ankle, harness
+        // guide ring, then the A riser. They read the achieved actuator
+        // travel from the fixed-step snapshot, never the player command.
+        const float Accelerator = FMath::Clamp(static_cast<float>(
+            RenderRigSnapshot.telemetry.accelerator), 0.0f, 1.0f);
+        const FVector AnkleLocal = PilotRigToActor().TransformPosition(
+            bLeft ? FVector(RenderRigSnapshot.pilot.leftAnkleCm.x,
+                              RenderRigSnapshot.pilot.leftAnkleCm.y,
+                              RenderRigSnapshot.pilot.leftAnkleCm.z)
+                  : FVector(RenderRigSnapshot.pilot.rightAnkleCm.x,
+                              RenderRigSnapshot.pilot.rightAnkleCm.y,
+                              RenderRigSnapshot.pilot.rightAnkleCm.z));
+        const FVector SpeedGuide = PilotRigToActor().TransformPosition(
+            FVector(8.0f, bLeft ? -17.0f : 17.0f, -25.0f));
+        const FVector SpeedRiser = RiserTopLocalCm(0, bLeft)
+            - RigUp * FMath::Lerp(0.0f, 6.0f, Accelerator);
+        const FColor SpeedColor = FLinearColor::LerpUsingHSV(
+            FLinearColor(0.12f, 0.14f, 0.16f),
+            FLinearColor(0.95f, 0.62f, 0.12f), Accelerator).ToFColor(true);
+        AddRing(SpeedGuide, RigFore * 1.05f, RigUp * 1.05f, 8,
+            FColor(54, 60, 70), 0.28f);
+        AddSuspensionSegment(AnkleLocal, SpeedGuide, SpeedColor,
+            FMath::Lerp(0.25f, 0.45f, Accelerator));
+        AddSuspensionSegment(SpeedGuide, SpeedRiser, SpeedColor,
+            FMath::Lerp(0.25f, 0.45f, Accelerator));
     }
     for (const auto& Attachment : SuspensionGeometry.attachments)
     {
@@ -1269,7 +1338,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         const FVector PulleyLocal =
             RiserTopLocalCm(
                 Parapenting::Physics::RearRiserIndex(
-                    RenderRigSnapshot.riserCount), bLeft);
+                    RenderRigSnapshot.riserCount), bLeft)
+            - PilotRigToActor().TransformVector(FVector(0.0f, 0.0f, 7.0f));
         TArray<FVector> FanEnds;
         FVector MeanEnd = FVector::ZeroVector;
         for (const auto& BrakeAttachment : LineGraph.nodes)
@@ -1902,6 +1972,33 @@ void AParagliderPawn::UpdatePilotSkeleton(
     AimBone(TEXT("calf_l"), Pose.leftKneeCm, Pose.leftAnkleCm);
     AimBone(TEXT("calf_r"), Pose.rightKneeCm, Pose.rightAnkleCm);
     AimBone(TEXT("spine_03"), Pose.chestCm, Pose.headCm);
+    AimBone(TEXT("head"), Pose.headCm, Pose.headLookTargetCm);
+    // The brake line supplies the missing roll constraint at the wrist. A
+    // plain aim can place the hand but leaves it free to spin around the
+    // forearm, which makes a real handle loop look unheld.
+    const auto RollWrist = [this, &RefSkeleton, &Known](const TCHAR* Bone,
+        const Parapenting::Physics::Vec3& From,
+        const Parapenting::Physics::Vec3& To,
+        const Parapenting::Physics::Vec3& WristUp)
+    {
+        const FName BoneName(Bone);
+        if (!Known(BoneName)) return;
+        const int32 Index = RefSkeleton.FindBoneIndex(BoneName);
+        const FTransform& RestTransform = RefSkeleton.GetRefBonePose()[Index];
+        const FVector RestDirection = RestTransform.GetLocation().GetSafeNormal();
+        if (RestDirection.IsNearlyZero()) return;
+        const FVector RestUp = RestTransform.GetRotation().GetUpVector();
+        const auto Rotation = Parapenting::Physics::AimRotationWithRoll(
+            {RestDirection.X, RestDirection.Y, RestDirection.Z},
+            {RestUp.X, RestUp.Y, RestUp.Z}, To - From, WristUp);
+        PilotCharacter->SetBoneRotationByName(BoneName,
+            FQuat(Rotation.x, Rotation.y, Rotation.z, Rotation.w).Rotator(),
+            EBoneSpaces::ComponentSpace);
+    };
+    RollWrist(TEXT("lowerarm_l"), Pose.leftElbowCm, Pose.leftHandCm,
+        Pose.leftWristUp);
+    RollWrist(TEXT("lowerarm_r"), Pose.rightElbowCm, Pose.rightHandCm,
+        Pose.rightWristUp);
     PilotCharacter->RefreshBoneTransforms();
 
     if (bValidating)
@@ -2017,12 +2114,23 @@ void AParagliderPawn::AddSuspensionSegment(
     if (Axis.IsNearlyZero()) return;
 
     const FVector Direction = Axis.GetSafeNormal();
+    // At distance, a physically accurate sub-centimetre line vanishes before
+    // the pilot can read its load path. Keep a conservative screen-space
+    // floor while retaining the load-driven radius above it. This is a visual
+    // floor only: it does not alter suspension geometry or physics.
+    const FVector Midpoint = (Start + End) * 0.5f;
+    const float CameraDistanceCm = Camera
+        ? FVector::Distance(Midpoint, Camera->GetRelativeLocation())
+        : 0.0f;
+    const float ScreenSpaceFloorCm = FMath::Clamp(
+        CameraDistanceCm * 0.00016f, 0.25f, 1.4f);
+    const float EffectiveRadiusCm = FMath::Max(RadiusCm, ScreenSpaceFloorCm);
     const FVector Reference = FMath::Abs(Direction.Z) < 0.92f
         ? FVector::UpVector : FVector::RightVector;
     const FVector Side = FVector::CrossProduct(Direction, Reference)
-        .GetSafeNormal() * RadiusCm;
+        .GetSafeNormal() * EffectiveRadiusCm;
     const FVector Up = FVector::CrossProduct(Side, Direction)
-        .GetSafeNormal() * RadiusCm;
+        .GetSafeNormal() * EffectiveRadiusCm;
     const int32 Base = SuspensionVertices.Num();
     const FVector Radials[4] = {Side, Up, -Side, -Up};
     for (int32 Ring = 0; Ring < 2; ++Ring)
@@ -2103,6 +2211,12 @@ void AParagliderPawn::BuildCanopyMesh()
                 Canopy.StationAt(Span01);
             const float LocalChord =
                 static_cast<float>(RestStation.chordM) * MetresToCm;
+            // Each rendered span station is a cell rib. A sub-centimetre seam
+            // crown catches light along that construction line without
+            // inventing noise or changing the aerodynamic surface used by
+            // physics.
+            const float RibSeamCm = (S == 0 || S == SpanCount - 1)
+                ? 0.0f : 1.15f * FMath::Sin(Chord01 * PI);
             Vertices[Index] = FVector(
                 (0.48f - Chord01) * LocalChord,
                 static_cast<float>(RestStation.positionM.y) * MetresToCm,
@@ -2110,7 +2224,7 @@ void AParagliderPawn::BuildCanopyMesh()
                     + static_cast<float>(RestStation.positionM.z) * MetresToCm
                     + static_cast<float>(
                         Canopy.InflatedSectionAt(Chord01).sagittaM)
-                        * MetresToCm);
+                        * MetresToCm + RibSeamCm);
             // Ram-air intakes retain a real leading-edge gap. The old sine
             // section collapsed both skins to the same point at chord zero,
             // which made the wing read as a solid foam crescent.
@@ -2336,6 +2450,12 @@ void AParagliderPawn::UpdateCanopyMesh()
                 RenderRigSnapshot.brakeTravel[Span01 < 0.0f ? 0 : 1]);
             const float TrailingEdge = FMath::SmoothStep(0.68f, 1.0f, Chord01)
                 * Brake * 55.0f * BrakeStationInfluence(Span01);
+            // Preserve the construction cue introduced by BuildCanopyMesh
+            // through every pressure/collapse update. The seam is deliberately
+            // tiny relative to the pressure section: it is fabric detail, not
+            // a second deformation mode.
+            const float RibSeamCm = (S == 0 || S == SpanCount - 1)
+                ? 0.0f : 1.15f * FMath::Sin(Chord01 * PI);
             const int32 Index = S * ChordCount + C;
             const FVector UpperVertex(
                 (0.48f - Chord01) * LoadedChord
@@ -2343,7 +2463,7 @@ void AParagliderPawn::UpdateCanopyMesh()
                         (bGroundLaunching ? 0.0 : T.recoverySurge) * 350.0)
                     - Frontal * 65.0f,
                 ContractedSpan,
-                Arch + Camber - CollapseDrop - TrailingEdge + RotorFlutter
+                Arch + Camber + RibSeamCm - CollapseDrop - TrailingEdge + RotorFlutter
                     + static_cast<float>(LoadPose.rippleAmplitudeCm)
                         * TipBlend * FMath::Sin(static_cast<float>(
                             RenderRigSnapshot.simulationTimeSeconds * 24.0
@@ -2842,6 +2962,14 @@ void AParagliderPawn::SetVisualQAWeatherPreset(
     bLiveWeatherActive = false;
     LiveWeatherStatus = TEXT("VISUAL QA PRESET");
     ResetFlight();
+}
+
+void AParagliderPawn::SetVisualQACameraMode(int32 Mode)
+{
+    // A capture must name its view rather than inherit whichever camera a
+    // player last saved. This affects composition only, never controls or
+    // physics, so the same replay remains comparable across camera passes.
+    CameraMode = FMath::Clamp(Mode, 0, 3);
 }
 
 void AParagliderPawn::FetchLiveWeather()
@@ -3890,13 +4018,13 @@ const char* AParagliderPawn::GetGraphicsProfileName() const
 const char* AParagliderPawn::GetHudModeName() const
 {
     static constexpr const char* Names[] = {
-        "COMPACT", "EXPANDED", "MINIMAL"};
-    return Names[FMath::Clamp(HudMode, 0, 2)];
+        "COMPACT", "EXPANDED", "MINIMAL", "OFF"};
+    return Names[FMath::Clamp(HudMode, 0, 3)];
 }
 
 void AParagliderPawn::CycleHudMode()
 {
-    HudMode = (HudMode + 1) % 3;
+    HudMode = (HudMode + 1) % 4;
     SavePilotProgress();
 }
 
@@ -3956,7 +4084,7 @@ const char* AParagliderPawn::GetCameraModeDisplayName() const
 {
     switch (CameraMode)
     {
-        case 1: return "CLOSE CHASE";
+        case 1: return "CLOSE TECHNICAL";
         case 2: return "SIDE TECHNICAL";
         case 3: return "SCENIC WING";
         default: return "REAR CHASE";
@@ -4028,7 +4156,7 @@ void AParagliderPawn::LoadPilotProgress()
     }
     GConfig->GetInt(TEXT("Interface"), TEXT("HudMode"),
         HudMode, ProgressPath);
-    HudMode = FMath::Clamp(HudMode, 0, 2);
+    HudMode = FMath::Clamp(HudMode, 0, 3);
     int32 SavedGraphics =
         static_cast<int32>(Parapenting::Physics::GraphicsProfileId::High);
     GConfig->GetInt(TEXT("Graphics"), TEXT("Profile"),

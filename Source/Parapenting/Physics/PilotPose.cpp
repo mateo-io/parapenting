@@ -50,6 +50,14 @@ Vec3 ConstrainHandReach(const Vec3& shoulder, const Vec3& requestedHand,
     const double reach = std::clamp(distance, minimumReach, maximumReach);
     return shoulder + NormalizedOr(run, {0.0, 0.0, 1.0}) * reach;
 }
+
+PilotGripState GripStateFor(double travel, double force)
+{
+    if (force >= 0.22 || travel >= 0.52) return PilotGripState::Loaded;
+    if (travel >= 0.13 || force >= 0.06) return PilotGripState::Wrapped;
+    if (travel > 0.01 || force > 0.01) return PilotGripState::Acquire;
+    return PilotGripState::Open;
+}
 }
 
 PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
@@ -66,6 +74,7 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
     const double incident = std::clamp(raw.incidentSeverity, 0.0, 1.0);
     const double surge = std::clamp(raw.recoverySurge, -0.2, 0.45);
     const double torsoSurge = std::clamp(raw.torsoSurge, -0.2, 0.45);
+    const double workload = std::clamp(raw.workload, 0.0, 1.0);
 
     PilotPose pose;
     pose.rigOffsetCm = {
@@ -85,6 +94,20 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
     // snapping with it.
     pose.chestCm = {-9.0 - torsoSurge * 9.0, shift * 3.0, 17.0};
     pose.headCm = {-12.0 - torsoSurge * 5.0, shift * 2.0, 53.0};
+    // Idle motion belongs to the immutable snapshot too. The amplitude is
+    // intentionally quiet (sub-centimetre) and vanishes under workload, so a
+    // flare or incident reads as purposeful control rather than animation.
+    constexpr double BreathingAngularFrequency = 2.0 * 3.14159265358979323846
+        * 0.22;
+    pose.breathingCm = 0.85 * (1.0 - workload)
+        * std::sin(raw.simulationTimeSeconds * BreathingAngularFrequency);
+    pose.chestCm.z += pose.breathingCm * 0.35;
+    pose.headCm.z += pose.breathingCm;
+    const double HeadSweep = 8.0 * (1.0 - workload)
+        * std::sin(raw.simulationTimeSeconds * 0.61 + 0.8);
+    pose.headLookTargetCm = pose.headCm + NormalizedOr(
+        pose.headCm - pose.chestCm, {-0.08, 0.0, 1.0}) * 34.0
+        + Vec3{0.0, HeadSweep, 0.0};
     pose.leftShoulderCm = {-10.0, -19.0, 36.0};
     pose.rightShoulderCm = {-10.0, 19.0, 36.0};
     // A brake handle travels along its own line, not straight down. The line
@@ -129,6 +152,16 @@ PilotPose EvaluatePilotPose(const PilotPoseInput& raw)
     pose.rightElbowCm = SolveElbow(pose.rightShoulderCm, pose.rightHandCm,
         {9.0 + rightForce * 5.0, 8.0, 5.0}, PilotUpperArmLengthCm,
         PilotForearmLengthCm);
+    pose.leftWristForward = NormalizedOr(
+        pose.leftHandCm - pose.leftElbowCm, {-1.0, 0.0, 0.0});
+    pose.rightWristForward = NormalizedOr(
+        pose.rightHandCm - pose.rightElbowCm, {-1.0, 0.0, 0.0});
+    pose.leftWristUp = NormalizedOr(raw.leftBrakePulleyCm - pose.leftHandCm,
+        {0.0, 0.0, 1.0});
+    pose.rightWristUp = NormalizedOr(raw.rightBrakePulleyCm - pose.rightHandCm,
+        {0.0, 0.0, 1.0});
+    pose.leftGrip = GripStateFor(leftBrake, leftForce);
+    pose.rightGrip = GripStateFor(rightBrake, rightForce);
     // The seated leg is one fixed two-segment chain hung off the hip. Surge
     // rotates that chain about the hip and weight shift translates it
     // laterally, both of which are rigid.

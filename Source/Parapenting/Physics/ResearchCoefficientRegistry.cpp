@@ -234,9 +234,20 @@ const CoefficientRecord Records[] = {
      "this note used to give is RETRACTED - the link-to-surge phase holds "
      "within 1.9 deg while the damping crosses zero. No mechanism has been "
      "found; the largest sensitivity in the matrix is d(surge)/d(surge) at "
-     "+1.63 per unit, a wing entry, worth 1.25 of the 0.35->0.30 step. Retire "
-     "it by finding the missing mechanism, not by measuring it better. "
-     "PHYSICS_TODO item 11, PHYSICS_LEARNINGS 38-50.", 11},
+     "+1.63 per unit, a wing entry, worth 1.25 of the 0.35->0.30 step. "
+     "WHAT IT IS NOW, after the schedule was fixed (79) and the last candidate "
+     "eliminated (80): 0.35 is a MARGIN, not a boundary. The converged-schedule "
+     "boundary is 0.30-0.28, so the shipped value sits about 0.06 above it; the "
+     "'smallest value at which the phugoid damps' reading above was taken at "
+     "the old 10 Hz aerodynamic hold and is superseded. The gap to the ~0.06 "
+     "that pilot and line drag imply is about 0.18 and HAS NO CANDIDATE "
+     "MECHANISM - stiffening the pitch spring moves the boundary the wrong way "
+     "and softening it destroys the trim before it can inform (80). So this is "
+     "a stability margin above a measured departure boundary, recorded as an "
+     "open disagreement of known size rather than a number awaiting a better "
+     "measurement. Do not expect to retire it from a sweep; flight data is the "
+     "likelier source. PHYSICS_TODO item 11, PHYSICS_LEARNINGS 38-50, 78-80.",
+     11},
     {"linePitchStiffnessSpecificM", "m", 6.13, 3.0, 12.0, S::Physical,
      C::Validated,
      "Line pitch stiffness per newton of load, measured off the built "

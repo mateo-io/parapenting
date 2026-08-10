@@ -4,6 +4,14 @@
 
 namespace Parapenting::Physics
 {
+enum class PilotGripState
+{
+    Open,
+    Acquire,
+    Wrapped,
+    Loaded,
+};
+
 struct PilotPoseInput
 {
     double harnessRollRad = 0.0;
@@ -31,6 +39,11 @@ struct PilotPoseInput
     // the B riser without this file knowing how many risers there are.
     Vec3 leftBrakePulleyCm{-13.0, -21.0, 77.6};
     Vec3 rightBrakePulleyCm{-13.0, 21.0, 77.6};
+    // Deterministic secondary-motion inputs, sampled at the fixed simulation
+    // boundary. Workload suppresses idle motion during active control or an
+    // incident; wall-clock time must never enter a replay pose.
+    double simulationTimeSeconds = 0.0;
+    double workload = 0.0;
 };
 
 struct PilotPose
@@ -40,12 +53,23 @@ struct PilotPose
     Vec3 pelvisCm{};
     Vec3 chestCm{};
     Vec3 headCm{};
+    Vec3 headLookTargetCm{};
+    double breathingCm = 0.0;
     Vec3 leftShoulderCm{};
     Vec3 rightShoulderCm{};
     Vec3 leftElbowCm{};
     Vec3 rightElbowCm{};
     Vec3 leftHandCm{};
     Vec3 rightHandCm{};
+    // Component-space wrist axes. Forward follows the forearm; up is pinned
+    // by the brake line to the pulley so the grip cannot spin freely around
+    // its own length when the arm is aimed by IK.
+    Vec3 leftWristForward{};
+    Vec3 rightWristForward{};
+    Vec3 leftWristUp{};
+    Vec3 rightWristUp{};
+    PilotGripState leftGrip = PilotGripState::Open;
+    PilotGripState rightGrip = PilotGripState::Open;
     Vec3 leftHipCm{};
     Vec3 rightHipCm{};
     Vec3 leftKneeCm{};

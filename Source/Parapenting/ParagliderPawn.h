@@ -136,6 +136,7 @@ public:
     void SetVisualQALocalHour(double LocalHour);
     void SetVisualQAWeatherPreset(
         Parapenting::Physics::WeatherPresetId Preset);
+    void SetVisualQACameraMode(int32 Mode);
     FString GetLocalTimeDisplay() const;
     const char* GetLandingPhaseName() const
         { return Parapenting::Physics::LandingPhaseName(LandingGuidance.phase); }

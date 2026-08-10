@@ -165,11 +165,32 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
             - state.rightPumpEnergy * 1.65 * dt, 0.0, 1.0);
     state.previousLeftBrake = controls.leftBrake;
     state.previousRightBrake = controls.rightBrake;
-    if (symmetricBrake > 0.86)
-        state.deepBrakeTime = std::min(4.0, state.deepBrakeTime + dt);
+    // HOW FAR PAST THE DEPARTURE THE BRAKE ACTUALLY IS, CONTINUOUS. This was a
+    // step at 0.86, and the step is item 24's defect: it made the whole top
+    // eighth of the brake range one single stall. Measured on this model, a
+    // three-second hold at 0.88 / 0.92 / 0.96 / 1.00 brake gave stalled sinks
+    // of 5.58 / 5.52 / 5.50 / 5.43 m/s and first surges of 11.80 / 11.86 /
+    // 12.00 / 12.02 m/s - a 1.9% spread across a control range the pilot moves
+    // by hand, which is why every stall felt like the same stall.
+    //
+    // Depth now sets how fast the wing goes there as well as how far, so a
+    // gentler stall also takes longer to arrive. Full brake is unchanged at
+    // both ends: depth 1.0, target 1.0, accrual 1.0/s.
+    const double brakeStallDepth = std::clamp(
+        (symmetricBrake - 0.78) / 0.22, 0.0, 1.0);
+    if (brakeStallDepth > 0.0)
+        state.deepBrakeTime = std::min(4.0,
+            state.deepBrakeTime + dt * brakeStallDepth);
     else
         state.deepBrakeTime = std::max(0.0, state.deepBrakeTime - dt * 1.8);
-    const double deepStallTarget = state.deepBrakeTime > 0.9 ? 1.0 : 0.0;
+    // `deepStall` stays bounded at 1.0 - a dozen consumers multiply by it and
+    // several would change sign above one - but its TARGET is no longer
+    // binary, so a deep stall and a marginal one are no longer the same state.
+    // Full brake still targets 1.0, which is what keeps every shipped
+    // full-brake number where it was.
+    const double deepStallTarget = state.deepBrakeTime > 0.9
+        ? std::clamp(0.55 + 0.45 * brakeStallDepth, 0.0, 1.0)
+        : 0.0;
     const double deepStallRate = deepStallTarget > state.deepStall ? 1.7 : 0.72;
     state.deepStall += (deepStallTarget - state.deepStall)
                      * std::min(1.0, dt * deepStallRate);
@@ -239,6 +260,23 @@ void ParagliderDynamics::Step(FlightState& state, const ControlInput& rawControl
     // bound is a stated limit of the legacy path, not a handling number: the
     // coupled solver has the same angle as a real degree of freedom and needs
     // no limit at all.
+    // A CANDIDATE SECOND TERM WAS TRIED HERE AND MEASURED OUT, and the reason
+    // is worth more than the term. `previousHangTiltRad` is an ACCELERATION,
+    // so it decays to zero once the stalled descent steadies and the canopy
+    // drifts forward while the wing is still fully stalled: at full brake the
+    // release angle falls from 0.843 rad after a 3 s hold to 0.695 after 5 s.
+    // That looks like the defect, and a severity-proportional aft bias holds
+    // the canopy back through the stall exactly as intended.
+    //
+    // It buys nothing. The duration axis was already monotone once the first
+    // surge is measured as an excursion from the release speed rather than as
+    // a peak-to-peak between extrema - 12.02 m/s at 3 s against 12.38 at 5 s -
+    // and the inversion that motivated the term was the metric's artefact, not
+    // the model's. What the bias did do is hold the wing aft into the
+    // recovery, turning a dive-and-ring into one long dive: ringing cycles
+    // fell from 6 to 2. It is removed. Item 24's other criterion is that a
+    // recovery shows more than one cycle, and a term that halves them to fix
+    // a measurement error is a bad trade.
     const double canopyPitchTarget =
         std::clamp(state.previousHangTiltRad, -0.60, 0.60);
     const double relativePitchAcceleration =

@@ -58,6 +58,9 @@ void AParapentingGameMode::InitGame(
     FParse::Value(
         FCommandLine::Get(), TEXT("VisualQAWeatherPreset="),
         VisualQAWeatherPreset);
+    FParse::Value(
+        FCommandLine::Get(), TEXT("VisualQACamera="), VisualQACameraMode);
+    VisualQACameraMode = FMath::Clamp(VisualQACameraMode, 0, 3);
     VisualQAWarmupSeconds = FMath::Max(1.0f, VisualQAWarmupSeconds);
 
     // InitGame runs before the default pawn is spawned. Loading the
@@ -275,40 +278,37 @@ void AParapentingGameMode::BeginPlay()
         ShoreRocks->RegisterComponent();
         if (ShapeMaterial)
         {
-            UMaterialInstanceDynamic* CrownMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            CrownMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.035f, 0.16f, 0.045f));
+            auto MakeForestMaterial = [SurfaceMaterial, ShapeMaterial, Forest](
+                const FLinearColor& Colour, float Roughness)
+            {
+                UMaterialInstanceDynamic* Material =
+                    UMaterialInstanceDynamic::Create(
+                        SurfaceMaterial ? SurfaceMaterial : ShapeMaterial, Forest);
+                Material->SetVectorParameterValue(TEXT("BaseColor"), Colour);
+                Material->SetVectorParameterValue(TEXT("Color"), Colour);
+                Material->SetScalarParameterValue(TEXT("Roughness"), Roughness);
+                return Material;
+            };
+            UMaterialInstanceDynamic* CrownMaterial = MakeForestMaterial(
+                FLinearColor(0.025f, 0.115f, 0.030f), 0.94f);
             Crowns->SetMaterial(0, CrownMaterial);
-            UMaterialInstanceDynamic* TrunkMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            TrunkMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.12f, 0.055f, 0.018f));
+            UMaterialInstanceDynamic* TrunkMaterial = MakeForestMaterial(
+                FLinearColor(0.095f, 0.035f, 0.012f), 0.98f);
             Trunks->SetMaterial(0, TrunkMaterial);
-            UMaterialInstanceDynamic* DeciduousMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            DeciduousMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.075f, 0.24f, 0.045f));
+            UMaterialInstanceDynamic* DeciduousMaterial = MakeForestMaterial(
+                FLinearColor(0.045f, 0.19f, 0.028f), 0.90f);
             Deciduous->SetMaterial(0, DeciduousMaterial);
-            UMaterialInstanceDynamic* ForestEdgeMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            ForestEdgeMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.018f, 0.095f, 0.028f));
+            UMaterialInstanceDynamic* ForestEdgeMaterial = MakeForestMaterial(
+                FLinearColor(0.012f, 0.070f, 0.020f), 0.97f);
             ForestEdges->SetMaterial(0, ForestEdgeMaterial);
-            UMaterialInstanceDynamic* ShrubMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            ShrubMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.065f, 0.20f, 0.042f));
+            UMaterialInstanceDynamic* ShrubMaterial = MakeForestMaterial(
+                FLinearColor(0.040f, 0.16f, 0.026f), 0.92f);
             Shrubs->SetMaterial(0, ShrubMaterial);
-            UMaterialInstanceDynamic* ShoreVegetationMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            ShoreVegetationMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.045f, 0.145f, 0.055f));
+            UMaterialInstanceDynamic* ShoreVegetationMaterial = MakeForestMaterial(
+                FLinearColor(0.030f, 0.115f, 0.040f), 0.90f);
             ShoreVegetation->SetMaterial(0, ShoreVegetationMaterial);
-            UMaterialInstanceDynamic* ShoreRockMaterial =
-                UMaterialInstanceDynamic::Create(ShapeMaterial, Forest);
-            ShoreRockMaterial->SetVectorParameterValue(
-                TEXT("Color"), FLinearColor(0.19f, 0.205f, 0.18f));
+            UMaterialInstanceDynamic* ShoreRockMaterial = MakeForestMaterial(
+                FLinearColor(0.14f, 0.145f, 0.12f), 0.92f);
             ShoreRocks->SetMaterial(0, ShoreRockMaterial);
         }
 
@@ -347,7 +347,7 @@ void AParapentingGameMode::BeginPlay()
                     Crowns->AddInstance(FTransform(
                         FRotator::ZeroRotator,
                         FVector(X, Y, Ground + 8.5f) * 100.0f,
-                        FVector(2.8f, 2.8f, 9.5f) * HeightScale));
+                        FVector(3.6f, 3.6f, 11.8f) * HeightScale));
                 }
                 Trunks->AddInstance(FTransform(
                     FRotator::ZeroRotator,
@@ -381,7 +381,7 @@ void AParapentingGameMode::BeginPlay()
                 ForestEdges->AddInstance(FTransform(
                     FRotator(0.0f, XIndex * 23.0f, 0.0f),
                     FVector(X, Y, Ground + 10.0f) * 100.0f,
-                    FVector(3.5f, 3.5f, 11.5f) * Scale));
+                    FVector(4.2f, 4.2f, 14.5f) * Scale));
                 for (int32 ShrubIndex = 0; ShrubIndex < 3; ++ShrubIndex)
                 {
                     const float OffsetX = (ShrubIndex - 1) * 19.0f
@@ -429,7 +429,7 @@ void AParapentingGameMode::BeginPlay()
                     ShoreVegetation->AddInstance(FTransform(
                         FRotator(0.0f, XIndex * 37.0f + YIndex * 11.0f, 0.0f),
                         FVector(X, Y, Ground + 2.5f) * 100.0f,
-                        FVector(1.5f, 1.5f, 3.8f) * Scale));
+                        FVector(2.2f, 2.2f, 6.2f) * Scale));
                 }
                 else if (SphereMesh)
                 {
@@ -514,29 +514,41 @@ void AParapentingGameMode::BeginPlay()
         RoofMaterial->SetScalarParameterValue(TEXT("Roughness"), 0.74f);
         Roofs->SetMaterial(0, RoofMaterial);
 
-        for (int32 Block = 0; Block < 170; ++Block)
+        // Three compact, irregular village footprints are more useful than a
+        // synthetic grid spread across the whole valley. From the paraglider
+        // camera the old distribution reduced every house to an isolated,
+        // marker-like pixel; these groups instead read as settlements and
+        // leave the landing meadows visibly open.
+        const FVector2D InterlakenVillages[] = {
+            FVector2D(2530.0f, 420.0f),
+            FVector2D(3260.0f, -120.0f),
+            FVector2D(3960.0f, 510.0f)};
+        for (int32 Block = 0; Block < 72; ++Block)
         {
-            const float X = 2050.0f + (Block % 34) * 105.0f
-                + FMath::Sin(Block * 2.17f) * 28.0f;
-            const float Y = 720.0f - (Block / 34) * 330.0f
-                - FMath::Sin(Block * 4.71f) * 72.0f;
+            const int32 VillageIndex = Block / 24;
+            const int32 Local = Block % 24;
+            const FVector2D Centre = InterlakenVillages[VillageIndex];
+            const float X = Centre.X + (Local % 6) * 29.0f
+                + FMath::Sin(Block * 2.17f) * 9.0f;
+            const float Y = Centre.Y + (Local / 6) * 33.0f
+                - FMath::Sin(Block * 4.71f) * 11.0f;
             const float Ground = static_cast<float>(
                 Parapenting::Physics::TerrainModel::HeightM(X, Y));
             const auto Normal =
                 Parapenting::Physics::TerrainModel::Normal(X, Y);
             if (Ground > 170.0f || Normal.z < 0.94) continue;
-            const float BuildingHeight = 7.0f + 2.4f * (Block % 4);
-            const float Width = 7.0f + 1.6f * (Block % 3);
-            const float Depth = 5.0f + 1.2f * ((Block / 3) % 3);
+            const float BuildingHeight = 3.8f + 0.8f * (Block % 4);
+            const float Width = 4.2f + 0.8f * (Block % 3);
+            const float Depth = 3.8f + 0.7f * ((Block / 3) % 3);
             const float Yaw = static_cast<float>((Block * 37) % 180);
             Buildings->AddInstance(FTransform(
                 FRotator(0.0f, Yaw, 0.0f),
                 FVector(X, Y, Ground + BuildingHeight * 0.5f) * 100.0f,
                 FVector(Width, Depth, BuildingHeight)));
             Roofs->AddInstance(FTransform(
-                FRotator(0.0f, Yaw, 45.0f),
-                FVector(X, Y, Ground + BuildingHeight + 1.2f) * 100.0f,
-                FVector(Width * 0.78f, Depth * 0.78f, 1.8f)));
+                FRotator(0.0f, Yaw, 0.0f),
+                FVector(X, Y, Ground + BuildingHeight + 0.38f) * 100.0f,
+                FVector(Width * 1.08f, Depth * 1.08f, 0.42f)));
         }
         for (int32 Block = 0; Block < 120; ++Block)
         {
@@ -1008,12 +1020,15 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
         // Coverage and development are the available humidity proxy.  They
         // shape distance presentation only; they are not treated as rain or
         // surface wetness because WeatherSnapshot has no precipitation state.
+        // Keep a shallow veil present even in calm air. Without it the
+        // finite surveyed terrain terminates at a hard blue horizon, which
+        // reads as a backdrop seam instead of a deep Alpine valley.
         FogComponent->SetFogDensity(FMath::Lerp(
-            0.00008f, 0.00019f, FMath::Max(WeatherEnergy, CloudVeil)));
+            0.00014f, 0.00028f, FMath::Max(WeatherEnergy, CloudVeil)));
         FogComponent->SetFogHeightFalloff(FMath::Lerp(
             0.18f, 0.08f, WeatherEnergy));
         FogComponent->SetStartDistance(FMath::Lerp(
-            26000.0f, 9000.0f, WeatherEnergy));
+            11500.0f, 6500.0f, WeatherEnergy));
         FogComponent->SetFogInscatteringColor(FLinearColor::LerpUsingHSV(
             FLinearColor(0.075f, 0.095f, 0.115f),
             FLinearColor(0.080f, 0.075f, 0.070f), WeatherEnergy));
@@ -1042,10 +1057,11 @@ void AParapentingGameMode::Tick(float DeltaSeconds)
     for (UMaterialInstanceDynamic* Water : WaterMaterialInstances)
     {
         if (!Water) continue;
-        // Wind adds short ripples and breaks reflections.  The material has no
-        // wave displacement yet, so roughness/specular are deliberately the
-        // only response rather than pretending that a visual normal map is
-        // physical water motion.
+        // Wind drives the material's panned ripple field and breaks its
+        // reflections. This remains visual-only: neither the lake datum nor
+        // the flight model receives a wave/displacement signal.
+        Water->SetScalarParameterValue(TEXT("WindRippleStrength"),
+            FMath::Lerp(0.20f, 0.82f, WeatherEnergy));
         Water->SetScalarParameterValue(TEXT("WaterRoughness"),
             FMath::Lerp(0.10f, 0.42f, WeatherEnergy));
         Water->SetScalarParameterValue(TEXT("WaterSpecular"),
@@ -1127,6 +1143,7 @@ void AParapentingGameMode::StartVisualQACapture(AParagliderPawn& Glider)
                 VisualQAWeatherPreset));
     }
     Glider.SetVisualQALocalHour(VisualQALocalHour);
+    Glider.SetVisualQACameraMode(VisualQACameraMode);
 
     FString SafeName = VisualQACaptureName;
     for (TCHAR& Character : SafeName)
@@ -1156,8 +1173,8 @@ void AParapentingGameMode::StartVisualQACapture(AParagliderPawn& Glider)
             Hud->bShowHUD = false;
     }
     UE_LOG(LogTemp, Display,
-        TEXT("Parapenting Visual QA: fixed time %.2f, warmup %.1fs"),
-        VisualQALocalHour, VisualQAWarmupSeconds);
+        TEXT("Parapenting Visual QA: camera %d, fixed time %.2f, warmup %.1fs"),
+        VisualQACameraMode, VisualQALocalHour, VisualQAWarmupSeconds);
 }
 
 void AParapentingGameMode::FinishVisualQACapture()

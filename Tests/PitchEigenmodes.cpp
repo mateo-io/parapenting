@@ -710,10 +710,16 @@ struct AddedDrag
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                  double ratio, int maximumSeconds,
                  DamperReference reference = DamperReference::World,
-                 AddedDrag added = {})
+                 AddedDrag added = {}, int aerodynamicsInterval = 0)
 {
     OwnTrim out{CoupledState{}, CoupledParagliderSolver(canopy, linePlan)};
     out.solver.SetSwingDampingRatio(ratio);
+    if (aerodynamicsInterval > 0)
+    {
+        CoupledSchedule schedule = out.solver.Schedule();
+        schedule.aerodynamicsInterval = aerodynamicsInterval;
+        out.solver.SetSchedule(schedule);
+    }
     out.solver.SetLinkDampingReference(reference);
     out.solver.SetSectionDragOffset(added.sectionOffset);
     out.solver.SetHarnessExtraDragAreaM2(added.harnessAreaM2);
@@ -4306,13 +4312,14 @@ struct TroughRun
 
 TroughRun TroughsOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                     double ratio, int maximumSeconds, double hysteresis = 0.002,
-                    int aerodynamicsInterval = 0)
+                    int aerodynamicsInterval = 0, double pitchScale = 1.0)
 {
     const double Hysteresis = hysteresis;  // in CL; see the note above
     constexpr double SettleInS = 25.0;     // `--phugoid`'s window, same reason
 
     CoupledParagliderSolver solver(canopy, linePlan);
     solver.SetSwingDampingRatio(ratio);
+    solver.SetPitchStiffnessScale(pitchScale);
     if (aerodynamicsInterval > 0)
     {
         CoupledSchedule schedule = solver.Schedule();
@@ -4703,13 +4710,14 @@ struct CycleGrowth
 };
 
 CycleGrowth GrowthOf(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
-                double ratio, int maximumSeconds, int aerodynamicsInterval)
+                double ratio, int maximumSeconds, int aerodynamicsInterval,
+                double pitchScale = 1.0)
 {
     constexpr double AmplitudeFloor = 0.020;   // 10x the hysteresis
     constexpr double PhugoidSpacingS = 8.0;    // §77's filter, same reason
 
     const TroughRun run = TroughsOf(canopy, linePlan, ratio, maximumSeconds,
-                                    0.002, aerodynamicsInterval);
+                                    0.002, aerodynamicsInterval, pitchScale);
     CycleGrowth out;
     out.departed = run.departed;
 
@@ -4878,6 +4886,611 @@ void GrowthCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "against §39's flown 0.35-0.30 and the\n  eigenvalue's "
                 "0.28-0.25 - three routes to one number, which is the most this "
                 "axis\n  has ever had.\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// DOES THE EIGENVALUE CROSSING MOVE WITH THE HOLD? §78's named next step.
+//
+// The state of the disagreement. §38/§39 put the eigenvalue crossing at ratio
+// 0.28-0.25 and the FLOWN crossing at 0.35-0.30, and §39 ruled against the
+// eigenvalue - "biased stable; the eigenvalue loses" - on the strength of an
+// outside number, `pitch_axis_trace --slow-mode`, agreeing with the flown fit.
+// Three later sections lean on that verdict.
+//
+// §78 then found the flown crossing is not a property of the wing: ratio 0.30
+// grows at the shipped 0.1 s aerodynamic hold and DECAYS at 0.05 s and finer,
+// so the flown boundary moves below 0.30 as the hold converges - onto roughly
+// where the eigenvalue always said it was. If the eigenvalue crossing is
+// hold-invariant, §39's verdict inverts and the eigenvalue was right; the flown
+// measurement was the schedule-contaminated one.
+//
+// §78 recorded that as an observation and refused to claim it, because BOTH
+// numbers were taken at the same 0.1 s hold and there is no reason yet why one
+// should be right. This is the test that decides it.
+//
+// THE CURRENCY IS THE SAME AS §78'S, deliberately. Rather than comparing a
+// crossing bracket against a crossing bracket - two coarse intervals that can
+// agree by luck - the eigenvalue is converted into the quantity §78 measured:
+// a per-cycle growth factor, g = exp(sigma * period). Then the two instruments
+// print side by side at every ratio and every hold, and the disagreement is a
+// number instead of an overlap.
+//
+//   FLOWN g (§78):  ratio 0.35 -> 0.788 0.802 0.830 0.887 over holds
+//                   0.025/0.05/0.10/0.20; ratio 0.30 -> 0.977 0.994 1.029 1.100.
+//
+// TWO OUTCOMES:
+//
+//   (a) the eigenvalue g is hold-INVARIANT while the flown g moves onto it.
+//       §39 inverts. The eigenvalue was measuring the aircraft and the flown
+//       trace was measuring the aircraft plus its schedule.
+//   (b) the eigenvalue g moves with the hold too. Then the two instruments
+//       share the defect, the eigenvalue is not an independent check of it, and
+//       §39's disagreement is about something else entirely.
+//
+// THE CONTROL, AND IT TESTS §47's OWN ATTRIBUTION FOR FREE. §47 found A00 =
+// log(Phi)/T changing sign between T = 0.10 and T = 0.50 - Phi(T) is not an
+// exponential family - and named the 0.1 s aerodynamic hold as the culprit.
+// That attribution has never been tested. It makes a prediction: at a FINER
+// hold the T-dependence must SHRINK. So every row is computed at two transition
+// times and the spread between them is printed. If the spread collapses as the
+// hold does, §47 identified its culprit correctly. If it does not, §47's
+// diagnosis is wrong and the non-exponential behaviour has another source.
+//
+// THE LICENCE CAVEAT, which is the existing sweep's and is inherited knowingly:
+// every ratio is linearised about the ratio-0.35 trim AT ITS OWN HOLD, not
+// about its own trim. Own trims are unaffordable here - ratio 0.30 at g = 0.977
+// decays 2.3% per cycle, which is ~175 cycles or about 2800 s to reach the
+// 0.01-degree settle criterion, at a hold costing four times the shipped one.
+// The drift column is what says whether the linearisation point is still a
+// trim at each ratio, and it is printed rather than assumed away.
+struct HoldSpectrum
+{
+    double sigmaAtQuarter = 0.0;
+    double sigmaAtTenth = 0.0;
+    double periodAtQuarter = 0.0;
+    double growthPerCycle = 0.0;   // exp(sigma * period), §78's currency
+    double driftSwingRadPerS = 0.0;
+    bool found = false;
+};
+
+// The phugoid, by period. The fast mode is 1.86 s and does not move; the slow
+// mode runs 14-24 s across this sweep (§39). Anything outside 8-40 s is neither,
+// and a band that comes back empty is a result rather than a missing number -
+// §37's aliasing lesson, where modes faster than 2T fold to exactly 2T.
+bool SlowestOscillatory(const Spectrum& spectrum, Mode& out)
+{
+    bool any = false;
+    for (const Mode& mode : spectrum.modes)
+    {
+        if (!mode.oscillatory) continue;
+        if (mode.periodS < 8.0 || mode.periodS > 40.0) continue;
+        if (!any || mode.periodS > out.periodS) { out = mode; any = true; }
+    }
+    return any;
+}
+
+HoldSpectrum HoldSpectrumAt(const CoupledParagliderSolver& base,
+                            const CoupledState& settled, double ratio)
+{
+    HoldSpectrum out;
+    CoupledParagliderSolver variant = base;
+    variant.SetSwingDampingRatio(ratio);
+
+    const Spectrum quarter = Analyse(variant, settled, 0.25, 1.0, false);
+    const Spectrum tenth = Analyse(variant, settled, 0.10, 1.0, false);
+    Mode slowQuarter, slowTenth;
+    if (!SlowestOscillatory(quarter, slowQuarter)) return out;
+    out.found = true;
+    out.sigmaAtQuarter = slowQuarter.growthPerS;
+    out.periodAtQuarter = slowQuarter.periodS;
+    out.growthPerCycle =
+        std::exp(slowQuarter.growthPerS * slowQuarter.periodS);
+    out.driftSwingRadPerS = quarter.driftSwingRadPerS;
+    if (SlowestOscillatory(tenth, slowTenth))
+        out.sigmaAtTenth = slowTenth.growthPerS;
+    return out;
+}
+
+void HoldSpectrumCheck(const CanopyGeometry& canopy,
+                       const LinePlanSpec& linePlan, int maximumSeconds)
+{
+    std::printf("DOES THE EIGENVALUE CROSSING MOVE WITH THE AERODYNAMIC HOLD?\n"
+                "§39 put the eigenvalue crossing at ratio 0.28-0.25 and the "
+                "FLOWN one at 0.35-0.30,\nand ruled against the eigenvalue. §78 "
+                "then found the flown crossing moves below\n0.30 as the hold "
+                "converges - onto where the eigenvalue always said it was. If "
+                "the\neigenvalue is hold-invariant, §39 inverts.\n\n");
+    std::printf("  Converted to §78's currency - g = exp(sigma*period) per "
+                "cycle - so the two\n  instruments print in the same units. "
+                "FLOWN g, for comparison:\n"
+                "    ratio 0.35: 0.788 / 0.802 / 0.830 / 0.887 at holds "
+                "0.025 / 0.05 / 0.10 / 0.20\n"
+                "    ratio 0.30: 0.977 / 0.994 / 1.029 / 1.100\n\n");
+
+    for (const int interval : {3, 6, 12, 24})
+    {
+        // Each hold gets its OWN 0.35 trim. Re-using one hold's trim for
+        // another would linearise about a state that is not an equilibrium of
+        // the solver being measured, and the drift column would be reporting
+        // that mistake rather than the ratio sweep's.
+        const OwnTrim trim = SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                                      DamperReference::World, AddedDrag{},
+                                      interval);
+        std::printf("aerodynamic hold %.3fs - 0.35 trim %s at %ds\n",
+                    interval / 120.0,
+                    trim.departed ? "DEPARTED"
+                        : trim.settled ? "settled" : "NOT SETTLED",
+                    trim.settleSeconds);
+        if (!trim.settled)
+        {
+            std::printf("  no trim to linearise about; row skipped rather "
+                        "than reported off a moving state\n\n");
+            continue;
+        }
+        std::printf("%8s %10s %12s %12s %12s %11s\n", "ratio", "period",
+                    "sigma T=.25", "sigma T=.10", "g per cycle", "drift");
+        for (const double ratio : {0.40, 0.35, 0.32, 0.30, 0.28, 0.25})
+        {
+            const HoldSpectrum point =
+                HoldSpectrumAt(trim.solver, trim.state, ratio);
+            if (!point.found)
+            {
+                std::printf("%8.2f %10s %12s %12s %12s %11s\n", ratio, "-",
+                            "no mode", "in 8-40s", "-", "-");
+                continue;
+            }
+            std::printf("%8.2f %9.2fs %+12.4f %+12.4f %12.3f %11.2e",
+                        ratio, point.periodAtQuarter, point.sigmaAtQuarter,
+                        point.sigmaAtTenth, point.growthPerCycle,
+                        point.driftSwingRadPerS);
+            if (point.growthPerCycle > 1.0) std::printf("  GROWING");
+            std::printf("\n");
+        }
+        std::printf("\n");
+    }
+
+    std::printf("  READ ACROSS THE HOLDS at a fixed ratio. If g is the same at "
+                "every hold while\n  §78's flown g moved 0.977 to 1.100 at "
+                "ratio 0.30, the eigenvalue is measuring the\n  aircraft and "
+                "the flown trace was measuring the aircraft plus its schedule -"
+                "\n  §39's verdict inverts. If the eigenvalue g moves too, the "
+                "two share the defect\n  and §39's disagreement is about "
+                "something else.\n\n");
+    std::printf("  THE T-COLUMNS ARE §47'S CONTROL, and they test §47's own "
+                "attribution. §47 found\n  Phi(T) is not an exponential family "
+                "and blamed the 0.1s hold - never tested.\n  That blame "
+                "predicts the T=0.25 and T=0.10 columns must CONVERGE as the "
+                "hold gets\n  finer. If they do, §47 named its culprit "
+                "correctly. If the spread is the same\n  at 0.025s as at "
+                "0.20s, §47's diagnosis is wrong and something else makes "
+                "Phi\n  non-exponential.\n\n");
+    std::printf("  DRIFT is the licence. Every ratio here is linearised about "
+                "the 0.35 trim at its\n  own hold, not its own trim - own trims "
+                "cost ~2800s at ratio 0.30 and four times\n  that at the finest "
+                "hold. A large drift means the linearisation point is not a\n  "
+                "trim at that ratio and the row is a statement about a moving "
+                "state.\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// ITEM 11'S LAST UNTESTED HYPOTHESIS: does n's VALUE set the boundary?
+//
+// The ledger after §79. The gap between the shipped `swingDampingRatio` = 0.35
+// and this item's physical estimate of ~0.06 is 0.29. Accounted for:
+// schedule and measurement artefact ~0.05 (§78, §79 - the boundary is 0.29, not
+// 0.35), pilot-referenced drag plus the lines sweeping 0.01 (§60, §63), a
+// credible pilot drag magnitude 0.05 (§59). Unexplained: about 0.18.
+//
+// And the item's stated exit is unreachable as written: AT RATIO 0.06 THIS WING
+// DEPARTS, because the converged boundary is 0.29-0.30. Both named physical
+// terms, fully implemented and measured, moved that boundary by 0.01. Whatever
+// is missing is roughly twenty times their combined size - not a small missing
+// term but a structural property.
+//
+// FOUR ELIMINATIONS NOW POINT AT ONE QUANTITY:
+//
+//   * §76 - the coefficient acts on how much excursion the phugoid PRODUCES,
+//     not on how much the wing survives.
+//   * §45 - the largest sensitivity in the whole matrix is d(surge)/d(surge),
+//     which IS speed stability.
+//   * §39/§40 - "the mechanism acts on speed stability" was retracted for a bad
+//     argument and then independently re-supported.
+//   * §51, §54, §76 - link friction, the finite-amplitude basin and low-CL
+//     robustness are all gone. Nothing link-side is left.
+//
+// The quantity is §34's lift exponent. n = 0.171 against a classical 2, because
+// the canopy rotates nose-up on its lines at -1.69 deg/(m/s) and recovers in
+// incidence nearly all the lift it loses in dynamic pressure - lift varies by
+// 0.97% of weight across the whole mode. That flatness is simultaneously the
+// 3.4x-too-long period and the low damping.
+//
+// WHY THIS IS NOT A RE-TREAD, and the distinction is the whole point. §35 asked
+// whether n CROSSES ZERO (it does not). §38 and §40 asked whether n or d TREND
+// with the ratio (they do not). Both are questions about n as the crossing
+// VARIABLE, and both were answered correctly. Whether n's VALUE sets the
+// boundary's LOCATION - n as a PARAMETER - is a different question, and in
+// forty-five sections nobody has asked it.
+//
+// THE LEVER is `SetPitchStiffnessScale`, a diagnostic device under §6's rule: a
+// stiffer pitch spring rotates the canopy less for the same aerodynamic moment,
+// which is the only direct handle this solver has on -1.69 deg/(m/s). It is not
+// a physical fix and must never ship - it is how the direction and MAGNITUDE
+// get measured before anyone hunts for the physics that would supply them.
+//
+// THE PREDICTION, WITH ITS SIZE, because a direction alone is too easy to
+// confirm. If n's value sets the boundary, stiffening the pitch spring must do
+// BOTH of these, and either one alone is a failure:
+//
+//   * shorten the phugoid PERIOD - omega = g sqrt(n)/V, so a larger n is a
+//     faster mode, and the period is the free read on n that needs no new
+//     instrument;
+//   * move the BOUNDARY down from 0.29 towards 0.06.
+//
+// And the magnitude is what decides it. The 0.18 that is unexplained is 62% of
+// the original gap. If a 2x spring buys 0.01 of boundary - the size of both
+// named terms put together - then n's value is not the mechanism either, and
+// item 11's remaining absence is somewhere nobody has looked at all. If it buys
+// 0.05 or more, the mechanism is found and the hunt becomes a hunt for what
+// physically stiffens a real wing's pitch response.
+//
+// THE CONFOUND, STATED FIRST, and it is §55's exactly: this does not give the
+// same wing a stiffer spring. It hangs the wing at a different incidence, which
+// moves trim speed, CL and glide. So every row prints its trim. A row whose
+// glide has collapsed is not this aircraft and its boundary is not comparable -
+// that would be measuring the device rather than through it.
+// WHAT THE FIRST RUN OF THIS ACTUALLY DID, kept because the failure is the
+// instructive part. Every row but one came back "no trim", and both reasons
+// were mine:
+//
+//   * it asked for OWN trims at ratios 0.30 and below, which §78 had already
+//     established do not settle at the shipped hold. Those rows were the
+//     correct answer to a question that should not have been asked. §79 had
+//     already solved this - settle ONCE per condition at ratio 0.35 and sweep
+//     the ratios off that state - and the structure was not reused.
+//   * it collapsed "departed", "still moving" and "budget exhausted" into one
+//     `settled = false`. That is exactly the distinction §77 built its
+//     lowest-CL column to preserve, applied there and dropped here, so the
+//     stiffened blocks could not say WHY they failed.
+//
+// So the rewrite reports the failure mode, and runs each spring at two
+// aerodynamic holds. There is a specific suspicion to separate: the pendulum
+// spring is already ~7000 Nm/rad and dominates pitch, and the roll damping time
+// constant of 20 ms is what sets the maximum aero interval (PENDULUM_MODEL,
+// §7). An 8x pitch spring may simply exceed what a 0.1 s hold can integrate -
+// a NUMERICAL failure wearing the costume of a physical one. If a spring that
+// will not settle at 0.10 s settles cleanly at 0.025 s, that is the answer and
+// the lever is only usable at a fine hold.
+enum class TrimOutcome { Settled, Departed, StillMoving };
+
+struct StiffnessRow
+{
+    TrimOutcome outcome = TrimOutcome::StillMoving;
+    double outcomeTimeS = 0.0;
+    double finalSpreadDeg = 0.0;
+    double lowestCL = 10.0;
+    double periodS = 0.0;
+    double growthPerCycle = 0.0;
+    double trimSpeedMps = 0.0;
+    double trimIncidenceDeg = 0.0;
+    double glide = 0.0;
+    bool found = false;
+};
+
+StiffnessRow StiffnessTrimAt(const CanopyGeometry& canopy,
+                             const LinePlanSpec& linePlan, double scale,
+                             double ratio, int aerodynamicsInterval,
+                             int maximumSeconds, CoupledParagliderSolver& solver,
+                             CoupledState& state)
+{
+    StiffnessRow out;
+    solver = CoupledParagliderSolver(canopy, linePlan);
+    solver.SetSwingDampingRatio(ratio);
+    solver.SetPitchStiffnessScale(scale);
+    CoupledSchedule schedule = solver.Schedule();
+    schedule.aerodynamicsInterval = aerodynamicsInterval;
+    solver.SetSchedule(schedule);
+    state = CoupledState{};
+
+    constexpr double SpreadToleranceRad = 1.7e-4;
+    double low = 0.0, high = 0.0;
+    int inWindow = 0;
+    bool done = false;
+    for (int second = 0; second < maximumSeconds && !done; ++second)
+    {
+        for (int step = 0; step < 120; ++step)
+        {
+            solver.Step(state, CoupledControls{}, CoupledAtmosphere{});
+            const CoupledDiagnostics& d = solver.Diagnostics();
+            if (d.angleOfAttackRad > 0.35 || d.angleOfAttackRad < -0.35)
+            {
+                out.outcome = TrimOutcome::Departed;
+                out.outcomeTimeS = second + (step + 1) / 120.0;
+                done = true;
+                break;
+            }
+            out.lowestCL = std::min(out.lowestCL, d.liftCoefficient);
+            if (inWindow == 0) { low = high = d.angleOfAttackRad; }
+            low = std::min(low, d.angleOfAttackRad);
+            high = std::max(high, d.angleOfAttackRad);
+            ++inWindow;
+        }
+        out.outcomeTimeS = done ? out.outcomeTimeS : second + 1;
+        if (!done && inWindow >= 120 * 10)
+        {
+            out.finalSpreadDeg = (high - low) * 180.0 / Pi;
+            if (high - low < SpreadToleranceRad)
+            {
+                out.outcome = TrimOutcome::Settled;
+                done = true;
+            }
+            inWindow = 0;
+        }
+    }
+
+    const CoupledDiagnostics& d = solver.Diagnostics();
+    out.trimIncidenceDeg = d.angleOfAttackRad * 180.0 / Pi;
+    const Vec3 v = state.velocityWorldMps;
+    const double horizontal = std::sqrt(v.x * v.x + v.y * v.y);
+    out.trimSpeedMps = std::sqrt(horizontal * horizontal + v.z * v.z);
+    out.glide = -v.z > 1.0e-6 ? horizontal / -v.z : 0.0;
+    return out;
+}
+
+const char* OutcomeName(TrimOutcome outcome)
+{
+    switch (outcome)
+    {
+        case TrimOutcome::Settled: return "settled";
+        case TrimOutcome::Departed: return "DEPARTED";
+        default: return "still moving";
+    }
+}
+
+void StiffnessCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                    int maximumSeconds)
+{
+    std::printf("DOES n's VALUE SET THE BOUNDARY? Item 11's last untested "
+                "hypothesis.\n§34 measured the phugoid's lift exponent at n = "
+                "0.171 against a classical 2,\nbecause the canopy rotates "
+                "nose-up on its lines at -1.69 deg/(m/s). §35 asked whether "
+                "n\nCROSSES ZERO and §38/§40 whether it TRENDS with the ratio - "
+                "both about n as the\ncrossing VARIABLE, both answered. Whether "
+                "n's VALUE sets the boundary's LOCATION\nhas never been "
+                "asked.\n\n");
+    std::printf("  STAGE 1 - IS THE LEVER USABLE AT ALL? The first version of "
+                "this reported six\n  blocks of \"no trim\" and could not say "
+                "why, because it did not separate\n  departing from still "
+                "moving. It does now, and it runs each spring at two holds:\n  "
+                "the pendulum spring already dominates pitch at ~7000 Nm/rad, "
+                "so a stiffened one\n  may exceed what a 0.1s aerodynamic hold "
+                "can integrate - numerical, not physical.\n\n");
+    std::printf("%8s %8s %14s %8s %11s %10s %10s %8s\n", "spring", "hold",
+                "outcome", "at", "spread", "speed", "incidence", "glide");
+    for (const double scale : {1.0, 2.0, 4.0, 8.0})
+    {
+        for (const int interval : {12, 3})
+        {
+            CoupledParagliderSolver solver(canopy, linePlan);
+            CoupledState state;
+            const StiffnessRow row =
+                StiffnessTrimAt(canopy, linePlan, scale, 0.35, interval,
+                                maximumSeconds, solver, state);
+            std::printf("%7.0fx %7.3fs %14s %7.0fs %10.3fd %9.2fm %9.2fd %8.2f\n",
+                        scale, interval / 120.0, OutcomeName(row.outcome),
+                        row.outcomeTimeS, row.finalSpreadDeg, row.trimSpeedMps,
+                        row.trimIncidenceDeg, row.glide);
+        }
+    }
+    std::printf("\n  A SPRING THAT FAILS AT 0.10s AND SETTLES AT 0.025s FAILED "
+                "NUMERICALLY, and the\n  lever is usable only at the fine hold. "
+                "One that fails at both is telling us\n  something about the "
+                "aircraft - most likely that a stiff pitch spring is\n  "
+                "destabilising, which would itself be a finding about the "
+                "mechanism.\n\n");
+
+    // STAGE 2, and only for springs that produced a trim: the ratio sweep off
+    // that spring's own ratio-0.35 trim, which is §79's structure. Ratios below
+    // 0.30 have no own trim (§78) and asking for one is what wasted the first
+    // run of this check.
+    std::printf("  STAGE 2 - THE BOUNDARY, per spring, swept off that spring's "
+                "own 0.35 trim\n  (§79's structure). Predicted BOTH or it "
+                "fails: the period must SHORTEN - the\n  free read on n by "
+                "omega = g sqrt(n)/V - AND the boundary must move down from\n  "
+                "0.29 towards 0.06. Size decides: both named physical terms "
+                "together bought 0.01.\n\n");
+    for (const double scale : {1.0, 2.0, 4.0, 8.0})
+    {
+        CoupledParagliderSolver solver(canopy, linePlan);
+        CoupledState state;
+        const StiffnessRow trim =
+            StiffnessTrimAt(canopy, linePlan, scale, 0.35, 3, maximumSeconds,
+                            solver, state);
+        std::printf("pitch spring x%.0f at the 0.025s hold - 0.35 trim %s"
+                    ", glide %.2f, incidence %.2fd\n", scale,
+                    OutcomeName(trim.outcome), trim.glide,
+                    trim.trimIncidenceDeg);
+        if (trim.outcome != TrimOutcome::Settled)
+        {
+            std::printf("  no trim to linearise about; not reported off a "
+                        "moving state\n\n");
+            continue;
+        }
+        std::printf("  %8s %10s %12s %11s\n", "ratio", "period",
+                    "g per cycle", "drift");
+        for (const double ratio : {0.35, 0.30, 0.25, 0.20, 0.15, 0.10})
+        {
+            CoupledParagliderSolver variant = solver;
+            variant.SetSwingDampingRatio(ratio);
+            const Spectrum spectrum = Analyse(variant, state, 0.25, 1.0, false);
+            Mode slow;
+            if (!SlowestOscillatory(spectrum, slow))
+            {
+                std::printf("  %8.2f %10s %12s %11.2e\n", ratio, "-",
+                            "no mode 8-40s", spectrum.driftSwingRadPerS);
+                continue;
+            }
+            const double g = std::exp(slow.growthPerS * slow.periodS);
+            std::printf("  %8.2f %9.2fs %12.3f %11.2e", ratio, slow.periodS, g,
+                        spectrum.driftSwingRadPerS);
+            if (g > 1.0) std::printf("  GROWING");
+            std::printf("\n");
+        }
+        std::printf("\n");
+    }
+
+    // STAGE 3, and it is the one that should have been written first.
+    //
+    // Stage 2 needs a trim and the stiffened springs do not settle inside
+    // 1200 s, so it returns nothing for exactly the rows the hypothesis is
+    // about. §78 built a TRIM-FREE instrument for precisely this case - flown
+    // peak-to-trough amplitude, a per-cycle ratio, no equilibrium anywhere in
+    // it - and reaching for the eigenvalue instead was the same class of error
+    // as asking §79 for own trims that §78 had already shown do not exist.
+    //
+    // Fine hold throughout, because Stage 1 established the 0.10 s departures
+    // are numerical.
+    //
+    // THE CONFOUND STILL BINDS, and it limits what this can conclude. x4 and x8
+    // glide 6.52 and 6.27 against x1's 10.97 and a published 9.5: those are not
+    // this aircraft and their boundaries are not comparable. x2 glides 10.49,
+    // close enough to x1 to compare. So this measurement has ONE usable
+    // stiffened point, and it is reported as one point rather than a trend.
+    std::printf("  STAGE 3 - THE BOUNDARY WITHOUT A TRIM, which is what §78's "
+                "instrument is for.\n  Flown per-cycle growth at the 0.025s "
+                "hold. x4 and x8 are printed but their glide\n  has collapsed "
+                "(6.52, 6.27 against a published 9.5) so they are NOT "
+                "comparable\n  aircraft; x2 at glide 10.49 against x1's 10.97 "
+                "is the one usable point.\n\n");
+    std::printf("%8s %8s %10s %12s   %s\n", "spring", "ratio", "cycles",
+                "first g", "g per cycle");
+    for (const double scale : {1.0, 2.0, 4.0})
+    {
+        for (const double ratio : {0.35, 0.30, 0.25, 0.20})
+        {
+            const CycleGrowth growth = GrowthOf(canopy, linePlan, ratio,
+                                                maximumSeconds / 2, 3, scale);
+            if (growth.ratios.empty())
+            {
+                std::printf("%7.0fx %8.2f %10s %12s   %s\n", scale, ratio, "0",
+                            "-", growth.departed ? "DEPARTED, no cycles"
+                                                 : "amplitude below the floor");
+                continue;
+            }
+            std::printf("%7.0fx %8.2f %10zu %12.3f   ", scale, ratio,
+                        growth.ratios.size(), growth.ratios.front());
+            const std::size_t show =
+                growth.ratios.size() > 6 ? 6 : growth.ratios.size();
+            for (std::size_t k = 0; k < show; ++k)
+                std::printf("%.3f ", growth.ratios[k]);
+            if (growth.ratios.size() > show) std::printf("...");
+            if (growth.departed) std::printf(" DEPARTED");
+            std::printf("\n");
+        }
+        std::printf("\n");
+    }
+    std::printf("  THE ANSWER IS WHERE FIRST-g CROSSES 1.0 IN THE x2 BLOCK "
+                "AGAINST THE x1 BLOCK.\n  x1's boundary is between 0.30 and "
+                "0.25 (§78, §79). If x2's has moved to 0.15 or\n  below, n's "
+                "value IS the mechanism and item 11 has its answer. If it is "
+                "still\n  between 0.30 and 0.25, doubling the pitch spring "
+                "bought nothing and the\n  remaining 0.18 of coefficient has "
+                "no candidate left.\n\n");
+
+    std::printf("  THE PERIOD COLUMN IS THE CONTROL ON THE LEVER. If it does "
+                "not shorten, the spring\n  did not change the restoring "
+                "gradient and every boundary beside it is about\n  something "
+                "else. n scales as (16.6/period)^2.\n\n");
+    std::printf("  READ THE TRIM BEFORE BELIEVING ANY BOUNDARY (§55's "
+                "confound). This is not the\n  same wing with a stiffer spring "
+                "- it hangs at a different incidence, so speed,\n  CL and "
+                "glide all move. Published glide 9.5, trim speed 10.83 m/s. A "
+                "block that\n  has left those behind is not this aircraft.\n\n");
+}
+
+// THE OTHER SIDE OF THE LEVER, which the stiff result makes mandatory.
+//
+// Stage 3 refuted the hypothesis with the SIGN REVERSED: stiffening the pitch
+// spring moves the boundary UP (x1 ~0.28, x2 ~0.32, x4 >=0.35), so a stiffer
+// wing needs MORE artificial damping. Predicting a direction and measuring its
+// opposite is §55's shape exactly.
+//
+// A two-sided lever tested on one side is a half-run experiment, and the
+// refutation says which side was interesting. If stiffer is worse, SOFTER
+// should be better - and softer means the canopy rotates MORE on its lines,
+// tracks apparent gravity MORE completely, and has an even SMALLER n.
+//
+// That inverts §34's reading, which is why it is worth the run. "The restoring
+// force is the leftover, and the leftover is almost nothing" was written as a
+// description of a defect. If the boundary falls as the spring softens, the
+// flat lift curve is not what makes this wing fragile - it is part of what
+// keeps it flyable, and item 11 has been reading the sign of its own central
+// finding backwards for forty-five sections.
+//
+// It is also consistent with something already on the record and never joined
+// up: §35 found dalpha/dV going -1.27 to -1.72 as the ratio RISES, i.e. more
+// tracking goes with more stability. Nobody put that beside §34's "the
+// tracking is why the mode is so weakly restored."
+//
+// Trim-free instrument throughout (§78) and the fine hold (Stage 1), so neither
+// a missing equilibrium nor the 10 Hz schedule is in the answer. The glide is
+// printed because §55's confound binds here exactly as it did for the stiff
+// side: a spring that wrecks the glide is not this aircraft.
+void SoftSpringCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+                     int maximumSeconds)
+{
+    std::printf("THE OTHER SIDE OF THE LEVER. Stiffening moved the boundary UP "
+                "(x1 ~0.28, x2 ~0.32,\nx4 >=0.35), so the hypothesis is "
+                "refuted with the sign reversed and the\ninteresting direction "
+                "is SOFTER - more tracking, smaller n. If the boundary "
+                "FALLS\nas the spring softens, §34's flat lift curve is part "
+                "of what keeps this wing\nflyable rather than the defect it "
+                "has been read as since Level 3.\n\n");
+    std::printf("%8s %8s %8s %10s %12s   %s\n", "spring", "glide", "ratio",
+                "cycles", "first g", "g per cycle");
+    for (const double scale : {1.0, 0.5, 0.25})
+    {
+        // The glide this spring flies at, so §55's confound is visible per
+        // block rather than assumed away.
+        CoupledParagliderSolver probe(canopy, linePlan);
+        CoupledState probeState;
+        const StiffnessRow trim =
+            StiffnessTrimAt(canopy, linePlan, scale, 0.35, 3, maximumSeconds,
+                            probe, probeState);
+        for (const double ratio : {0.35, 0.30, 0.25, 0.20, 0.15, 0.10})
+        {
+            const CycleGrowth growth = GrowthOf(canopy, linePlan, ratio,
+                                                maximumSeconds / 2, 3, scale);
+            std::printf("%7.2fx %8.2f %8.2f ", scale, trim.glide, ratio);
+            if (growth.ratios.empty())
+            {
+                std::printf("%10s %12s   %s\n", "0", "-",
+                            growth.departed ? "DEPARTED, no cycles"
+                                            : "amplitude below the floor");
+                continue;
+            }
+            std::printf("%10zu %12.3f   ", growth.ratios.size(),
+                        growth.ratios.front());
+            const std::size_t show =
+                growth.ratios.size() > 5 ? 5 : growth.ratios.size();
+            for (std::size_t k = 0; k < show; ++k)
+                std::printf("%.3f ", growth.ratios[k]);
+            if (growth.ratios.size() > show) std::printf("...");
+            if (growth.departed) std::printf(" DEPARTED");
+            std::printf("\n");
+        }
+        std::printf("\n");
+    }
+    std::printf("  WHERE FIRST-g CROSSES 1.0, per block. x1 is between 0.30 and "
+                "0.25. If x0.5 and\n  x0.25 cross LOWER, the mechanism is "
+                "found with the opposite sign to the one\n  predicted, and the "
+                "physics to hunt is whatever makes a real wing's pitch\n  "
+                "response softer than this model's. If they cross HIGHER too, "
+                "then BOTH\n  directions are worse than shipped, 1.0 sits at a "
+                "local optimum, and the spring\n  is not the mechanism in "
+                "either direction.\n\n");
+    std::printf("  THE GLIDE COLUMN IS THE LICENCE (§55). A block far from "
+                "x1's 10.97 and the\n  published 9.5 is not this aircraft and "
+                "its boundary is not comparable.\n\n");
 }
 
 void ScheduleBoundaryCheck(const CanopyGeometry& canopy,
@@ -5892,6 +6505,9 @@ int main(int argc, char** argv)
     bool departureCL = false;
     bool trough = false;
     bool growth = false;
+    bool holds = false;
+    bool stiffness = false;
+    bool soft = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -5912,6 +6528,9 @@ int main(int argc, char** argv)
         if (argument == "--departure-cl") departureCL = true;
         if (argument == "--trough") trough = true;
         if (argument == "--growth") growth = true;
+        if (argument == "--holds") holds = true;
+        if (argument == "--stiffness") stiffness = true;
+        if (argument == "--soft") soft = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -6105,6 +6724,30 @@ int main(int argc, char** argv)
         // the only regime that matters, which is where the amplitude is above
         // the floor.
         GrowthCheck(canopy, linePlan, settleSeconds < 420 ? 180 : 900);
+    }
+
+    if (holds)
+    {
+        // 1200 s for the per-hold 0.35 trim. It settles at 410 s at the shipped
+        // hold; the finer holds are more damped (§78: g 0.788 against 0.830) so
+        // they should settle sooner rather than later, and the budget is a
+        // margin over the known number rather than a guess.
+        HoldSpectrumCheck(canopy, linePlan, settleSeconds < 420 ? 300 : 1200);
+    }
+
+    if (stiffness)
+    {
+        // 1200 s per settle. A stiffer spring is a faster mode, so these should
+        // settle sooner than the 410 s the x1 aircraft takes, and the budget is
+        // margin over a known number rather than a guess. Rows that fail to
+        // settle print as "no trim" rather than being reported off a moving
+        // state.
+        StiffnessCheck(canopy, linePlan, settleSeconds < 420 ? 300 : 1200);
+    }
+
+    if (soft)
+    {
+        SoftSpringCheck(canopy, linePlan, settleSeconds < 420 ? 300 : 1200);
     }
 
     if (drag)

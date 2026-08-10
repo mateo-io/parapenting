@@ -27,6 +27,18 @@ PilotPose Lerp(const PilotPose& a, const PilotPose& b, double t)
     out.rightElbowCm = Lerp(a.rightElbowCm, b.rightElbowCm, t);
     out.leftHandCm = Lerp(a.leftHandCm, b.leftHandCm, t);
     out.rightHandCm = Lerp(a.rightHandCm, b.rightHandCm, t);
+    out.leftWristForward = Normalized(Lerp(a.leftWristForward,
+        b.leftWristForward, t));
+    out.rightWristForward = Normalized(Lerp(a.rightWristForward,
+        b.rightWristForward, t));
+    out.leftWristUp = Normalized(Lerp(a.leftWristUp, b.leftWristUp, t));
+    out.rightWristUp = Normalized(Lerp(a.rightWristUp, b.rightWristUp, t));
+    // Grips are explicit state transitions; a half-open hand is not inferred
+    // from interpolated coordinates. Keep the last completed fixed-step state.
+    out.leftGrip = b.leftGrip;
+    out.rightGrip = b.rightGrip;
+    out.headLookTargetCm = Lerp(a.headLookTargetCm, b.headLookTargetCm, t);
+    out.breathingCm = Lerp(a.breathingCm, b.breathingCm, t);
     out.leftHipCm = Lerp(a.leftHipCm, b.leftHipCm, t);
     out.rightHipCm = Lerp(a.rightHipCm, b.rightHipCm, t);
     out.leftKneeCm = Lerp(a.leftKneeCm, b.leftKneeCm, t);
@@ -103,7 +115,12 @@ GliderRigSnapshot BuildGliderRigSnapshot(const GliderRigSnapshotInput& input,
         snapshot.brakeForceN[1], input.incidentSeverity, input.recoverySurge,
         snapshot.torsoSurge,
         snapshot.riserTopRigCm[0][RearRiser],
-        snapshot.riserTopRigCm[1][RearRiser]});
+        snapshot.riserTopRigCm[1][RearRiser],
+        input.simulationTimeSeconds,
+        std::clamp(std::max({input.incidentSeverity,
+            input.telemetry.turbulence,
+            0.5 * (snapshot.brakeForceN[0] + snapshot.brakeForceN[1]) / 65.0}),
+            0.0, 1.0)});
     if (previous && dt > 0.0)
     {
         for (int side = 0; side < 2; ++side)
@@ -144,6 +161,7 @@ GliderRigSnapshot InterpolateGliderRigSnapshot(
         &Telemetry::rotorStrength, &Telemetry::canopyPressure,
         &Telemetry::harnessRollRad, &Telemetry::harnessPitchRad,
         &Telemetry::leftBrakeForceN, &Telemetry::rightBrakeForceN,
+        &Telemetry::accelerator,
         &Telemetry::recoverySurge, &Telemetry::deepStall,
         &Telemetry::leftCravat, &Telemetry::rightCravat,
         &Telemetry::canopyRelativePitchRad,

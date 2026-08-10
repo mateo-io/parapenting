@@ -223,6 +223,12 @@ int main()
             assert(pulling.rightHandCm.x == handsUp.rightHandCm.x);
             assert(pulling.rightHandCm.y == handsUp.rightHandCm.y);
             assert(pulling.rightHandCm.z == handsUp.rightHandCm.z);
+            assert(handsUp.leftGrip == PilotGripState::Open);
+            assert(pulling.leftGrip == PilotGripState::Wrapped);
+            assert(Dot(pulling.leftWristForward,
+                pulling.leftHandCm - pulling.leftElbowCm) > 0.99);
+            assert(Dot(pulling.leftWristUp,
+                pulled.leftBrakePulleyCm - pulling.leftHandCm) > 0.99);
 
             // Monotone: more brake is always more travel, never a reversal
             // partway down as the reach clamp engages.
@@ -243,10 +249,24 @@ int main()
         fullBrake.leftBrake = 1.0;
         fullBrake.leftBrakeForceN = 65.0;
         const auto full = EvaluatePilotPose(fullBrake);
+        assert(full.leftGrip == PilotGripState::Loaded);
         assert(std::abs(length(full.leftShoulderCm, full.leftElbowCm)
             - PilotUpperArmLengthCm) < 1e-8);
         assert(std::abs(length(full.leftElbowCm, full.leftHandCm)
             - PilotForearmLengthCm) < 1e-8);
+
+        // Secondary motion is a pure fixed-step function: it is present in
+        // calm flight, aims the head away from a locked-forward stare, and is
+        // suppressed instead of amplified when the pilot is working.
+        PilotPoseInput calm;
+        calm.simulationTimeSeconds = 1.0 / (4.0 * 0.22);
+        const auto breathing = EvaluatePilotPose(calm);
+        PilotPoseInput loaded = calm;
+        loaded.workload = 1.0;
+        const auto quiet = EvaluatePilotPose(loaded);
+        assert(std::abs(breathing.breathingCm - 0.85) < 1e-9);
+        assert(std::abs(quiet.breathingCm) < 1e-12);
+        assert(Length(breathing.headLookTargetCm - breathing.headCm) > 33.0);
 
         // The leg chain has to hold its lengths across weight shift and surge
         // for the same reason the arm chain does: it is skinned now, so a
@@ -276,11 +296,13 @@ int main()
             0.1, 0.0, 0.4, 0.8, 0.0, 35.0, 0.0, 0.0, 0.0,
             24.0, 45.0};
         currentInput.telemetry.canopyPressure = 0.6;
+        currentInput.telemetry.accelerator = 0.75;
         const auto current = BuildGliderRigSnapshot(currentInput, &previous);
         const auto halfway = InterpolateGliderRigSnapshot(previous, current, 0.5);
         assert(std::abs(halfway.brakeTravel[0] - 0.4) < 1e-12);
         assert(halfway.brakeTravel[1] == 0.0);
         assert(std::abs(halfway.telemetry.canopyPressure - 0.8) < 1e-12);
+        assert(std::abs(halfway.telemetry.accelerator - 0.375) < 1e-12);
         assert(halfway.brakeTravelVelocityPerS[0] > 40.0);
         const auto bounded = InterpolateGliderRigSnapshot(previous, current, 4.0);
         assert(bounded.brakeTravel == current.brakeTravel);
@@ -2921,6 +2943,20 @@ int main()
         double stallClearedAt = -1.0;
         double flyingAgainAt = -1.0;
         double settledAt = -1.0;
+        // ITEM 24: THE SHAPE OF THE RECOVERY, not just its duration.
+        //
+        // The same pilot who reported the moon-gravity settling above also
+        // reports that the recovery is ONE movement, and the same single
+        // movement however hard the stall - where a real one is a decaying
+        // sequence of surges. Duration alone cannot see that, which is why this
+        // gate measured half a minute and never noticed the wing was not
+        // swinging. The observable is the canopy's pitch RELATIVE to the pilot:
+        // that angle is the pendulum, and it is what a pilot watches surge.
+        std::vector<double> swing;
+        std::vector<double> horizontal;
+        std::vector<double> pitchRate;
+        int surgeClampSteps = 0;
+        int pitchRateClampSteps = 0;
         const int steps = static_cast<int>(60.0 / dt);
         for (int i = 0; i < steps; ++i)
         {
@@ -2940,6 +2976,55 @@ int main()
             // sets it, not the first entry into it.
             if (std::fabs(glide - trimGlide) > 0.10 * trimGlide)
                 settledAt = t;
+            if (i % 6 == 0)
+            {
+                swing.push_back(dynamics.LastTelemetry().canopyRelativePitchRad);
+                // WHAT THE PILOT ACTUALLY SEES. The canopy-relative angle above
+                // is an internal degree of freedom; "surge" as a pilot uses the
+                // word is the wing accelerating AHEAD, which shows up as
+                // horizontal speed, and "pitching" is body pitch rate. Reading
+                // the internal angle and calling it the reported symptom is the
+                // same class of mistake as reading the wrong model.
+                horizontal.push_back(h);
+                pitchRate.push_back(state.angularVelocityBodyRadps.y);
+            }
+            // The two hard limiters on this axis. A damper cannot make a
+            // recovery amplitude-INdependent; a saturating clamp can, so how
+            // long each one is pinned is the evidence that separates them.
+            if (std::fabs(state.recoverySurge - 0.45) < 1.0e-9
+                || std::fabs(state.recoverySurge + 0.20) < 1.0e-9)
+                ++surgeClampSteps;
+            const double pitchRateLimit = 0.90 + 0.25 * state.recoverySurge;
+            if (std::fabs(std::fabs(state.angularVelocityBodyRadps.y)
+                          - pitchRateLimit) < 1.0e-9)
+                ++pitchRateClampSteps;
+        }
+
+        // Peak-to-peak between successive extrema, so the slow trajectory
+        // recovery underneath does not read as an amplitude. Half a degree is
+        // about what a pilot notices.
+        std::vector<double> extrema;
+        for (std::size_t i = 1; i + 1 < swing.size(); ++i)
+        {
+            const bool up = swing[i] >= swing[i - 1] && swing[i] > swing[i + 1];
+            const bool down = swing[i] <= swing[i - 1] && swing[i] < swing[i + 1];
+            if (up || down) extrema.push_back(swing[i]);
+        }
+        int visibleSwings = 0;
+        double firstSwingDeg = 0.0;
+        double secondOverFirst = 0.0;
+        {
+            std::vector<double> halves;
+            for (std::size_t i = 0; i + 1 < extrema.size(); ++i)
+            {
+                const double a = std::fabs(extrema[i + 1] - extrema[i]);
+                if (a > 0.5 * 3.14159265358979 / 180.0) halves.push_back(a);
+                else break;
+            }
+            visibleSwings = static_cast<int>(halves.size());
+            if (!halves.empty())
+                firstSwingDeg = halves.front() * 180.0 / 3.14159265358979;
+            if (halves.size() >= 2) secondOverFirst = halves[1] / halves[0];
         }
 
         std::cout << "Stall recovery: trim glide " << trimGlide
@@ -2949,6 +3034,67 @@ int main()
                   << "  stall state cleared at " << stallClearedAt
                   << " s, flying forward again at " << flyingAgainAt
                   << " s, glide settled at " << settledAt << " s\n";
+        auto trace = [](const char* label, const std::vector<double>& v,
+                        double scale)
+        {
+            std::cout << "  TRACE " << label << ", 1 s apart:";
+            for (std::size_t i = 0; i < v.size() && i < 40 * 20; i += 20)
+                std::cout << " " << static_cast<int>(v[i] * scale);
+            std::cout << "\n";
+        };
+        trace("canopyRelativePitch deg", swing, 180.0 / 3.14159265358979);
+        trace("horizontal speed dm/s ", horizontal, 10.0);
+        trace("body pitch rate mrad/s", pitchRate, 1000.0);
+        // ITEM 24, THE DECISIVE TEST. The report is not only "one movement" but
+        // "the SAME one however hard the stall". A damper cannot do that - a
+        // harder stall drives a proportionally bigger surge through the same
+        // decay - so amplitude-independence, if it is real, is a saturation and
+        // the sweep below finds which one. If instead the surges scale with the
+        // stall, the model is not amplitude-independent and the report is about
+        // something outside this axis: the visual, the camera, or a brake range
+        // that cannot reach a hard stall in the first place.
+        std::cout << "  ITEM 24, stall severity against surge amplitude:\n";
+        for (double hold : {1.0, 2.0, 3.0, 5.0})
+        {
+            ParagliderDynamics d2;
+            FlightState s2;
+            StepFor(d2, s2, {}, 20.0);
+            StepFor(d2, s2, ControlInput{1.0, 1.0, 0.0}, hold);
+            const double sunk = -s2.velocityWorldMps.z;
+            std::vector<double> h2;
+            const int n = static_cast<int>(40.0 / dt);
+            for (int i = 0; i < n; ++i)
+            {
+                d2.Step(s2, ControlInput{}, Atmosphere{}, dt);
+                if (i % 6 == 0)
+                    h2.push_back(std::hypot(s2.velocityWorldMps.x,
+                                            s2.velocityWorldMps.y));
+            }
+            std::vector<double> ext;
+            for (std::size_t i = 1; i + 1 < h2.size(); ++i)
+            {
+                const bool up = h2[i] >= h2[i - 1] && h2[i] > h2[i + 1];
+                const bool dn = h2[i] <= h2[i - 1] && h2[i] < h2[i + 1];
+                if (up || dn) ext.push_back(h2[i]);
+            }
+            std::cout << "    brake 1.0 held " << hold << " s (stalled sink "
+                      << sunk << "): surge peak-to-peak m/s";
+            int printed = 0;
+            for (std::size_t i = 0; i + 1 < ext.size() && printed < 5; ++i)
+            {
+                const double a = std::fabs(ext[i + 1] - ext[i]);
+                if (a < 0.2) break;
+                std::cout << " " << a;
+                ++printed;
+            }
+            std::cout << "\n";
+        }
+        std::cout << "  ITEM 24, the SHAPE of it: visible swings "
+                  << visibleSwings << ", first " << firstSwingDeg
+                  << " deg, second/first " << secondOverFirst << "\n"
+                  << "    surge clamp pinned for " << surgeClampSteps
+                  << " steps, pitch-rate clamp for " << pitchRateClampSteps
+                  << " steps\n";
 
         // KNOWN DEFECT, bounded at what it measures today so it cannot
         // quietly get worse while the fix is decided.
@@ -2979,6 +3125,57 @@ int main()
         assert(peakSink < 2.3 * stalledSink);
         assert(flyingAgainAt > 0.0 && flyingAgainAt - stallClearedAt < 3.0);
         assert(settledAt > 0.0 && settledAt < 40.0);
+    }
+
+    {
+        // ITEM 24: A HARDER STALL MUST RECOVER HARDER. The defect was a step
+        // at `symmetricBrake > 0.86`, which made the whole top eighth of the
+        // brake range one single stall: shipped, three-second holds at 0.88
+        // and 1.00 gave first surges of 11.80 and 12.02 m/s, a 1.9% spread
+        // across a control range the pilot moves by hand.
+        //
+        // THE SURGE IS AN EXCURSION FROM THE RELEASE SPEED, not a peak-to-peak
+        // between successive extrema. A stall released near zero airspeed has
+        // no leading extremum to difference against, so the pairwise measure
+        // skips the first rise and scores the largest surge in a sweep as the
+        // smallest - which is how the duration table in `PHYSICS_TODO` item 24
+        // recorded an inversion that was never in the model. That mistake is
+        // the reason this gate is written the way it is.
+        auto firstSurge = [](double brake)
+        {
+            ParagliderDynamics dynamics;
+            FlightState state;
+            StepFor(dynamics, state, ControlInput{}, 20.0);
+            StepFor(dynamics, state, ControlInput{brake, brake, 0.0}, 3.0);
+            constexpr double dt = 1.0 / 120.0;
+            const auto speed = [&]
+            {
+                return std::sqrt(
+                    state.velocityWorldMps.x * state.velocityWorldMps.x
+                    + state.velocityWorldMps.y * state.velocityWorldMps.y);
+            };
+            const double releaseSpeed = speed();
+            double peak = releaseSpeed;
+            for (int frame = 0; frame < 20 * 120; ++frame)
+            {
+                dynamics.Step(state, ControlInput{}, Atmosphere{}, dt);
+                if (speed() < peak - 0.5) break;   // past the first peak
+                peak = std::max(peak, speed());
+            }
+            return peak - releaseSpeed;
+        };
+
+        const double marginal = firstSurge(0.88);
+        const double hard = firstSurge(1.00);
+        // Ordered, and by a margin a pilot could feel rather than by an
+        // epsilon. 1.5 m/s is well inside the measured 2.10 m/s spread and
+        // well outside the 0.22 m/s the step function used to allow, so this
+        // fails if the depth axis flattens again without pinning the tuning.
+        assert(hard > marginal + 1.5);
+        // The ordering must be bought by making the hard stall harder, not by
+        // breaking the marginal one: 0.88 brake is still past this wing's
+        // departure and must still produce a real recovery surge.
+        assert(marginal > 6.0);
     }
 
     std::cout << "All paraglider physics tests passed.\n";

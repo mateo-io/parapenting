@@ -77,8 +77,65 @@ struct CoupledSchedule
 {
     // Physics rate. Fixed, and decoupled from the engine tick since Level 0.
     double timeStepS = 1.0 / 120.0;
-    // Steps between full aerodynamic solves. At 120 Hz, 12 gives 10 Hz.
-    int aerodynamicsInterval = 12;
+    // Steps between full aerodynamic solves. At 120 Hz, 6 gives 20 Hz - a
+    // 0.05 s aerodynamic hold.
+    //
+    // IT WAS 12 (10 Hz, 0.1 s) FOR NINE LEVELS, AND THAT HOLD WAS PRODUCING
+    // FLIGHT BEHAVIOUR THAT IS NOT IN THE AIRCRAFT. Three separate occasions,
+    // each measured rather than argued:
+    //
+    //   * §78. Per-cycle amplitude growth `g` at swing ratio 0.30 is 0.977 and
+    //     0.994 at the 0.025 s and 0.05 s holds - DECAYING - against 1.029 and
+    //     1.100 at 0.10 s and 0.20 s - GROWING. The SIGN of the growth rate is
+    //     set by the schedule at the ratio that decides where the stability
+    //     boundary sits.
+    //   * §79. The eigenvalue crossing does not move with the hold at all
+    //     (1.1-1.3% over an eightfold range) while the flown crossing moves
+    //     12%. The flown trace was measuring the aircraft PLUS its schedule,
+    //     and §39 read two instruments sharing one defect as confirmation.
+    //   * §80. At 0.1 s a stiffened pitch spring departs at 329/202/113 s
+    //     reaching 20-25 degrees of incidence. At 0.025 s none of them departs.
+    //
+    // WHY 6 AND NOT 3. First-cycle `g` is first order in the hold - its
+    // increments double for every doubling of h, confirmed over an eightfold
+    // range - so Richardson extrapolates cleanly and says where h -> 0 lands.
+    // Against that limit the 0.05 s hold is already converged for every purpose
+    // this schedule serves: the boundary sits at 0.28-0.29 here against a
+    // converged 0.29-0.30, and ratio 0.30's stability is measured DIRECTLY at
+    // this hold rather than extrapolated. Going to 3 doubles the aerodynamic
+    // cost again to move the boundary by ~0.01, which is inside how precisely
+    // anything downstream reads it.
+    //
+    // WHAT IT ALSO COSTS, AND THIS WAS NOT KNOWN WHEN THE CHANGE WAS MADE:
+    // FOUR `coupled_tests` GATES FAIL AT 6 AND ALL PASS AT 12. Bisected by
+    // running the suite at both intervals with nothing else different.
+    //
+    // Three are stale expectations - §68's iteration-cap gates pin break times
+    // and residuals identified at the 0.1 s hold, and a different hold moves
+    // them. Those need re-deriving, not defending.
+    //
+    // THE FOURTH IS NOT STALE AND IS THE REASON THIS NOTE IS HERE. It is
+    // §69's CONTROL: `!shipped.safetyEnvelopeEngaged` on the 4 m/s symmetric
+    // frontal. At 12 the shipped wing flies that frontal with the envelope
+    // idle; at 6 it engages. By guiding rule 12 a shipped wing that needs the
+    // numerical safety envelope in a NOMINAL incident is a bigger fact than
+    // the stability boundary moving 0.01 - and it also removes the control that
+    // makes §69's two drag rows mean anything, so item 12's "no route around
+    // Level 11" conclusion currently rests on a benchmark whose control fails.
+    //
+    // NOT REVERTED, because §78/§79/§80's three measurements that the 0.1 s
+    // hold manufactures departures are untouched by this and the case for a
+    // finer hold stands. But the change is NOT free, the §80 write-up's "all
+    // twelve suites green" does not hold at the interval it shipped, and
+    // whether to re-derive the three gates, fix the frontal, or hold the
+    // schedule at 12 until Level 11 is a decision that has not been taken.
+    // `PHYSICS_TODO` item 25.
+    //
+    // WHAT IT COSTS is a straight doubling of the aerodynamic tick rate, and
+    // the aerodynamic tick is the expensive one - four VSM solves, ~36% of a
+    // step at 10 Hz. See `PHYSICS_LEARNINGS` §81 for the measured figure and
+    // for which calibration gates moved.
+    int aerodynamicsInterval = 6;
     // Chord stations the membrane is solved at.
     int membraneStations = 3;
     // Staggered coupling iterations per step. The convergence gate is that
@@ -102,8 +159,8 @@ struct CoupledSchedule
     // but it is a question to MEASURE before lowering this, not to assume.
     int frozenSolveIterations = 600;
     // Aerodynamic ticks between damping-derivative probes. 1 probes one axis
-    // every tick, so each axis refreshes every 3 ticks - 0.3 s at the default
-    // schedule.
+    // every tick, so each axis refreshes every 3 ticks - 0.15 s at the default
+    // schedule, halved along with the aerodynamic interval above.
     //
     // This, and NOT the iteration cap above, is the lever on the probes' 23.8%
     // of a step. Measured: dropping the cap from 600 to 40 saves 0-4%, inside
@@ -128,8 +185,16 @@ struct CoupledSchedule
 //     0.198 N against a flight load near 1030 N. Below 40 the saving flattens
 //     (40% at 40 iterations, 49% at 20) while the residual does not (0.198 to
 //     0.384), which is what makes 40 the knee rather than a preference.
-//   * dampingProbeInterval 1 -> 3. Each axis then refreshes every 0.9 s
-//     instead of every 0.3 s.
+//   * dampingProbeInterval 1 -> 3. Each axis then refreshes every 0.45 s
+//     instead of every 0.15 s.
+//
+// NOTE, not yet answered: REDUCED inherits the 20 Hz aerodynamic hold from the
+// default above, so it is now roughly twice the cost it was when its two knobs
+// were swept - and that sweep was taken at the 10 Hz hold, so the knee has not
+// been re-measured. The tier is still coherent, moving the same two knobs the
+// same way. But if it needs to reclaim the aerodynamic cost, the honest move is
+// to sweep `aerodynamicsInterval` as a third knob against the boundary curve in
+// §78, not to assume 12 is still its right value.
 //
 // Two knobs are deliberately NOT moved. `couplingIterations` stays at 3
 // because 2 changes the peak of a 4 m/s asymmetric collapse from 0.648 to
@@ -198,7 +263,9 @@ struct CoupledState
     Vec3 linkRateWorldRadps{};
 
     // Level 8. Stepped every physics step, because a fold takes about a tenth
-    // of a second and the aerodynamic interval is a tenth of a second.
+    // of a second and the aerodynamic interval is a twentieth. It was stepped
+    // every step when the interval was a tenth too - the reason has only got
+    // stronger, not weaker.
     CollapseState collapse;
     // What the collapse solver was last told about each section. Refreshed
     // whenever the aerodynamics run, so a fold between aerodynamic solves
@@ -211,8 +278,11 @@ struct CoupledState
     // cannot.
     //
     // Roll damping has a time constant of about 20 ms on this wing, so
-    // holding it across a 100 ms aerodynamic interval applies a damping
-    // moment computed at a rate five time constants stale. That is not a
+    // holding it across a 50 ms aerodynamic interval applies a damping
+    // moment computed at a rate two and a half time constants stale - and it
+    // was five when the interval was 100 ms. Halving the hold does NOT retire
+    // this: two and a half time constants is still stale, and the
+    // rate-dependent split below is still what makes the wing stable. That is not a
     // small error: it turns damping into excitation and the wing diverges in
     // under five seconds. The rate-dependent part is therefore re-evaluated
     // every step from a derivative measured at each full solve, which is the
@@ -227,7 +297,7 @@ struct CoupledState
     Vec3 heldAeroMomentBodyNm{};
     Vec3 rotationalDampingNmPerRadps{};
     // Which axis the next full solve probes for its damping derivative. One
-    // per aerodynamic interval, round-robin, so each is refreshed every 0.3 s.
+    // per aerodynamic interval, round-robin, so each is refreshed every 0.15 s.
     int dampingProbeAxis = 0;
     // Aerodynamic ticks since the last probe, against
     // `CoupledSchedule::dampingProbeInterval`.
@@ -357,6 +427,29 @@ struct CoupledDiagnostics
     // solver artefact, so the energy accounting subtracts it instead of
     // reporting it as energy that went missing.
     double swingDampingPowerW = 0.0;
+
+    // ITEM 24: THE ENERGY AUDIT'S BLIND SPOT, now lit.
+    //
+    // `energyResidualW` below is translational kinetic plus potential against
+    // aerodynamic work. The canopy's ROTATIONAL kinetic energy and the
+    // pendulum's SWING kinetic energy appear in neither term, so a subsystem
+    // that DESTROYS rotational energy has always been invisible to it - which
+    // is how a term removing 95% of the wing's rotation rate per swing survived
+    // nine levels of energy accounting unexamined. The audit's own comment,
+    // "a subsystem that creates energy cannot hide from this", is true for
+    // creation and was never true for destruction.
+    //
+    // These three do not change the residual - they are reported beside it, so
+    // the dissipation is visible as a number rather than absent as a concept.
+    double rotationalKineticEnergyJ = 0.0;
+    double swingKineticEnergyJ = 0.0;
+    // Power removed by the structural angular damping this step. At the shipped
+    // 1.6 /s this is the largest single sink on the pitch axis during a surge.
+    double structuralDampingPowerW = 0.0;
+    // Power discarded by the 1.4 rad swing limit this step. Non-zero ONLY when
+    // the clamp engaged, and when it is non-zero the run passed through a
+    // numerical limit and is not flight behaviour.
+    double swingLimitDiscardedPowerW = 0.0;
 
     // Flight numbers, for the tests to read.
     double airspeedMps = 0.0;
@@ -615,6 +708,84 @@ public:
     void SetLineSweepDamping(bool on) { LineSweepDamping = on; }
     bool LineSweepDampingEnabled() const { return LineSweepDamping; }
 
+    // A DIAGNOSTIC DEVICE, NOT A MODEL TERM, and it must never ship non-unity.
+    //
+    // Multiplies the line network's PITCH spring only, leaving roll untouched.
+    // Its purpose is item 11's last untested hypothesis: §34 measured the
+    // phugoid's lift exponent at n = 0.171 against a classical 2, because the
+    // canopy rotates nose-up on its lines at -1.69 deg/(m/s) and so recovers in
+    // incidence nearly all the lift it loses in dynamic pressure. A stiffer
+    // pitch spring rotates less for the same aerodynamic moment, which is the
+    // only direct lever this solver has on that gradient.
+    //
+    // §35 and §38 tested whether n CROSSES ZERO and whether it TRENDS with
+    // swingDampingRatio - it does neither, and both are questions about n as
+    // the crossing variable. This asks whether n's VALUE sets the boundary's
+    // LOCATION, i.e. n as a parameter, which is a different question and has
+    // never been asked.
+    //
+    // It changes the trim - a different spring hangs the wing at a different
+    // incidence - so every measurement using it must print the trim beside the
+    // answer. §6 is the rule it lives under: a device that changes the physics
+    // is legitimate to measure WITH and never legitimate to measure THROUGH
+    // silently. Default 1.0 is bit-identical to not having it.
+    void SetPitchStiffnessScale(double scale) { PitchStiffnessScale = scale; }
+    double PitchStiffnessScaleValue() const { return PitchStiffnessScale; }
+
+    // ITEM 24'S THREE DISSIPATORS, made reachable. A pilot reports that a stall
+    // recovery is ONE slow surge rather than the decaying sequence of surges a
+    // real wing makes, and that it is the same single surge however hard the
+    // stall. Three terms can produce that and none had a hook.
+    //
+    // All three default to the shipped values, so an untouched solver is
+    // bit-identical to not having these at all. §6: legitimate to measure WITH,
+    // never legitimate to measure THROUGH silently.
+
+    // STRUCTURAL DAMPING ON THE CANOPY'S ANGULAR RATE, per second. The shipped
+    // 1.6 is a 0.62 s time constant applied to all three axes every step, which
+    // over one 1.86 s pendulum period leaves `exp(-1.6*1.86)` = 5% of the wing's
+    // rotation rate. That is the reported symptom, and the term's own comment
+    // at the call site states its purpose as stopping the pendulum ringing.
+    //
+    // It is the least examined number in the solver: the literal appeared
+    // exactly once in the repository, with no registry entry, no derivation, no
+    // test and no sweep. Zero removes it entirely.
+    //
+    // It is also the reason to re-run the eigenmode sweep: a 1.86 s mode
+    // decaying at 1.6/s has an equivalent damping ratio near 0.47, and item 11's
+    // standing rule discards anything above 0.5 from that tool as
+    // discretisation. Whether that rule has been eating a real over-damped
+    // canopy-pitch mode is answered by setting this to zero and looking.
+    void SetStructuralAngularDampingPerS(double perSecond)
+        { StructuralAngularDampingPerS = perSecond; }
+    double StructuralAngularDampingPerSValue() const
+        { return StructuralAngularDampingPerS; }
+
+    // WHAT THE 1.4 rad SWING LIMIT DOES TO THE SWING RATE when it engages.
+    //
+    // `Zero` is shipped: the clamp sets the link rate to exactly zero, throwing
+    // away the whole swing kinetic energy in one step, unaccounted. `Project`
+    // keeps the component that does not drive the link further past the limit,
+    // so the limit stops the swing from deepening without also stopping the
+    // swing.
+    //
+    // This is the only one of the three that can explain the reported
+    // AMPLITUDE-INDEPENDENCE. A damper makes a harder stall surge
+    // proportionally harder over the same number of cycles; a clamp makes every
+    // stall above its threshold recover identically, which is what was
+    // described. The clamp's own comment calls 1.4 rad "well outside anything
+    // short of an SIV manoeuvre" - and a hard stall recovery is one.
+    enum class SwingLimitRateHandling { Zero, Project };
+    void SetSwingLimitRateHandling(SwingLimitRateHandling handling)
+        { SwingLimitRateHandlingValue = handling; }
+    SwingLimitRateHandling SwingLimitRateHandlingMode() const
+        { return SwingLimitRateHandlingValue; }
+    // How many times the swing limit has engaged since the last reset. Zero on
+    // every manoeuvre that is supposed to be flight behaviour; non-zero means
+    // the run passed through a clamp and its numbers are not the aircraft's.
+    int SwingLimitEngagements() const { return SwingLimitEngagementCount; }
+    void ResetSwingLimitEngagements() { SwingLimitEngagementCount = 0; }
+
     void SetProfiling(bool on) { Profiling = on; }
     const CoupledStepProfile& Profile() const { return ProfileValue; }
     void ResetProfile() { ProfileValue = CoupledStepProfile{}; }
@@ -711,12 +882,20 @@ private:
     HarnessDragReference HarnessDragReferenceValue =
         HarnessDragReference::Aircraft;
     bool LineSweepDamping = false;
+    // See `SetPitchStiffnessScale`. 1.0 is the shipped aircraft exactly.
+    double PitchStiffnessScale = 1.0;
     // Sum of d * L * s^2 over the cascade, m^4, where s is a cable's distance
     // from the hinge. Times 0.5 rho Cd V it is a damping torque per unit swing
     // rate. Measured off the graph at construction, like the drag area.
     double LineSweepAreaMomentM4 = 0.0;
     LinkDampingReference LinkDampingReferenceValue =
         LinkDampingReference::World;
+    // See `SetStructuralAngularDampingPerS`. 1.6 is the shipped aircraft.
+    double StructuralAngularDampingPerS = 1.6;
+    // See `SetSwingLimitRateHandling`. `Zero` is the shipped aircraft.
+    SwingLimitRateHandling SwingLimitRateHandlingValue =
+        SwingLimitRateHandling::Zero;
+    int SwingLimitEngagementCount = 0;
     bool Profiling = false;
     CoupledStepProfile ProfileValue{};
     std::vector<BrakeSwingSample> BrakeSwingCurve;

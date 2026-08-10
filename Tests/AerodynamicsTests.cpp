@@ -87,6 +87,96 @@ VsmSolveInput Inflow(double alphaRad, double speedMps = 20.0)
 
 int main()
 {
+    // -- Level 11 strand 1: the Wagner indicial response -------------------
+    //
+    // Checked against PUBLISHED values of Jones' approximation rather than
+    // against the implementation's own output, which is the only kind of check
+    // worth having on a function whose whole purpose is to reproduce a known
+    // curve. Phi(0) = 0.5 exactly - a wing gets half its steady lift the
+    // instant it changes incidence and the rest as the shed wake convects
+    // away - and the tail approaches 1.
+    {
+        std::printf("\nLevel 11 strand 1: Wagner indicial response "
+                    "(Jones' two-lag form)\n");
+        struct Row { double s; double phi; };
+        // Phi(s) = 1 - 0.165 e^(-0.0455 s) - 0.335 e^(-0.30 s), evaluated
+        // independently of the code under test.
+        const Row published[] = {
+            {0.0, 0.5000}, {1.0, 0.5942}, {2.0, 0.6655},
+            {5.0, 0.7938}, {10.0, 0.8786}, {20.0, 0.9328},
+        };
+        // One long march, sampled at the published points, so this exercises
+        // repeated stepping rather than a single closed-form evaluation - the
+        // way a flight loop uses it.
+        WagnerLag lag;
+        lag.Settle(0.0);
+        double s = 0.0;
+        double worst = 0.0;
+        const double stepS = 0.001;
+        for (const Row& row : published)
+        {
+            while (s < row.s - 1.0e-12)
+            {
+                const double ds = std::min(stepS, row.s - s);
+                lag.Advance(1.0, ds);
+                s += ds;
+            }
+            const double got = lag.Value(1.0);
+            worst = std::max(worst, std::fabs(got - row.phi));
+            std::printf("  s = %5.1f semichords: %.4f against published "
+                        "%.4f\n", row.s, got, row.phi);
+        }
+        Check(worst < 1.0e-3,
+              "the indicial response reproduces published Wagner/Jones "
+              "values across four decades of reduced time, marched rather "
+              "than evaluated");
+
+        // A step response starts at half and rises monotonically. Both halves
+        // matter: the 0.5 is the physics that makes this worth having, and
+        // monotonicity is what says the two states are not fighting.
+        WagnerLag step;
+        step.Settle(0.0);
+        Check(std::fabs(step.Value(1.0) - 0.5) < 1.0e-12,
+              "and a step begins at exactly half the steady value, which is "
+              "the whole reason an unsteady formulation changes transient "
+              "phase");
+        // Marched to s = 100 rather than 20. The slow lag's time constant is
+        // 1/0.0455 = 22 semichords, so Phi(20) is 0.93 and still climbing -
+        // a wing takes a surprisingly long way to finish arriving at its own
+        // steady lift, which is the point of modelling it at all.
+        double previous = step.Value(1.0);
+        bool monotone = true;
+        for (int i = 0; i < 10000; ++i)
+        {
+            const double now = step.Advance(1.0, 0.01);
+            if (now < previous - 1.0e-15) monotone = false;
+            previous = now;
+        }
+        Check(monotone && std::fabs(previous - 1.0) < 0.01,
+              "and it rises monotonically to the steady value, so the two "
+              "lag states are not fighting each other");
+
+        // A settled wing carries no transient. This is the same rule the
+        // canopy's own start-up follows - a simulation that begins mid-flight
+        // begins trimmed - and getting it wrong would make every solve start
+        // with a lift step it never took.
+        WagnerLag settled;
+        settled.Settle(1.0);
+        Check(std::fabs(settled.Advance(1.0, 10.0) - 1.0) < 1.0e-12,
+              "a wing that has held its incidence carries no transient, so "
+              "starting mid-flight does not inject a lift step");
+
+        // Reduced time is semichords, not seconds, and mixing them up is the
+        // obvious way to use this wrongly. At 11 m/s on a 2.5 m chord one
+        // semichord takes 114 ms.
+        const double oneSemichordS =
+            2.5 / (2.0 * 11.0);
+        Check(std::fabs(ReducedTimeSemichords(11.0, 2.5, oneSemichordS) - 1.0)
+                  < 1.0e-12,
+              "and reduced time counts semichords travelled rather than "
+              "seconds elapsed");
+    }
+
     // -- section polars ---------------------------------------------------
     {
         const SectionPolarTable polar = SectionPolarTable::Analytic();

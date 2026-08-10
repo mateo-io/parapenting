@@ -117,6 +117,81 @@ struct VsmSolveInput
     std::vector<double> sectionIncidenceOffsetRad;
 };
 
+// LEVEL 11, STRAND 1: THE WAGNER INDICIAL RESPONSE.
+//
+// A wing that changes incidence does not change its circulation at the same
+// instant. The vorticity it sheds into the wake induces a downwash on itself
+// that decays as the wake convects away, so lift arrives gradually: half of it
+// immediately, the rest over the next twenty-odd semichords of travel. Every
+// solve in this project so far reads the polar instantaneously, which is a
+// quasi-steady assumption, and Level 11's work list names removing it.
+//
+// PUBLISHED METHOD, per guiding rule 13. This is R. T. Jones' two-exponential
+// approximation to Wagner's function for a step change in incidence:
+//
+//     Phi(s) = 1 - 0.165 e^(-0.0455 s) - 0.335 e^(-0.30 s)
+//
+// with `s` the reduced time in SEMICHORDS TRAVELLED, s = 2 V t / c - not
+// seconds. A wing at 11 m/s with a 2.5 m chord covers a semichord in 114 ms, so
+// the fast lag is worth tens of milliseconds and the slow one seconds. The
+// deviation from Wagner's exact function is under 1% and it is the standard
+// engineering form.
+//
+// Written as two first-order states rather than as a convolution, which is what
+// makes it affordable in a flight loop: the exponential form integrates
+// exactly, so advancing by any `ds` is a closed-form step and there is no
+// history to store. Phi(0) = 0.5 and Phi(inf) = 1 fall out of the states
+// starting at zero and ending at the target.
+//
+// NOT YET WIRED INTO THE FORCE ASSEMBLY, deliberately. The VSM builds section
+// forces from the polar's lift coefficient and lets circulation enter only
+// through the induced velocity, so lagging one without the other would report a
+// wing whose lift and downwash disagree. Doing that properly is strand 2. This
+// is landed and tested on its own because the indicial response is the part
+// with a published answer to check against, and checking it separately is
+// cheaper than debugging it inside a coupled solve.
+struct WagnerLag
+{
+    // The two lag states, in whatever unit the lagged quantity is.
+    double slow = 0.0;
+    double fast = 0.0;
+    bool initialised = false;
+
+    // A wing that has been holding this value forever carries no transient.
+    // Starting a simulation mid-flight has to start here, for the same reason
+    // the canopy starts trimmed rather than at its hang pose.
+    void Settle(double value)
+    {
+        slow = fast = value;
+        initialised = true;
+    }
+
+    // Advance by `ds` semichords toward `target` and return the lagged value.
+    double Advance(double target, double ds)
+    {
+        if (!initialised) { Settle(target); return target; }
+        if (!(ds > 0.0)) return Value(target);
+        slow += (target - slow) * (1.0 - std::exp(-0.0455 * ds));
+        fast += (target - fast) * (1.0 - std::exp(-0.30 * ds));
+        return Value(target);
+    }
+
+    double Value(double target) const
+    {
+        return target - 0.165 * (target - slow) - 0.335 * (target - fast);
+    }
+};
+
+// Semichords travelled in `seconds` at `speedMps` on a chord of `chordM`. The
+// reduced time Wagner is written in, and the conversion every caller would
+// otherwise get wrong in its own way.
+inline double ReducedTimeSemichords(double speedMps, double chordM,
+                                    double seconds)
+{
+    if (!(chordM > 1.0e-9)) return 0.0;
+    return 2.0 * speedMps * seconds / chordM;
+}
+
 // Per-section separation, carried between solves. This is the attached and
 // separated state the plan asks for, and it does two jobs at once: it gives
 // stall the memory it physically has, and it makes the solve well posed at

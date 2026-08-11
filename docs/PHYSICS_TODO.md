@@ -2576,6 +2576,50 @@ pendulum trading energy with the phugoid can lengthen the period without
 dissipating, which is consistent, but whether it should cost this much damping
 is the open question, and it is now a specific one.
 
+**MEASURED, AND THE PENDULUM IS NOT THE ONLY MECHANISM: THIS WING'S CL IS NOT A
+FUNCTION OF INCIDENCE ALONE.** A phugoid oscillates in speed at nearly constant
+incidence, so the aerodynamic force should scale as V². Scaling the settled
+trim velocity by k with attitude and flight direction untouched — which pins
+incidence by construction, and the solver's own diagnostic confirms it at
+**4.924° in every row** — gives:
+
+| k | speed | alpha | CL | force (a.u.) |
+|---|---|---|---|---|
+| 0.80 | 8.48 | 4.924° | **0.5802** | 7.531 |
+| 0.90 | 9.54 | 4.924° | 0.5578 | 8.606 |
+| 1.00 | 10.60 | 4.924° | 0.5418 | 9.807 |
+| 1.10 | 11.66 | 4.924° | 0.5299 | 11.134 |
+| 1.20 | 12.73 | 4.924° | **0.5209** | 12.588 |
+
+**CL falls 11% across a 50% speed change at identical incidence** — CL ∝
+V^-0.27, so the aerodynamic force rises as **V^1.73 rather than V^2**.
+
+- **This is aeroelasticity, and it is an effect rather than a bug.** The canopy
+  is a pressurised membrane on lines: higher dynamic pressure changes its
+  billow and its loaded shape, so the circulation solution moves even though
+  the geometric incidence has not. **The legacy path cannot exhibit this at
+  all** — its CL is a pure function of alpha — which is a second concrete
+  reason the two models' longitudinal behaviour differs, independent of the
+  pendulum.
+- **And it points the same way as the shortfall it was chasing.** A wing whose
+  lift stiffens more slowly than V² restores a speed excess more weakly, which
+  lengthens the phugoid and weakens its damping. The 16.4 s period and ζ 0.035
+  now have **two** identified contributing mechanisms — pendulum coupling, from
+  the ablation, and lift softening with speed, from here — rather than one
+  unexplained gap.
+- **ONE NUMBER IN THIS BLOCK IS NOT CLEAN AND SHOULD NOT BE QUOTED.** The
+  whole-body force exponent measures ~1.3, below the 1.73 the CL sweep implies.
+  That reads the CANOPY's acceleration, and the canopy is a body on a link, so
+  line tension is **not** internal to it and does not cancel; the gap between
+  1.73 and 1.3 is most likely tension rather than aerodynamics. **The CL column
+  is the trustworthy result**, the force column is reported so the discrepancy
+  is visible rather than hidden, and closing it needs a whole-aircraft momentum
+  balance instead of a one-body one.
+- **Next:** whether CL ∝ V^-0.27 is the RIGHT amount of softening is a question
+  for the membrane and pressure solvers rather than for the phugoid. It is now
+  a measurable property with a number on it, and `membrane_tests` /
+  `pressure_tests` are where it would be gated.
+
 **WHAT IS ACTUALLY LEFT IS A DESIGN CHOICE, NOT A BUG.** SIV footage shows a
 post-stall recovery dominated by a fast pendulum swing, because a real pilot
 damps the phugoid on the brakes without thinking about it and the model's pilot

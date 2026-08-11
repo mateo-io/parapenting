@@ -649,8 +649,34 @@ Amplitude-independence was in the INPUT.
   depth axis fixed above is fully available on a stick and **invisible on a
   keyboard**, where it spans two rungs, one of which does not stall.
 
-**THE REMEDY IS A GAME-FEEL DECISION AND IS NOT TAKEN HERE.** What a finer
-ladder would buy, measured:
+**FIXED: THE BRAKE IS NOW A NON-UNIFORM LADDER.** `ControlStep` used to serve
+the brakes as well as weight shift and accelerator; the brakes now have their
+own `BrakeLevels` table in `ParagliderPawn.h` and the other two keep
+`ControlStep` unchanged. The spacing follows where the wing changes rather than
+being uniform — nothing happens between 0 and 0.30 (sink 1.14 → 1.13) so those
+rungs stay cheap, and the whole stall lives between 0.84 and 1.00 so that is
+where it tightens:
+
+| rung | 0.00 | 0.20 | 0.40 | 0.58 | 0.72 | 0.84 | 0.90 | 0.95 | 1.00 |
+|---|---|---|---|---|---|---|---|---|---|
+| `deepStall` | 0 | 0 | 0 | 0 | 0 | 0 | 0.614 | 0.822 | 0.957 |
+| first surge, m/s | 0.03 | 1.12 | 3.12 | ~4.5 | ~7.0 | 8.45 | 10.85 | 11.83 | 11.98 |
+
+**Three distinguishable stalls where there was one, and monotone.** The cost is
+eight presses to full rather than five, which is why the bottom stays coarse:
+there is no separate flare key, so a landing flare is repeated presses of the
+same control, and ordinary flying plus the start of a flare are still two
+rungs. Only the stall band is expensive to reach, which is the right way round
+for a control that ends in a stall.
+
+The stepping is verified standalone (8 presses up, 8 down, saturation a fixed
+point, continuous controller values landing on real rungs and always moving in
+the commanded direction), and `ParagliderPawn.cpp` compiles and links under
+UE 5.8 — **the game module builds in this environment in about 50 s**, which
+earlier sessions had assumed it did not.
+
+**What a finer UNIFORM ladder would have bought, kept because it is what set
+the spacing above:**
 
 | brake | 0.80 | 0.85 | 0.90 | 0.95 | 1.00 |
 |---|---|---|---|---|---|
@@ -2305,6 +2331,259 @@ Measured in `physics_tests`, full brake to a stall then hands off:
   convert descent into forward flight? - want a pilot's judgement rather than a
   plausible constant. Bounded at today's values in `physics_tests` so it cannot
   quietly worsen while that is decided.
+
+**THE PILOT'S JUDGEMENT ARRIVED — *"I just want it to stall, and then I want
+the shoot and pendulum after as realistic as possible"* — AND ACTING ON IT
+KILLED TWO HYPOTHESES, INCLUDING THIS ITEM'S OWN PROPOSED FIX.** Three results,
+all measured, none of them the plan above.
+
+**1. THE PROPOSED FIX IS NOT PHYSICAL AND THE MODEL SAID SO IN ONE RUN.** This
+item asks for "a gravity-referenced pendulum term" on the aircraft's pitch
+axis. Built as specified — attitude against world vertical, stiffness from the
+measured 1.86 s mode, referenced to an identified θ_trim of +0.353° — it
+**destroys trim**: hands-up settles to 3.2 m/s forward at 12.9 m/s of sink with
+67° of incidence. The aircraft stops flying and parachutes.
+
+The reason is not a tuning error. **Gravity acts at the centre of mass and
+therefore exerts no moment about the centre of mass.** A free rigid body has no
+gravity pendulum in its own attitude, whatever its shape. What actually
+restores a paraglider's pitch is the canopy's *aerodynamic* resultant acting
+about 6.5 m above a CG that sits essentially at the pilot — and the model
+already carries that, as `canopyRelativePitchRad`. **The term this item asks
+for cannot be written, and the entry should not be read as a work order.** What
+is real in the diagnosis is the observation about `pitchStiffness` reading zero
+in a vertical dive; what is wrong is the proposed remedy.
+
+**2. THE STATED BLOCKER IS FALSE FOR THE THREE CONSTANTS THAT MATTER.** "Changes
+an axis eleven calibration gates are written against" is the reason this item
+has sat. Swept directly — `pitchStiffness` over 165 → 2400, `canopyPitchPeriodS`
+over 1.86 → 4.00, `swingIncidenceGain` over 0.15 → 0.50 — **hands-up trim does
+not move at all**: 10.75 m/s, 1.143 sink, 9.40 glide in *every* cell of both
+sweeps, and the brake-zoom gate passes in all but the corner noted below.
+
+`pitchStiffness` **cannot** break trim, and it is structural rather than lucky:
+it multiplies `alphaFromTrim`, which is zero at trim by construction, so its
+magnitude sets how fast incidence errors are corrected and never where the
+equilibrium is. The axis is far more open to tuning than this item claimed.
+
+**3. THE 4.00 s COMPROMISE IS A 1D SWEEP OF A 2D PROBLEM — AND FIXING IT DOES
+NOT HELP.** `canopyPitchPeriodS` is held at 4.00 instead of the measured 1.86
+by one gate (>1.0 m of zoom climb), with the header recording "1.86 s gives
+0.86 m and fails it". Swept against `swingIncidenceGain`:
+
+| gain | 1.86 s | 2.40 | 3.00 | 3.50 | 4.00 |
+|---|---|---|---|---|---|
+| 0.15 | **1.03** | 1.04 | 1.04 | 1.04 | 1.05 |
+| 0.35 | 0.93 | 0.95 | 1.01 | 1.01 | 1.02 |
+| 0.50 | **0.86** | 0.93 | 0.94 | 0.95 | 0.95 |
+
+The recorded 0.86 m reproduces exactly — **at gain 0.50**. The period was swept
+there, the gain was later lowered to 0.35, and the period was never re-swept.
+At gain 0.15 the measured 1.86 s passes the gate at 1.03 m. **The corner
+exists.**
+
+**It is not worth taking, because the constant does not do what it was assumed
+to do.** The post-stall oscillation a pilot actually watches has a period of
+**6.6 s at `canopyPitchPeriodS` 1.86 and 6.8 s at 4.00** — the parameter moves
+it by 3%. Whatever sets the swing the pilot sees, it is not this.
+
+- **The "moon gravity" arithmetic is seductive and should be resisted.** A
+  pendulum's period goes as 1/√g, so lunar gravity stretches it by √6 = 2.45,
+  and 1.86 × 2.45 = 4.56 s against a shipped 4.00. That is a good enough match
+  to feel like a finding, and the sweep above shows it is a coincidence: moving
+  that constant to 1.86 leaves the observed swing at 6.6 s.
+- **`pitchStiffness` is not the lever either.** √(K/I) = √(165/154) predicts
+  6.07 s against an observed 6.6, which looks like the answer, but swept the
+  period goes 6.6, 10.7, 2.1, 8.7, 8.8, 8.9 at K = 165 … 2400 — non-monotone
+  and not a second-order mode in this parameter. The post-stall pitch motion is
+  not a simple oscillator in either constant.
+- ~~**OPEN:** what sets the ~6.6 s post-stall pitch oscillation?~~
+  **IDENTIFIED. IT IS THE PHUGOID, AND IT IS TEXTBOOK-CORRECT.**
+
+**THE MODE WAS IDENTIFIED RATHER THAN GUESSED AT, AND THAT ENDED THE ITEM.**
+The legacy path was linearised about hands-up trim the way `pitch_eigenmodes`
+does the coupled one — perturb each longitudinal state, run 0.5 s, take the
+state transition matrix's eigenvalues (Faddeev-LeVerrier, Durand-Kerner; worst
+unperturbed drift 9.2e-06 per second, so the point is a trim). Three
+oscillatory modes, and **ablation** — freeze one state, re-identify — says what
+each is made of:
+
+| mode | vanishes when frozen | identity |
+|---|---|---|
+| **5.79 s, ζ 0.10** | `vx` **or** `vz` | **phugoid** — speed/height exchange |
+| 4.78 s, ζ 0.55 | `canopySwing` / `canopyRate` | canopy pendulum |
+| 1.70 s, ζ 0.73 | `payloadPitch` / `payloadRate` | payload pendulum |
+
+- **What a pilot calls "the pendulum after a stall" is the phugoid.** It is the
+  only lightly damped mode in the aircraft, so it dominates the free response
+  and buries both real pendulums.
+- **And it is right.** Lanchester gives T = 2πV/(g√2) = **4.87 s** at this
+  wing's 10.75 m/s against the identified 5.79, and classic phugoid damping
+  1/(√2·L/D) at L/D 9.4 gives **ζ 0.075** against the identified 0.10. The
+  legacy model's post-stall oscillation is a correct phugoid for a low-L/D
+  aircraft, and a correct phugoid rings for about ten cycles. **There is no
+  defect here to fix.**
+- **`pitchStiffness` participates in no oscillatory mode at all** — 165, 700
+  and 1758 give identical spectra (5.79 / 4.78 / 1.70). That retro-explains the
+  non-monotone garbage from sweeping it: those numbers were large-amplitude
+  transient shape, not a mode, and the metric was reading the shoot rather than
+  the ringing.
+- **`canopyPitchDampingRatio` is not a route to it either.** Taken from the
+  shipped 0.55 down to the eigenvalue's own 0.09, the observed post-stall
+  period stays 5.5–6.6 s and the visible swings go **up**, 11 to 17 — more
+  phugoid, not more pendulum. Trim is 10.75 / 1.143 / 9.40 and the zoom gate
+  passes at every value.
+
+**CROSS-MODEL DISAGREEMENT, FOUND ON THE WAY AND WORTH MORE THAN THIS ITEM.**
+`pitch_eigenmodes` measures the COUPLED solver's phugoid at **14–24 s**. The
+legacy path's is 5.79 s and Lanchester says 4.87 s. The two models of this
+aircraft disagree about the phugoid by a factor of three to five.
+
+**AN EARLIER DRAFT OF THIS PARAGRAPH CALLED THE COUPLED SOLVER WRONG, AND THAT
+IS NOT SUPPORTED.** Lanchester's T = π√2·V/g is derived for a rigid aircraft
+holding constant incidence, and a paraglider is not one: it is a light wing on
+a heavy pendular payload, and the pendulum is free to trade against the
+speed/height exchange. The ablation above shows the legacy phugoid is
+**decoupled** from both pendulums — it survives freezing `canopySwing`,
+`canopyRate`, `payloadPitch` and `payloadRate`, and dies only on `vx`/`vz`.
+That decoupling is a property of the lumped path, not of the aircraft. In the
+coupled solver the swing is a real degree of freedom, so a pendulum-lengthened
+phugoid is a physically available answer, and agreeing with the rigid-body
+formula would be the thing needing explanation.
+
+**RESOLVED BY ABLATION, AND THE ANSWER IS THAT NEITHER MODEL IS WRONG — THEY
+MODEL DIFFERENT AIRCRAFT. THE CONSEQUENCE FOR ITEM 17 IS BAD.**
+
+The same ablation was pointed at the coupled solver (settled 370 s on the
+incidence-spread criterion, trim 10.56 m/s / 0.965 sink, convention self-check
+clean, unperturbed drift 8.5e-04 m/s per second; identical answers at
+T = 0.5 s and T = 1.0 s, so the result is not a window artefact):
+
+| frozen | modes |
+|---|---|
+| *nothing (shipped)* | **16.4 s (ζ 0.035)**, 1.84 s (ζ 0.092) |
+| surge `vx` | 1.87 s |
+| heave `vz` | 6.70 s (ζ 0.362), 2.43 s |
+| pitch attitude | 6.63 s (ζ 0.419) |
+| pitch rate | 5.96 s (ζ 0.393) |
+| **link swing** | 1.92 s — **long mode gone** |
+| **link rate** | 1.92 s — **long mode gone** |
+
+**The 16.4 s mode dies when the link is frozen.** It is a pendulum-coupled
+phugoid: it needs the whole longitudinal chain — speed, heave, attitude, pitch
+rate *and* the link — and freezing any one of them destroys it. Constrain any
+single degree of freedom and what is left oscillates at 6.0–6.7 s, near
+Lanchester's 4.80. So the pendulum coupling is exactly the mechanism that
+stretches it, the coupled solver is self-consistent, and Lanchester simply does
+not apply to it.
+
+**The legacy path matches Lanchester because its phugoid is decoupled from its
+pendulums**, which the earlier ablation showed directly. That decoupling is an
+artefact of lumping, not a property of the wing. On the physics, **the coupled
+solver is the more honest of the two**: a real pilot swings, and that swing
+does trade against speed.
+
+**AND THAT IS THE PROBLEM.** What item 17 proposes to migrate the game onto:
+
+| | period | ζ | decay/cycle | time to half |
+|---|---|---|---|---|
+| legacy, what ships today | 5.79 s | 0.100 | 0.53 | **6.4 s** |
+| coupled, item 17's target | 16.4 s | 0.035 | 0.80 | **51.8 s** |
+| Lanchester rigid, theory | 4.80 s | 0.075 | 0.62 | 7.1 s |
+
+**A longitudinal disturbance takes 52 seconds to half-amplitude on the coupled
+solver against 6.4 on the legacy path — eight times worse — at a period three
+times longer.** The pilot's standing complaint about the *legacy* model is that
+it "stabilises as if it was on the moon's gravity". Item 17's swap would make
+precisely that complaint three times slower and eight times more persistent,
+and it would do so while being the more physically defensible model.
+
+- **This is now a blocker on item 17, and a new one.** Item 17 was blocked on
+  two departures and a dead weight-shift control — all envelope problems. This
+  is a handling problem inside the envelope, at trim, and it would be
+  discovered by the pilot on the first flight after the swap.
+- **The swap cannot be a swap.** Either the coupled solver's link damping is
+  wrong at trim (ζ 0.035 on the dominant mode is very light for an aircraft
+  with a person hanging off it and lines that sweep), or the mode is right and
+  the game needs a deliberate, documented handling departure to be flyable —
+  the same call item 24's phugoid raises, but four times larger.
+- **What this does NOT say:** that ζ 0.035 is wrong. It is measured, not
+  asserted, and `swingDampingRatio` at 0.35 against item 11's ~0.18 and the
+  ~0.06 that pilot and line drag imply is a live open question elsewhere in
+  this file. The next move is to sweep the coupled link damping against
+  **this** mode's ζ, which is a number nothing has been tuned against before.
+
+**SWEPT. ONE DAMPER SERVES BOTH MODES, AND THE TWO REQUIREMENTS PULL OPPOSITE
+WAYS.** Every row settled on the incidence-spread criterion with its own trim,
+and the spectrum was taken with the same settings the trim was flown at:
+
+| structural damping /s | phugoid | ζ | pendulum | ζ | glide |
+|---|---|---|---|---|---|
+| 0.8 | 16.04 s | 0.012 | 2.23 s | **0.003** | 10.86 (unsettled) |
+| **1.6 — shipped** | 16.42 s | **0.035** | 2.19 s | **0.108** | 10.95 |
+| 2.4 | 16.81 s | 0.058 | 2.11 s | 0.197 | 10.97 |
+| 3.2 | 17.23 s | 0.081 | 2.02 s | 0.266 | 10.95 |
+| 4.8 | 18.07 s | 0.126 | 2.26 s | 0.417 | 10.95 |
+| 6.4 | 18.95 s | 0.169 | 2.74 s | 0.547 | 10.96 |
+
+**Glide holds at 10.86–10.97 throughout, so none of this is bought by wrecking
+the polar.** The damper moves both modes monotonically, and that is the
+problem:
+
+- **The shipped 1.6 is RIGHT for the pendulum.** It puts the pendulum mode at
+  **ζ 0.108** against the **0.09 `pitch_eigenmodes` measures** for this wing.
+  The constant item 24 calls out as having "no registry entry, no derivation,
+  no test, no sweep" turns out to sit within 20% of the measured value for the
+  mode it most directly controls. It should be registered and derived, but it
+  is not arbitrary.
+- **Fixing the phugoid with it costs the pendulum.** Reaching the legacy path's
+  ζ 0.10 on the phugoid needs structural ≈ 4.0, which puts the pendulum at
+  ζ ≈ 0.34 — three to four times its measured damping, and one visible swing
+  where a real recovery shows several. **That is exactly the ring the pilot
+  asked to keep.** One constant, two modes, opposite requirements.
+- **The low-damping end is not flyable.** `swingDampingRatio` 0.18 and 0.06 —
+  item 11's "known" value and the one pilot-and-line drag imply — both
+  **depart** past 20 degrees of incidence, as does structural 0.0. The values
+  item 11 derives as physically correct cannot be flown in this solver. That is
+  a statement about the solver rather than about the wing, and it is the
+  measured version of the commit note that the damping coefficient "buys
+  excitation, not robustness".
+
+**ITEM 11'S TWO NAMED MISSING TERMS ARE NOW CLOSED, AND THEY CONFIRM THE
+ESTIMATE THAT DISMISSED THEM.** Both are implemented behind hooks and default
+off "pending exactly this measurement":
+
+| | phugoid ζ | change | glide |
+|---|---|---|---|
+| shipped | 0.0351 | — | 10.95 |
+| pilot-referenced harness drag | 0.0419 | **+19%** | 10.97 |
+| line sweep damping | 0.0358 | **+2%** | 10.97 |
+| both | 0.0425 | +21% | 10.96 |
+
+§60's arithmetic predicted the line sweep was worth about 7% of a term itself
+worth 0.01 of coefficient; it measures at +2% of the phugoid's damping and
+leaves the polar alone. **The estimate that dismissed these terms was right,
+and this is the closure measurement item 11 asked for** — they are real, they
+are small, and they do not reach the mode that blocks item 17.
+
+**SO THE PHUGOID'S DAMPING IS NOT AVAILABLE FROM ANY TERM CURRENTLY IN THE
+SOLVER**, and the honest next question is why it is as low as it is. At L/D
+10.95 the classic 1/(√2·L/D) gives ζ 0.065 against a measured 0.035, and in
+absolute terms the damping RATE is worse than that ratio suggests: σ = ζ·ωn is
+0.0134/s here against 0.085/s for a rigid aircraft at the same L/D — **six
+times less energy removed per second from the mode a pilot sits inside.** A
+pendulum trading energy with the phugoid can lengthen the period without
+dissipating, which is consistent, but whether it should cost this much damping
+is the open question, and it is now a specific one.
+
+**WHAT IS ACTUALLY LEFT IS A DESIGN CHOICE, NOT A BUG.** SIV footage shows a
+post-stall recovery dominated by a fast pendulum swing, because a real pilot
+damps the phugoid on the brakes without thinking about it and the model's pilot
+does not. Making the game *feel* like that footage means either damping the
+phugoid deliberately — knowingly departing from theory for feel — or giving the
+canopy pendulum enough amplitude to be seen under it. **Both are pilot
+judgement, neither is a correctness fix, and nothing should be tuned here until
+that call is made.**
 - Note this is the legacy path, which is what the game flies (item 7). The
   geometry-driven stack has the right structure by construction, so this is one
   more argument for item 17 - but that stack departs at 40% brake today and

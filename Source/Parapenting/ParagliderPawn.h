@@ -577,5 +577,45 @@ private:
     FVector LastCameraVelocityMps = FVector::ZeroVector;
     FVector SmoothedBodyAccelerationMps2 = FVector::ZeroVector;
     static constexpr double PhysicsStepSeconds = 1.0 / 120.0;
+    // Weight shift and accelerator. The brakes used to share this and no
+    // longer do - see `BrakeLevels`.
     static constexpr double ControlStep = 0.2;
+
+    // THE BRAKE LADDER, AND IT IS NOT A UNIFORM STEP BECAUSE THE WING IS NOT
+    // UNIFORM. The brakes were on `ControlStep` too, which put the pilot on
+    // {0, 0.2, 0.4, 0.6, 0.8, 1.0} - and measured on the flight model, exactly
+    // ONE of those rungs is a stall:
+    //
+    //     rung        0.00  0.20  0.40  0.60  0.80  1.00
+    //     sink m/s    1.14  1.11  1.62  4.02  7.52  5.43
+    //     deepStall   0     0     0     0     0     0.957
+    //
+    // 0.80 is not a stall at all, it is a deep-braked mush. So every stall the
+    // pilot could fly was the same input, which is why they all felt identical
+    // - `PHYSICS_TODO` item 24, where the physics was fixed to carry stall
+    // depth and the control could not reach it.
+    //
+    // The spacing follows where the wing actually changes. Nothing happens
+    // between 0 and 0.30 (sink 1.14 to 1.13), so those rungs are cheap; the
+    // entire stall lives between 0.84 and 1.00, so that is where the ladder
+    // tightens. Measured at these rungs, `deepStall` runs 0, 0, 0, 0, 0,
+    // 0.614, 0.822, 0.957 and the recovery surge 0.03, 1.12, 3.12, 4.5, 7.0,
+    // 8.45, 10.85, 11.83, 11.98 m/s - three distinguishable stalls where there
+    // was one, and monotone.
+    //
+    // Eight presses to full rather than five. That is deliberate and it is the
+    // cost: there is no separate flare key, so a landing flare is repeated
+    // presses of the same control. The bottom of the ladder is kept coarse for
+    // exactly that reason - ordinary flying and the start of a flare are two
+    // rungs, and only the stall band is expensive to reach, which is the right
+    // way round for a control that ends in a stall.
+    static constexpr double BrakeLevels[] = {
+        0.00, 0.20, 0.40, 0.58, 0.72, 0.84, 0.90, 0.95, 1.00};
+    static constexpr int BrakeLevelCount =
+        static_cast<int>(sizeof(BrakeLevels) / sizeof(BrakeLevels[0]));
+    // One rung up (+1) or down (-1) from wherever the control currently sits.
+    // Takes the current value rather than an index because the controller axis
+    // writes continuous values into the same control, so the keyboard cannot
+    // assume the last thing that moved it was the keyboard.
+    static double SteppedBrake(double current, int direction);
 };

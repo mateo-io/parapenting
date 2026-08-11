@@ -2756,27 +2756,44 @@ void AParagliderPawn::CenterWeightShift()
     ControllerControls.weightShift = 0.0;
 }
 
+double AParagliderPawn::SteppedBrake(double Current, int Direction)
+{
+    // Nearest rung at or beyond the current value in the direction asked for.
+    // A tolerance rather than an equality test because the value may have come
+    // from the controller axis and land between rungs; without it, a pilot on
+    // the stick who touches the keyboard would get a rung that looks like no
+    // movement at all.
+    constexpr double Tolerance = 1.0e-6;
+    if (Direction > 0)
+    {
+        for (int Level = 0; Level < BrakeLevelCount; ++Level)
+            if (BrakeLevels[Level] > Current + Tolerance)
+                return BrakeLevels[Level];
+        return BrakeLevels[BrakeLevelCount - 1];
+    }
+    for (int Level = BrakeLevelCount - 1; Level >= 0; --Level)
+        if (BrakeLevels[Level] < Current - Tolerance)
+            return BrakeLevels[Level];
+    return BrakeLevels[0];
+}
+
 void AParagliderPawn::StepLeftBrake()
 {
-    if (IsKeyDown(EKeys::Up))
-        Controls.leftBrake = FMath::Max(0.0, Controls.leftBrake - ControlStep);
-    else
-        Controls.leftBrake = FMath::Min(1.0, Controls.leftBrake + ControlStep);
+    Controls.leftBrake =
+        SteppedBrake(Controls.leftBrake, IsKeyDown(EKeys::Up) ? -1 : 1);
 }
 
 void AParagliderPawn::StepRightBrake()
 {
-    if (IsKeyDown(EKeys::Up))
-        Controls.rightBrake = FMath::Max(0.0, Controls.rightBrake - ControlStep);
-    else
-        Controls.rightBrake = FMath::Min(1.0, Controls.rightBrake + ControlStep);
+    Controls.rightBrake =
+        SteppedBrake(Controls.rightBrake, IsKeyDown(EKeys::Up) ? -1 : 1);
 }
 
 void AParagliderPawn::StepBothBrakesMore()
 {
     if (IsKeyDown(EKeys::Left) || IsKeyDown(EKeys::Right)) return;
-    Controls.leftBrake = FMath::Min(1.0, Controls.leftBrake + ControlStep);
-    Controls.rightBrake = FMath::Min(1.0, Controls.rightBrake + ControlStep);
+    Controls.leftBrake = SteppedBrake(Controls.leftBrake, 1);
+    Controls.rightBrake = SteppedBrake(Controls.rightBrake, 1);
 }
 
 void AParagliderPawn::StepBrakesRelease()
@@ -2787,14 +2804,14 @@ void AParagliderPawn::StepBrakesRelease()
     if (LeftHeld || RightHeld)
     {
         if (LeftHeld)
-            Controls.leftBrake = FMath::Max(0.0, Controls.leftBrake - ControlStep);
+            Controls.leftBrake = SteppedBrake(Controls.leftBrake, -1);
         if (RightHeld)
-            Controls.rightBrake = FMath::Max(0.0, Controls.rightBrake - ControlStep);
+            Controls.rightBrake = SteppedBrake(Controls.rightBrake, -1);
         return;
     }
 
-    Controls.leftBrake = FMath::Max(0.0, Controls.leftBrake - ControlStep);
-    Controls.rightBrake = FMath::Max(0.0, Controls.rightBrake - ControlStep);
+    Controls.leftBrake = SteppedBrake(Controls.leftBrake, -1);
+    Controls.rightBrake = SteppedBrake(Controls.rightBrake, -1);
 }
 
 void AParagliderPawn::SetControllerLeftBrake(float Value)

@@ -2576,8 +2576,12 @@ pendulum trading energy with the phugoid can lengthen the period without
 dissipating, which is consistent, but whether it should cost this much damping
 is the open question, and it is now a specific one.
 
-**MEASURED, AND THE PENDULUM IS NOT THE ONLY MECHANISM: THIS WING'S CL IS NOT A
-FUNCTION OF INCIDENCE ALONE.** A phugoid oscillates in speed at nearly constant
+**~~MEASURED, AND THE PENDULUM IS NOT THE ONLY MECHANISM: THIS WING'S CL IS NOT
+A FUNCTION OF INCIDENCE ALONE.~~ RETRACTED — THE SOFTENING WAS THE
+INSTRUMENT.** The block below is kept because the way it failed is the reusable
+part; the correction is immediately after it.
+
+A phugoid oscillates in speed at nearly constant
 incidence, so the aerodynamic force should scale as V². Scaling the settled
 trim velocity by k with attitude and flight direction untouched — which pins
 incidence by construction, and the solver's own diagnostic confirms it at
@@ -2619,6 +2623,47 @@ V^-0.27, so the aerodynamic force rises as **V^1.73 rather than V^2**.
   for the membrane and pressure solvers rather than for the phugoid. It is now
   a measurable property with a number on it, and `membrane_tests` /
   `pressure_tests` are where it would be gated.
+
+**THE CORRECTION: CL IS FLAT, THE FORCE DOES RISE AS V², AND THE SOFTENING WAS
+A ONE-STEP TRANSIENT.** The sweep above scaled the velocity and stepped **once**.
+The canopy's shape state — cell pressure, separation, the suspension warm start
+— is carried between steps and cannot re-equilibrate to a new dynamic pressure
+in 1/120 s, so a one-step CL is the force the **old shape** makes at the **new
+speed**. That is an unsteady transient, not an aeroelastic equilibrium, and
+reporting it as a property of the wing was an error of the instrument.
+
+Re-measured with the aircraft **held** at each speed — velocity and attitude
+re-imposed every step, so speed and incidence stay pinned by construction while
+every shape state relaxes freely:
+
+| k | speed | CL @ 1 step | @ 0.5 s | @ 2 s | @ 8 s |
+|---|---|---|---|---|---|
+| 0.80 | 8.48 | 0.5802 | 0.5415 | 0.5417 | **0.5419** |
+| 0.90 | 9.54 | 0.5578 | 0.5417 | 0.5418 | **0.5419** |
+| 1.00 | 10.60 | 0.5418 | 0.5418 | 0.5418 | **0.5418** |
+| 1.10 | 11.66 | 0.5299 | 0.5416 | 0.5412 | **0.5411** |
+| 1.20 | 12.73 | 0.5209 | 0.5413 | 0.5405 | **0.5404** |
+
+**Equilibrated CL ∝ V^-0.007 — flat to seven parts in a thousand — so the
+aerodynamic force rises as V^1.99.** The solver's steady aerodynamics are
+correct on exactly the axis the phugoid cares about, and there is no aeroelastic
+lift softening to explain anything with. It also retires the ~1.3 whole-body
+force exponent above as doubly contaminated: unsteady transient *and* link
+tension.
+
+- **So the pendulum coupling stands as the SOLE identified mechanism** for the
+  16.4 s period and ζ 0.035. The second mechanism claimed here did not exist.
+- **What IS real, and is worth its own line:** the transient. A step change in
+  speed moves CL by up to 7% and it relaxes back in **under half a second** —
+  every row is home by the 0.5 s column. That is unsteady aerodynamic lag with
+  a time constant well below the 16.4 s mode, so it cannot affect the phugoid,
+  but it is the right order to matter for gust and collapse response, where
+  nothing has yet looked for it.
+- **The lesson is the one this file keeps relearning.** Two entries above,
+  item 24's duration table was a metric artefact; item 19's "moon gravity"
+  arithmetic was a coincidence; this was a settling artefact. **Every one was
+  found by re-measuring a result rather than by reasoning about it**, and the
+  cost of not re-measuring is a mechanism in the physics that was never there.
 
 **WHAT IS ACTUALLY LEFT IS A DESIGN CHOICE, NOT A BUG.** SIV footage shows a
 post-stall recovery dominated by a fast pendulum swing, because a real pilot

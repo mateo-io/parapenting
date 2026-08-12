@@ -2698,6 +2698,48 @@ iterations cure one and cannot touch the other:
   relaxing — and it is gone within six steps. That part is arguably the stall
   memory the separation state exists to provide.
 
+**THE FOUR RED COUPLED GATES ARE RE-DERIVED AGAINST THE SHIPPED SCHEDULE, AND
+THREE OF THEM HAD BEEN MEASURING THE SCHEDULE RATHER THAN THE AIRCRAFT.** The
+failures were bisected to the interval change, not to any physics change, and
+the measurement above is what says which side of that bisection to trust: a
+frontal collapse develops in tens of milliseconds, and interval 12 freezes the
+aerodynamics for a hundred. **The finer schedule is the one entitled to
+characterise these benchmarks.** Per gate:
+
+1. **The symmetric frontal's two failure modes had SWAPPED.** The recorded
+   characterisation was "symmetry breaks on the SECTION and saturates at the
+   HARNESS" — section splitting at 0.255 of spread, harness saturating at
+   1.000/1.000. Measured at interval 6 it is the other way round: section
+   saturates (**L 1.000 R 1.000, spread 0.000**) and harness splits (**L 0.773
+   R 0.977, spread 0.204**). Both gates re-derived and the narrative rewritten
+   to match.
+2. **The load-bearing conclusion survived untouched**, which is what makes the
+   swap safe to absorb: both corrections still engage the numerical safety
+   envelope and the shipped wing still does not, so *"every drag correction
+   that lands the published glide takes this frontal outside what the solver
+   can represent, and item 12 has no route around Level 11"* stands exactly as
+   written. **The conclusion was schedule-independent; only the
+   characterisation was not.**
+3. **The iteration-sweep's supporting gate changed sides, and the new answer is
+   stronger.** It asserted `cold.residualBeforeBreak < shipped` — "the extra
+   iterations are doing real work everywhere the solve can converge at all". At
+   interval 6 the residual before the break is **7.02e-07 at cap 40, 6.83e-07
+   at 200, 7.14e-07 at 600**: flat, and not monotone. There is no work left for
+   the extra budget to do because the solve is *already converged at 40*. The
+   gate now asserts that directly, which states the sweep's actual point — the
+   break is not an iteration shortage — more plainly than the old form did. The
+   headline gate (fifteen times the budget breaks on the same tick) never
+   failed.
+4. **A signed threshold was standing in for a magnitude one.** The spiral
+   wind-up leaves the wing parked outside the attached regime; the gate read
+   `angleOfAttack > 45°` because at interval 12 it parked at +70. At 6 it ends
+   at **-168.68°**. Both are far outside anything the attached-flow
+   formulation represents, which is the entire claim, and nothing downstream
+   reads which way an unrepresentable wing points. Now bounded on `fabs`.
+
+**What this unblocks:** strand 27's gate lives in this suite, and a red control
+made it unreadable. The suite is the control again.
+
 **A CLAIM WAS MADE HERE AND WITHDRAWN WITHIN THE SESSION, AND THE WITHDRAWAL IS
 THE USEFUL PART.** The first reading of this measurement was that `SetSchedule`
 is not idempotent — that calling it with the schedule's existing value shifted

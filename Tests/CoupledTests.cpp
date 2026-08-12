@@ -1092,16 +1092,39 @@ int main()
             // which is the frontal direction. Measured, at the same published
             // glide:
             //
-            //   shipped     L 0.710 R 0.710   turn 1.98   envelope idle
-            //   section     L 0.958 R 0.703   turn 1.93   ENVELOPE ENGAGED
-            //   harness     L 1.000 R 1.000   turn 6.53   ENVELOPE ENGAGED
+            //   shipped     L 0.992 R 0.996   turn 0.74   envelope idle
+            //   section     L 1.000 R 1.000   turn 1.89   ENVELOPE ENGAGED
+            //   harness     L 0.773 R 0.977   turn 2.20   ENVELOPE ENGAGED
             //
-            // The section correction breaks the symmetry the same way §64's
-            // line-drag one did, 0.255 of spread. The harness correction keeps
-            // the peaks together and takes the wing to a FULL collapse with
-            // three times the rotation - and a peak spread of zero between two
-            // saturated halves is not evidence of symmetry, it is evidence of
-            // saturation.
+            // The section correction saturates: both halves go to a FULL
+            // collapse, and a peak spread of zero between two saturated halves
+            // is not evidence of symmetry, it is evidence of saturation. The
+            // harness correction breaks the symmetry instead, 0.204 of spread,
+            // the same way §64's line-drag one did.
+            //
+            // THESE TWO FAILURE MODES USED TO BE THE OTHER WAY ROUND, AND THE
+            // TABLE ABOVE IS RE-DERIVED RATHER THAN DRIFTED. The previous
+            // numbers - shipped L/R 0.710, section splitting at 0.255 spread,
+            // harness saturating at 1.000/1.000 - were taken with
+            // `aerodynamicsInterval` at 12. They are not a different opinion
+            // about this aircraft; they are this benchmark run on a schedule
+            // too coarse to resolve the event it measures.
+            //
+            // Measured, on a 20% speed step at pinned incidence: between
+            // aerodynamic ticks the solver HOLDS the aerodynamic force, so the
+            // reported CL is the old force over the new dynamic pressure -
+            // 0.5418/1.44 = 0.3763 predicted against 0.3762 measured. At
+            // interval 12 that is a 30% error in CL lasting 100 ms; at the
+            // shipped 6 it is 3.6% for 50 ms. Raising the VSM iteration cap
+            // from 40 to 400 changes none of it, so it is the schedule and not
+            // an unconverged solve.
+            //
+            // A frontal collapse develops in tens of milliseconds. A hundred
+            // milliseconds of frozen aerodynamics is longer than the event's
+            // onset, so which half folds first at interval 12 is a property of
+            // where the tick fell, not of the wing. The finer schedule is the
+            // one entitled to characterise this benchmark, and these bounds
+            // are re-derived against it.
             //
             // And both engage the numerical safety envelope, which by guiding
             // rule 12 means their numbers are not flight behaviour at all. So
@@ -1126,14 +1149,15 @@ int main()
             // The failure modes differ and that is the useful part: symmetry
             // breaks on the SECTION and saturates at the HARNESS. Bounded so a
             // change in either is visible.
-            Check(std::fabs(onSection.worstLeftCollapse
-                            - onSection.worstRightCollapse) > 0.15,
-                  "the section-side correction splits the two halves, the same "
-                  "failure §64 measured on the lines");
-            Check(onHarness.worstLeftCollapse > 0.99,
-                  "and the harness-side correction saturates both halves at a "
-                  "full collapse, which is why its zero spread is not the "
+            Check(onSection.worstLeftCollapse > 0.99
+                  && onSection.worstRightCollapse > 0.99,
+                  "the section-side correction saturates both halves at a full "
+                  "collapse, which is why its zero peak spread is not the "
                   "symmetry it looks like");
+            Check(std::fabs(onHarness.worstLeftCollapse
+                            - onHarness.worstRightCollapse) > 0.15,
+                  "and the harness-side correction splits the two halves "
+                  "instead, the same failure §64 measured on the lines");
         }
 
         // -- the divergence itself, measured rather than inferred ----------
@@ -1490,22 +1514,36 @@ int main()
             // than a printout: "try more iterations" is exactly what a later
             // reader will otherwise spend a level on.
             //
-            // Fifteen times the budget lands on the SAME TICK. The residual
-            // before the break does improve with iterations - 1.14e-06 to
-            // 8.03e-07 - so the extra work is being done and the solve really
-            // is converging better everywhere it can converge at all. At the
-            // breaking tick it buys nothing: 2.22e-02 at 40, 6.95e-02 at 200,
-            // 2.05e-02 at 600, no better and not even monotone.
+            // Fifteen times the budget lands on the SAME TICK, and at the
+            // breaking tick it buys nothing: 6.43e-01 at 40, 3.40e-01 at 200,
+            // 1.53e-01 at 600 - improving, but still five orders above a
+            // converged solve and nowhere near recovering the symmetry.
+            //
+            // THE SUPPORTING CLAIM HERE WAS RE-DERIVED AND IT CHANGED SIDES.
+            // It used to read "the residual before the break does improve with
+            // iterations - 1.14e-06 to 8.03e-07 - so the extra work is being
+            // done", gated as cold < shipped. At the shipped
+            // `aerodynamicsInterval` of 6 that is no longer true: 7.02e-07 at
+            // cap 40, 6.83e-07 at 200, 7.14e-07 at 600 - flat, and not even
+            // monotone. The solve is ALREADY converged at 40 on the finer
+            // schedule, so there is no work left for the extra budget to do.
+            //
+            // That strengthens the conclusion rather than weakening it. The
+            // point of the sweep is that the break is not an iteration
+            // shortage; "the solve was already converged before the tick that
+            // broke it, at every budget" says that more directly than "extra
+            // iterations help elsewhere" ever did.
             Check(std::fabs(generous.breakTime - shipped.breakTime) < 1.0e-9
                   && std::fabs(cold.breakTime - shipped.breakTime) < 1.0e-9,
                   "and fifteen times the iteration budget breaks on the SAME "
                   "tick - the separated solve is not short of iterations, it "
                   "has nothing to converge to, so Level 11 needs an unsteady "
                   "formulation and cannot be bought with compute");
-            Check(cold.residualBeforeBreak < shipped.residualBeforeBreak,
-                  "the extra iterations are doing real work everywhere the "
-                  "solve can converge at all, which is what makes the "
-                  "unchanged break time mean something");
+            Check(cold.residualBeforeBreak < 1.0e-5
+                  && shipped.residualBeforeBreak < 1.0e-5,
+                  "and the solve was already converged before that tick at "
+                  "every budget - so the unchanged break time is not an "
+                  "iteration shortage being hidden by a coarse sweep");
         }
 
 
@@ -1782,15 +1820,25 @@ int main()
         Check(!envelopeEngaged,
               "and it is the model's own behaviour, not the numerical safety "
               "envelope - which never engages through any of it");
-        // Where it ends up is a SEPARATE and weaker claim. The wing settles
-        // at an incidence past 70 degrees and sits there, which is the deep
-        // stall the plan already says has no steady state to find (Level 11).
-        // Bounded, not trusted: what this test is evidence for is the wind-up
-        // above, which happens entirely at ordinary incidence.
-        Check(d.angleOfAttackRad / Degree > 45.0,
+        // Where it ends up is a SEPARATE and weaker claim. The wing leaves the
+        // attached regime entirely and sits there, which is the deep stall the
+        // plan already says has no steady state to find (Level 11). Bounded,
+        // not trusted: what this test is evidence for is the wind-up above,
+        // which happens entirely at ordinary incidence.
+        //
+        // THE BOUND IS ON MAGNITUDE, AND IT USED TO BE ON SIGN. It read
+        // `> 45.0` because at `aerodynamicsInterval` 12 the wing parked past
+        // +70 degrees; at the shipped 6 it ends at -168.68. Both are far
+        // outside anything the attached-flow formulation represents, which is
+        // the whole of the claim - so a signed threshold was never expressing
+        // it, and only looked adequate while one particular schedule happened
+        // to leave the wing on one particular side. Nothing downstream reads
+        // WHICH way an unrepresentable wing is pointing.
+        Check(std::fabs(d.angleOfAttackRad / Degree) > 45.0,
               "and what it leaves behind is the known separated-regime "
-              "blocker: a wing parked past 70 degrees of incidence, which is "
-              "Level 11's to represent and is not evidence for anything here");
+              "blocker: a wing parked far outside the attached regime, which "
+              "is Level 11's to represent and is not evidence for anything "
+              "here");
     }
 
     // THE CL DIAGNOSTIC'S OWN CONTROL. Two findings now rest on

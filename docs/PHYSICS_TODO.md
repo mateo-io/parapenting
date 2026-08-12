@@ -2665,6 +2665,49 @@ tension.
   found by re-measuring a result rather than by reasoning about it**, and the
   cost of not re-measuring is a mechanism in the physics that was never there.
 
+**AND THE TRANSIENT ITSELF IS THE SCHEDULE, WHICH MAKES IT EVIDENCE FOR THE
+INTERVAL DECISION RATHER THAN A PROPERTY OF THE WING.** It cannot be unsteady
+aerodynamics: `WagnerLag` is implemented and verified against R. T. Jones'
+published two-exponential form, but its own header states it is **"NOT YET
+WIRED INTO THE FORCE ASSEMBLY, deliberately"** — every solve reads the polar
+instantaneously. Two candidates remained, and they separate cleanly because
+iterations cure one and cannot touch the other:
+
+| `aerodynamicsInterval` | iteration cap | CL at step 1 | peak error |
+|---|---|---|---|
+| 6 *(the struct default)* | 40 | 0.5209 | **3.6%** |
+| 12 | 40 | **0.3762** | **30.4%** |
+| 12 | 150 | 0.3762 | 30.4% |
+| 12 | 400 | 0.3762 | 30.4% |
+
+- **It is the schedule, and not an unconverged solve.** Raising the flight
+  solve cap from 40 to 400 changes nothing at all; shortening the interval
+  changes everything.
+- **The mechanism is exact, not approximate.** Between ticks the aerodynamic
+  force is HELD, so the reported CL is the old force over the new dynamic
+  pressure: 0.5418 / 1.44 = **0.3763** against a measured **0.3762**. For the
+  whole hold the wing's aerodynamics are not merely lagged, they are *frozen*.
+- **So the interval is worth 30% of CL for 100 ms against 3.6% for 50 ms**, on
+  a 20% speed step. That is the physical argument the interval-12-versus-6
+  question has been missing: at 12 the aircraft spends a tenth of a second
+  after any speed change with aerodynamics that are wrong by a third, which is
+  precisely the window a gust or a collapse onset lives in. **This supports the
+  finer schedule on physics, independently of which gates it reddens.**
+- **A residual 3.6% survives at every interval down to 1** and is unaffected by
+  iterations, so it is genuine carried state — separation and cell pressure
+  relaxing — and it is gone within six steps. That part is arguably the stall
+  memory the separation state exists to provide.
+
+**A CLAIM WAS MADE HERE AND WITHDRAWN WITHIN THE SESSION, AND THE WITHDRAWAL IS
+THE USEFUL PART.** The first reading of this measurement was that `SetSchedule`
+is not idempotent — that calling it with the schedule's existing value shifted
+the tick phase and changed the aircraft. It does not. `aerodynamicsInterval`
+**defaults to 6**, and the probe had read "every 12 steps" out of a comment in
+`pitch_axis_trace` and written 12 back, changing the value it believed it was
+preserving. There is no phase bug; there are two different intervals. The
+general form of the mistake is worth keeping: **a comment in one file was
+treated as the default in another, and the two had diverged.**
+
 **WHAT IS ACTUALLY LEFT IS A DESIGN CHOICE, NOT A BUG.** SIV footage shows a
 post-stall recovery dominated by a fast pendulum swing, because a real pilot
 damps the phugoid on the brakes without thinking about it and the model's pilot

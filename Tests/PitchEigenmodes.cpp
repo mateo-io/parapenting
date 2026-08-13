@@ -710,10 +710,18 @@ struct AddedDrag
 OwnTrim SettleAt(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                  double ratio, int maximumSeconds,
                  DamperReference reference = DamperReference::World,
-                 AddedDrag added = {}, int aerodynamicsInterval = 0)
+                 AddedDrag added = {}, int aerodynamicsInterval = 0,
+                 bool lagCirculation = false,
+                 bool aerodynamicElapsedTime = false)
 {
     OwnTrim out{CoupledState{}, CoupledParagliderSolver(canopy, linePlan)};
     out.solver.SetSwingDampingRatio(ratio);
+    // Level 11 strand 2. Set BEFORE the settle rather than after it, because a
+    // lagged aircraft settled quasi-steadily and then switched would carry a
+    // seed transient into every number below - which is the mistake strand 2
+    // measured and fixed on its own gate.
+    out.solver.SetLagCirculation(lagCirculation);
+    out.solver.SetAerodynamicElapsedTime(aerodynamicElapsedTime);
     if (aerodynamicsInterval > 0)
     {
         CoupledSchedule schedule = out.solver.Schedule();
@@ -6412,6 +6420,393 @@ void SwingDragCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
                 "the way item 11 said it does.\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// LEVEL 11, STRAND 2, THE SHIP QUESTION. Strand 2 landed the lagged
+// circulation behind a flag that defaults OFF, and passed its own gate - the
+// symmetric frontal holds mirror symmetry at round-off where the quasi-steady
+// solve loses it. That gate is about ONE event. Turning the flag on ships it to
+// every second of every flight, and nothing has yet asked what it does to the
+// aircraft in between.
+//
+// Three questions, in the order that makes the later ones readable:
+//
+//   1. TRIM, which is the control. Wagner's function goes to 1, so a wing
+//      holding a constant circulation forever is a wing whose lag state has
+//      caught up with it: the lagged and quasi-steady aircraft must trim at the
+//      same place. If they do not, the state is not converging to the fixed
+//      point the quasi-steady solve finds, and nothing below means anything.
+//
+//   2. THE SPECTRUM, which is the question worth the session. Item 19 measured
+//      the coupled phugoid at 16.4 s and zeta 0.035 - eight times more
+//      persistent than the legacy path a pilot flies today - and then closed
+//      every route to it that the solver contains: the structural damper moves
+//      the phugoid only by wrecking the pendulum, pilot-referenced harness drag
+//      is worth +19%, line sweep +2%, and the aeroelastic lift softening that
+//      looked like a second mechanism turned out to be the instrument. Its
+//      standing sentence is that "the phugoid's damping is not available from
+//      any term currently in the solver". The lag is a term that was not in the
+//      solver. Unsteady circulatory lag removes energy from a wing oscillating
+//      in incidence, which is the classical reason an unsteady aerofoil is
+//      damped where a quasi-steady one is not, so it is a candidate on physics
+//      rather than by elimination.
+//
+//   3. THE STEP RESPONSE, at the order where the lag is supposed to live.
+//      Item 19's correction found a 3.6% CL transient that relaxes in under six
+//      steps and noted it is "the right order to matter for gust and collapse
+//      response, where nothing has yet looked for it". Wagner says exactly how
+//      big that lag should be and how long it should take - half the lift
+//      immediately, the rest over twenty-odd semichords - so this is a
+//      published number to check against rather than a shape to admire.
+//
+// The confound in question 3 is named and separated rather than hoped away.
+// Between aerodynamic ticks the force is HELD, so at the shipped interval 6 a
+// speed step reports the old force over the new dynamic pressure for 50 ms -
+// item 19 measured that as an exact arithmetic identity, not an approximation.
+// That schedule freeze looks exactly like a lag. It is separated by running the
+// step at interval 1 as well, where the freeze is one step and whatever is left
+// is the wing.
+
+struct LagTrim
+{
+    double speedMps = 0.0;
+    double sinkMps = 0.0;
+    double glide = 0.0;
+    double incidenceDeg = 0.0;
+    int settleSeconds = 0;
+    bool settled = false;
+    bool departed = false;
+};
+
+LagTrim ReadTrim(const OwnTrim& trim)
+{
+    LagTrim out;
+    out.settled = trim.settled;
+    out.departed = trim.departed;
+    out.settleSeconds = trim.settleSeconds;
+    out.incidenceDeg = trim.incidenceRad * 180.0 / Pi;
+    const Vec3 v = trim.state.velocityWorldMps;
+    const double horizontal = std::sqrt(v.x * v.x + v.y * v.y);
+    out.speedMps = std::sqrt(horizontal * horizontal + v.z * v.z);
+    out.sinkMps = -v.z;
+    out.glide = out.sinkMps > 1.0e-6 ? horizontal / out.sinkMps : 0.0;
+    return out;
+}
+
+// `SlowestOscillatory`'s counterpart at the fast end. The pendulum is 1.84-2.2 s
+// across everything this file has measured; the band is deliberately wider than
+// that and deliberately does not reach the phugoid's 8 s floor, so the two
+// selectors cannot both claim the same mode and silently report it twice.
+bool PendulumMode(const Spectrum& spectrum, Mode& out)
+{
+    bool any = false;
+    for (const Mode& mode : spectrum.modes)
+    {
+        if (!mode.oscillatory) continue;
+        if (mode.periodS < 1.0 || mode.periodS > 4.0) continue;
+        if (!any || mode.periodS < out.periodS) { out = mode; any = true; }
+    }
+    return any;
+}
+
+// A speed step at PINNED INCIDENCE, held. Velocity, attitude and body rate are
+// re-imposed every step, so the aircraft cannot respond by flying - the only
+// thing free to move is the aerodynamic state, which is the whole point. The
+// velocity is scaled rather than added to, which keeps the flight direction and
+// therefore the incidence fixed by construction; the solver's own diagnostic
+// prints alongside so that is checked rather than asserted.
+struct StepResponse
+{
+    double clBefore = 0.0;
+    double incidenceDegBefore = 0.0;
+    double incidenceDegAfter = 0.0;
+    std::vector<double> cl;        // one entry per step after the step change
+    std::vector<double> semichords; // reduced time at that step
+    // The bound circulation, span-summed, read straight out of the state the
+    // solver carries rather than inferred back through the aircraft's lift
+    // coefficient. Wagner's function is a statement about THIS quantity, so
+    // checking it anywhere else adds a conversion that can be wrong on its own.
+    double circulationBefore = 0.0;
+    std::vector<double> circulation;
+    bool valid = false;
+};
+
+double TotalCirculation(const CoupledState& state)
+{
+    double total = 0.0;
+    for (const double gamma : state.separation.circulation) total += gamma;
+    return total;
+}
+
+// R. T. Jones' two-exponential Wagner function, written out here rather than
+// reached for from the solver, so that the check is against the PUBLISHED form
+// and not against the code's own copy of it. If the two ever disagree, that is
+// the thing worth knowing.
+double WagnerPhi(double semichords)
+{
+    return 1.0 - 0.165 * std::exp(-0.0455 * semichords)
+                - 0.335 * std::exp(-0.30 * semichords);
+}
+
+// Takes an aircraft that is ALREADY at its own trim, by value, so that the two
+// step intervals below can reuse the settles the trim and spectrum tables paid
+// for instead of buying four more. A settle is the expensive thing in this file
+// and the aircraft it produces is immutable once made.
+StepResponse SpeedStepFrom(const CanopyGeometry& canopy, OwnTrim trim,
+                           double k, double windowS)
+{
+    StepResponse out;
+    if (!trim.settled) return out;
+
+    out.clBefore = trim.solver.Diagnostics().liftCoefficient;
+    out.incidenceDegBefore = trim.solver.Diagnostics().angleOfAttackRad
+        * 180.0 / Pi;
+
+    CoupledState held = trim.state;
+    const Vec3 v0 = held.velocityWorldMps;
+    const Quaternion attitude0 = held.attitude;
+    const Vec3 stepped{v0.x * k, v0.y * k, v0.z * k};
+    const double speed = std::sqrt(stepped.x * stepped.x
+                                   + stepped.y * stepped.y
+                                   + stepped.z * stepped.z);
+    // Semichords are travelled at the speed the wing is flying, so the reduced
+    // time is measured at the STEPPED speed, not at trim.
+    const double chord = canopy.RootChordMetres();
+
+    out.circulationBefore = TotalCirculation(held);
+
+    const int steps = static_cast<int>(windowS * 120.0);
+    for (int step = 0; step < steps; ++step)
+    {
+        held.velocityWorldMps = stepped;
+        held.attitude = attitude0;
+        held.angularVelocityBodyRadps = Vec3{};
+        trim.solver.Step(held, CoupledControls{}, CoupledAtmosphere{});
+        out.cl.push_back(trim.solver.Diagnostics().liftCoefficient);
+        out.circulation.push_back(TotalCirculation(held));
+        out.semichords.push_back(
+            ReducedTimeSemichords(speed, chord, (step + 1) / 120.0));
+    }
+    out.incidenceDegAfter = trim.solver.Diagnostics().angleOfAttackRad
+        * 180.0 / Pi;
+    out.valid = true;
+    return out;
+}
+
+void LagCheck(const CanopyGeometry& canopy, const LinePlanSpec& linePlan,
+              int maximumSeconds)
+{
+    std::printf("LEVEL 11 STRAND 2: WHAT THE LAGGED CIRCULATION DOES TO THE "
+                "AIRCRAFT.\nStrand 2's gate was one collapse. This is the "
+                "flight in between, which is what\nshipping the flag would "
+                "actually change. Item 19's open sentence - that the\nphugoid's "
+                "damping is not available from any term in the solver - is the "
+                "target.\n\n");
+
+    const OwnTrim quasiSteady = SettleAt(canopy, linePlan, 0.35,
+                                         maximumSeconds,
+                                         DamperReference::World, AddedDrag{},
+                                         0, false);
+    const OwnTrim lagged = SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                                    DamperReference::World, AddedDrag{},
+                                    0, true);
+    const LagTrim a = ReadTrim(quasiSteady);
+    const LagTrim b = ReadTrim(lagged);
+
+    std::printf("1. TRIM - the control. Wagner goes to 1, so these two rows "
+                "have to agree.\n\n");
+    std::printf("%16s %10s %10s %10s %12s %10s %s\n", "wing", "speed", "sink",
+                "glide", "incidence", "settle", "outcome");
+    const auto trimRow = [](const char* name, const LagTrim& t)
+    {
+        std::printf("%16s %9.3fm %9.3fm %10.3f %11.3fd %9ds  %s\n", name,
+                    t.speedMps, t.sinkMps, t.glide, t.incidenceDeg,
+                    t.settleSeconds,
+                    t.departed ? "DEPARTED"
+                        : t.settled ? "settled" : "still moving");
+    };
+    trimRow("quasi-steady", a);
+    trimRow("lagged state", b);
+    // The settle column is a result and not bookkeeping, so it is called out
+    // rather than left to be noticed. What it does NOT establish is that the
+    // aircraft is better damped: the criterion is ten seconds of incidence
+    // spread under 0.01 degrees, and a state that carries circulation forward
+    // smooths the incidence trace whether or not it removes any energy. The
+    // spectrum below is what answers that, and this is why it is not the
+    // answer on its own.
+    if (a.settled && b.settled)
+    {
+        std::printf("%16s %+9.4f %+9.4f %+10.4f %+11.4f\n\n", "difference",
+                    b.speedMps - a.speedMps, b.sinkMps - a.sinkMps,
+                    b.glide - a.glide, b.incidenceDeg - a.incidenceDeg);
+    }
+    else
+    {
+        std::printf("\n  ONE OF THESE DID NOT SETTLE, so every number below is "
+                    "read against a moving\n  aircraft and none of it counts.\n"
+                    "\n");
+        return;
+    }
+
+    std::printf("2. THE SPECTRUM. Two transition times, because a mode that is "
+                "real appears at\n   both and a number that moves with T is "
+                "the sampling interval talking.\n\n");
+    std::printf("%16s %6s %10s %8s %10s %10s %8s %10s %10s\n", "wing", "T",
+                "phugoid", "zeta", "sigma /s", "pendulum", "zeta", "sigma /s",
+                "drift");
+    const auto spectrumRow = [](const char* name, double t,
+                                const CoupledParagliderSolver& solver,
+                                const CoupledState& state)
+    {
+        const Spectrum s = Analyse(solver, state, t, 1.0, false);
+        Mode slow, fast;
+        const bool haveSlow = SlowestOscillatory(s, slow);
+        const bool haveFast = PendulumMode(s, fast);
+        std::printf("%16s %6.2f", name, t);
+        if (haveSlow)
+            std::printf(" %9.2fs %8.4f %+10.5f", slow.periodS,
+                        slow.dampingRatio, slow.growthPerS);
+        else
+            std::printf(" %10s %8s %10s", "none", "-", "-");
+        if (haveFast)
+            std::printf(" %9.2fs %8.4f %+10.5f", fast.periodS,
+                        fast.dampingRatio, fast.growthPerS);
+        else
+            std::printf(" %10s %8s %10s", "none", "-", "-");
+        std::printf(" %9.2e%s\n", s.driftSpeedMpsPerS,
+                    s.conventionsAgree ? "" : "  CONVENTIONS DISAGREE");
+    };
+    for (const double t : {0.25, 0.10})
+    {
+        spectrumRow("quasi-steady", t, quasiSteady.solver, quasiSteady.state);
+        spectrumRow("lagged state", t, lagged.solver, lagged.state);
+    }
+    std::printf("\n  For scale: the phugoid's zeta would have to reach 0.10 to "
+                "match the legacy\n  path a pilot flies today, and the "
+                "structural damper can only get there by\n  putting the "
+                "pendulum at zeta 0.34 against a measured 0.09. Item 19's "
+                "closed\n  routes were worth +19%% (pilot-referenced harness "
+                "drag) and +2%% (line sweep).\n\n");
+    std::printf("  ONE HONEST CAVEAT, and it is structural rather than a "
+                "doubt about the numbers.\n  The lagged aircraft carries a "
+                "per-section circulation state that the six-state\n  reduction "
+                "does not contain, so the matrix is a PROJECTION of a larger "
+                "system\n  rather than the whole of it. The perturbation "
+                "columns are still honest - the\n  lag state is carried in "
+                "`CoupledState` and so is copied with each perturbed\n  "
+                "aircraft, which is what a real disturbance does to a real "
+                "wing - but a mode\n  living mostly in the circulation would "
+                "not appear in this table at all.\n\n");
+
+    std::printf("3. THE STEP RESPONSE, where the lag is supposed to live. A "
+                "20%% speed step at\n   pinned incidence, held, so nothing can "
+                "respond by flying. Wagner: half the\n   lift arrives at once "
+                "and the rest over twenty-odd semichords.\n\n");
+    for (const int interval : {6, 1})
+    {
+        std::printf("  aerodynamic interval %d (%.0f Hz)%s:\n", interval,
+                    120.0 / interval,
+                    interval == 6 ? " - the shipped schedule" : "");
+        // Interval 6 is the default, so the aircraft the tables above were
+        // taken on IS the interval-6 aircraft and re-settling it would buy the
+        // same wing twice. Interval 1 is a different schedule and has to be
+        // settled on its own.
+        const StepResponse quasi = interval == 6
+            ? SpeedStepFrom(canopy, quasiSteady, 1.20, 1.0)
+            : SpeedStepFrom(canopy,
+                            SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                                     DamperReference::World, AddedDrag{},
+                                     interval, false), 1.20, 1.0);
+        const StepResponse lag = interval == 6
+            ? SpeedStepFrom(canopy, lagged, 1.20, 1.0)
+            : SpeedStepFrom(canopy,
+                            SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                                     DamperReference::World, AddedDrag{},
+                                     interval, true), 1.20, 1.0);
+        if (!quasi.valid || !lag.valid)
+        {
+            std::printf("    did not settle in %d s - no step to read.\n\n",
+                        maximumSeconds);
+            continue;
+        }
+        std::printf("    incidence %.3fd before, %.3fd after (quasi-steady) / "
+                    "%.3fd, %.3fd (lagged)\n", quasi.incidenceDegBefore,
+                    quasi.incidenceDegAfter, lag.incidenceDegBefore,
+                    lag.incidenceDegAfter);
+        std::printf("%10s %10s %12s %12s %12s %12s\n", "t", "semichords",
+                    "CL quasi", "err", "CL lagged", "err");
+        for (const int step : {1, 2, 3, 6, 12, 30, 60, 120})
+        {
+            const std::size_t i = static_cast<std::size_t>(step) - 1;
+            if (i >= quasi.cl.size() || i >= lag.cl.size()) continue;
+            std::printf("%9.3fs %10.2f %12.4f %11.1f%% %12.4f %11.1f%%\n",
+                        step / 120.0, quasi.semichords[i], quasi.cl[i],
+                        100.0 * (quasi.cl[i] - quasi.clBefore)
+                            / quasi.clBefore,
+                        lag.cl[i],
+                        100.0 * (lag.cl[i] - lag.clBefore) / lag.clBefore);
+        }
+        std::printf("    trim CL %.4f quasi-steady, %.4f lagged\n\n",
+                    quasi.clBefore, lag.clBefore);
+    }
+
+    std::printf("4. AGAINST WAGNER'S OWN FUNCTION, which is what makes this a "
+                "check rather than a\n   shape. Circulation is read straight "
+                "out of the carried state, and the target\n   is 1.2x trim by "
+                "construction: incidence is pinned, speed is up 20%%, and\n"
+                "   G = 1/2 V c Cl. The quasi-steady column above is what "
+                "establishes that -\n   its CL returns to trim exactly, so its "
+                "circulation went where it was sent.\n\n");
+    std::printf("   'closed' is the fraction of that gap the wing has actually "
+                "crossed. Wagner\n   says it should be Phi(s), which starts at "
+                "0.5 - half the lift arrives at once.\n\n");
+    for (const int interval : {6, 1})
+    {
+        for (const bool corrected : {false, true})
+        {
+            std::printf("  interval %d, elapsed time %s:\n", interval,
+                        corrected ? "CORRECTED" : "as shipped");
+            const StepResponse lag = SpeedStepFrom(
+                canopy,
+                SettleAt(canopy, linePlan, 0.35, maximumSeconds,
+                         DamperReference::World, AddedDrag{}, interval, true,
+                         corrected),
+                1.20, 1.0);
+            if (!lag.valid || !(std::fabs(lag.circulationBefore) > 1.0e-9))
+            {
+                std::printf("    no settled aircraft to step.\n\n");
+                continue;
+            }
+            const double gap = 0.20 * lag.circulationBefore;
+            std::printf("%10s %12s %12s %12s\n", "t", "semichords", "closed",
+                        "Wagner Phi");
+            for (const int step : {1, 2, 3, 6, 12, 30, 60, 120})
+            {
+                const std::size_t i = static_cast<std::size_t>(step) - 1;
+                if (i >= lag.circulation.size()) continue;
+                const double closed =
+                    (lag.circulation[i] - lag.circulationBefore) / gap;
+                std::printf("%9.3fs %12.2f %12.3f %12.3f\n", step / 120.0,
+                            lag.semichords[i], closed,
+                            WagnerPhi(lag.semichords[i]));
+            }
+            std::printf("\n");
+        }
+    }
+    std::printf("  THE SHIPPED ROW IS THE ONE TO READ FIRST. If 'closed' sits "
+                "far under Phi, the\n  wing is carrying more lag than Wagner "
+                "describes, and strand 2's results were\n  taken on a wing that "
+                "is not the published one. The corrected row is the same\n  "
+                "instrument with `SetAerodynamicElapsedTime` on, which is the "
+                "only difference\n  between them.\n\n");
+    std::printf("  'err' is against that wing's own trim CL, which is what "
+                "makes the two columns\n  comparable even if question 1 had "
+                "found them trimming differently. A speed step\n  at pinned "
+                "incidence should leave CL alone - CL is a function of "
+                "incidence, and\n  incidence has not moved - so every non-zero "
+                "entry is a transient, and the\n  question is which of them "
+                "are the wing and which are the schedule.\n\n");
+}
+
 // What the two tables came back with, written where the numbers are rather
 // than only in PHYSICS_LEARNINGS.
 void Verdict()
@@ -6508,6 +6903,7 @@ int main(int argc, char** argv)
     bool holds = false;
     bool stiffness = false;
     bool soft = false;
+    bool lag = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string argument = argv[i];
@@ -6531,6 +6927,7 @@ int main(int argc, char** argv)
         if (argument == "--holds") holds = true;
         if (argument == "--stiffness") stiffness = true;
         if (argument == "--soft") soft = true;
+        if (argument == "--lag") lag = true;
     }
 
     std::printf("THE CHECK: the slow mode is independently measured at period "
@@ -6748,6 +7145,18 @@ int main(int argc, char** argv)
     if (soft)
     {
         SoftSpringCheck(canopy, linePlan, settleSeconds < 420 ? 300 : 1200);
+    }
+
+    if (lag)
+    {
+        // 900 s regardless of `--quick`, and that is not laziness about the
+        // flag. The quasi-steady aircraft is the CONTROL here, `--quick`'s 300
+        // is below the 410-530 s it is known to need, and a control that
+        // prints "still moving" makes the whole block unreadable - measured,
+        // on the first run of this. The lagged wing settles far sooner, which
+        // is itself one of the results, and giving the two different budgets
+        // to save time would be measuring the budget.
+        LagCheck(canopy, linePlan, 900);
     }
 
     if (drag)

@@ -4115,6 +4115,62 @@ instrument for that case two sections earlier. **The failure mode is not
 ignorance of the lesson but failure to retrieve it**, three times in one
 investigation, each time on a lesson written down in this same document.
 
+## 81. A component verified against a published number, wired into something that changes it, and nothing re-checked the assembly
+
+Level 11 strand 1 implemented R. T. Jones' two-exponential Wagner function and
+verified it against his published values. That verification is correct and it
+still is. Strand 2 then wired it into the circulation solve, gated the wiring
+on a collapse's mirror symmetry, and passed. Between the two, **nothing asked
+the assembled solver the question strand 1 had asked the component**: does the
+wing's circulation now follow Φ(s)?
+
+It does not. It closes **12% of a step where Φ(0) is 0.5**, and 54% at nine
+semichords where Φ is 0.87. Two mechanisms, and they are independent:
+
+1. **The aerodynamic states were advancing by the simulation step** while
+   `SolveUnsteady` runs once every `aerodynamicsInterval` steps — so at the
+   shipped 6, six times slow. This is arithmetic, not modelling, and it reaches
+   further than the flag: the separation state, which is stall's memory, has
+   had it since it was written.
+2. **The one-pass solve carries lag of its own.** A single explicit pass across
+   sections is itself a relaxation in time, so the wing is lagged twice and
+   only one of the two is published. Not yet identified further, and it should
+   not be guessed at.
+
+**The reusable part is the shape of the gap, not the numbers.** A component
+gate answers "is this function right". An integration gate answers "does the
+assembly do something I recognise". Strand 2's gate was the second kind — a
+collapse holding its symmetry — and a symmetry test cannot tell a correctly
+lagged wing from an over-lagged one, because *more* lag passes it *better*. The
+gate was not weak; it was measuring a different property, and its passing was
+read as covering both.
+
+- **The tell was available and was not read.** Strand 2's own write-up notes
+  that `converged` reports false in the lagged mode and that the residual "is
+  the distance still to travel". A distance still to travel, at a settled trim,
+  with a published function saying exactly how far it should be — that is the
+  check, one line from where it was written down.
+- **What made it findable was asking a different question entirely.** The
+  session's question was whether the lag should SHIP, which meant measuring the
+  flight in between rather than the one event the gate covers. The step
+  response was included because item 19 had noted the transient was "the right
+  order to matter for gust and collapse response, where nothing has yet looked
+  for it". Two open notes, in different items, pointing at the same unmeasured
+  place.
+- **And the correction's own test was schedule-independence**, which is worth
+  keeping as the general form: an aerodynamic state's response should not
+  depend on how often the aerodynamics are solved. Before, interval 6 and
+  interval 1 disagreed by a factor of two at 1.0 s; after, 0.523 against 0.544.
+  That test would have caught defect 1 at any point in the last several levels,
+  and no instrument in this project was asking it.
+
+**The cost is recorded rather than paid.** Correcting the elapsed time reddens
+seven collapse gates including strand 2's own, so it landed behind a flag that
+defaults to the *wrong* behaviour — the same pattern this project uses for the
+geometric channel and for item 11's two terms, and for the same reason: a
+correct change whose consequences have not been re-derived is not yet a shipped
+change.
+
 ## Numbers worth remembering
 
 | quantity | value | why it matters |

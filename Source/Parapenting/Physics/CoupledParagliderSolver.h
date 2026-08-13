@@ -625,6 +625,22 @@ public:
     void SetLagCirculation(bool lag) { LagCirculationValue = lag; }
     bool LagCirculation() const { return LagCirculationValue; }
 
+    // ADVANCE THE AERODYNAMIC STATES BY THE TIME THAT ACTUALLY ELAPSED.
+    //
+    // `SolveUnsteady` runs once every `aerodynamicsInterval` simulation steps
+    // and advances two states whose rates are per SECOND: the separation state,
+    // which is what gives stall its memory, and strand 2's Wagner circulation
+    // lag. It has always been handed the SIMULATION step, so at the shipped
+    // interval 6 both of them have been running at one sixth of real time.
+    //
+    // This is a defect and not a modelling choice - a rate per second times the
+    // wrong number of seconds is arithmetic - and it defaults OFF anyway,
+    // because the correction re-characterises every collapse gate this project
+    // has (item 30). Found by asking whether the strand-2 lag reproduces
+    // Wagner's published indicial response and measuring that it does not.
+    void SetAerodynamicElapsedTime(bool use) { AerodynamicElapsedTimeValue = use; }
+    bool AerodynamicElapsedTime() const { return AerodynamicElapsedTimeValue; }
+
     // AN IMPOSED ANTISYMMETRIC TWIST, linear in span, radians at the right
     // tip and nose-up positive. THIS IS AN INSTRUMENT, NOT PHYSICS: nothing
     // supplies it in flight, it is zero by default, and the default is
@@ -885,6 +901,7 @@ private:
     double SwingDampingRatioValue = 0.35;
     double SectionDragOffsetValue = 0.0;
     bool LagCirculationValue = false;
+    bool AerodynamicElapsedTimeValue = false;
     double ImposedSpanwiseTwistRadValue = 0.0;
     int FlightSolveIterationCapValue = 40;
     HarnessDragReference HarnessDragReferenceValue =

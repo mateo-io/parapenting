@@ -736,11 +736,36 @@ void CoupledParagliderSolver::Step(
             // is lagged. Worth measuring before it is worth fixing.
             settings.lagCirculation = LagCirculationValue;
             if (Profiling) ++ProfileValue.aeroTicks;
+            // HOW MUCH TIME THE AERODYNAMIC STATES HAVE ACTUALLY LIVED
+            // THROUGH, which is not `dt`. `SolveUnsteady` runs once per
+            // `aerodynamicsInterval` steps and advances two states that are
+            // rates per SECOND - the separation state and, since strand 2, the
+            // Wagner circulation lag. Handing it the simulation step made both
+            // of them evolve at one interval-th of real time: at the shipped
+            // interval 6, stall memory and circulation lag ran SIX TIMES SLOW.
+            //
+            // `stepsSinceAerodynamics` still holds its pre-update value here,
+            // and it counts from 1 on the step a solve fires, so it is exactly
+            // the number of simulation steps since the previous solve. The
+            // uninitialised case is the seed solve, which has no elapsed time
+            // to speak of and whose lag states `Settle` rather than advance.
+            //
+            // BEHIND A FLAG, DEFAULT OFF, AND THE DEFAULT IS THE WRONG ONE.
+            // That is uncomfortable and it is deliberate: correcting this
+            // re-characterises seven Level 8 and Level 11 gates - including
+            // strand 2's own - because every one of them measures a collapse,
+            // and a collapse is made of exactly these two states. Turning it on
+            // is a level's re-derivation, not a line. `PHYSICS_TODO` item 30
+            // carries the measurement and what it costs.
+            const double aerodynamicElapsedS =
+                AerodynamicElapsedTimeValue && state.initialised
+                    ? dt * static_cast<double>(state.stepsSinceAerodynamics)
+                    : dt;
             const VsmSolution solved = [&]
             {
                 const StageTimer t(Profiling, ProfileValue.vsmUnsteadyNs);
                 return Aerodynamics.SolveUnsteady(
-                    aero, state.separation, dt, settings);
+                    aero, state.separation, aerodynamicElapsedS, settings);
             }();
 
             // Reject a solve that has not converged to anything usable. Deep

@@ -43,7 +43,31 @@ that — it is *the legacy pitch axis has no gravity-referenced pendulum*. The
 stated-envelope work is item 17's, and it is blocked. The two were conflated
 because both are pilot-facing, and the mistake sent a session at the wrong item.
 
-What is left, in order: **item 19 and item 24 together** — the legacy pitch
+**THE ORDERING CHANGED AGAIN AT ITEM 30, AND WHAT MOVED TO THE FRONT IS A
+DEFECT RATHER THAN A LEVEL.** Asking whether strand 2's lagged circulation
+should ship measured three things and found two problems that are older and
+wider than the flag:
+
+- **The aerodynamic states have been advancing at one sixth of real time.**
+  `SolveUnsteady` runs once per `aerodynamicsInterval` and was handed the
+  simulation step, so the separation state — stall's memory — and strand 2's
+  Wagner lag both run six times slow at the shipped schedule. Corrected behind
+  a flag; **the correction reddens seven collapse gates, including strand 2's
+  own**, which is why it defaults off.
+- **And the implemented lag is not Wagner's** even with that corrected: 12% of
+  a circulation step closed where the published Φ(0) is 0.5. Strand 1's
+  verification of the component stands; nothing ever re-checked the composite.
+- **The lag is not item 19's missing phugoid damping.** σ unchanged, period
+  down 40%, and the pendulum's ζ nearly tripled — which is the ring item 19
+  spent several rounds declining to spend.
+
+So the front of the queue is now **item 30**: identify the second lag, fix both,
+and re-derive the collapse gates once against a wing whose aerodynamic states
+run at the right speed. Everything Level 11 does after that is read against
+those benchmarks, so doing it in the other order pays for the re-derivation
+twice.
+
+After that, and unchanged: **item 19 and item 24 together** — the legacy pitch
 axis, which is what a pilot actually flies and where the only two handling
 reports this project has ever received both land; then item 12's shielding
 number on its own evidence; then Level 11, which unblocks the rest of item 12.
@@ -2207,7 +2231,7 @@ the oscillation, not a measurement of it.
   Deep brake and full bar do reach a steady state, but a fully separated one at
   86–91° of incidence — a steady state, not a trim point.
 
-## Level 11 — unsteady wake (STARTED, strands 1 and 2 of 4 landed)
+## Level 11 — unsteady wake (STARTED, strand 1 landed, strand 2 landed and then re-scoped by item 30)
 
 **Budget 36 hours, and it took four sessions to specify before any of it was
 written.** The master plan's work list is four strands. They are not equally
@@ -2326,6 +2350,18 @@ later or shrank without going away. It went away.
   than assumed: the whole coupled suite diffs to exactly the four new printed
   lines, with `1.87e-15` entering the fold and the 1.350/1.400 breaks unmoved.
 
+**AND THE GATE ABOVE WAS MEASURED ON A LAG THAT IS NOT WAGNER'S. See item 30.**
+Two separate reasons, both measured rather than argued: the aerodynamic states
+were being advanced by the simulation step while the solve runs once per
+`aerodynamicsInterval`, so at the shipped 6 this lag ran six times slow; and
+even with that corrected, the composite one-pass-plus-Wagner response closes
+12% of a circulation step where Jones' published Φ(0) is 0.5. The symmetry
+result in this table is real and is not retracted — it was taken on this
+solver, in this harness. What it does not establish is the claim the strand-3
+note built on it, that the separated solve is single-valued under *Wagner's*
+lag. Correcting only the arithmetic half of the excess takes the peak mirror
+residual from **3.52e-14 to 4.04e-01**.
+
 **What is NOT settled, and should not be read into the above.** The frozen and
 still probes still call `SolveFrozen`, which passes no lag state and so stays
 quasi-steady. The damping derivative is therefore measured on an unlagged wing
@@ -2345,16 +2381,160 @@ than instant response; a brake release with correct overshoot timing and no
 tuned delay; wake cost inside the frame budget for 60 s of aggressive
 manoeuvring. Strand 4 is mostly measurement once 2 and 3 are in.
 
-- **Note for whoever takes strand 3:** strand 2 removed the entry criterion's
-  blocker but did not turn itself on. The separated solve is single-valued
-  under `lagCirculation` — that is what the symmetry result means — so §68's
-  entry criterion is met by the lagged path and not by the shipped one.
-  Deciding whether strand 3 builds on the lagged path or waits for it to ship
-  is the first question, not an implementation detail.
+- **Note for whoever takes strand 3, REWRITTEN BY ITEM 30 AND THE NEWS IS
+  BAD.** This used to read: "strand 2 removed the entry criterion's blocker but
+  did not turn itself on. The separated solve is single-valued under
+  `lagCirculation` — that is what the symmetry result means — so §68's entry
+  criterion is met by the lagged path and not by the shipped one." **That is
+  not established.** The symmetry result was measured on a lag several times
+  deeper than the one Wagner describes, for two separate reasons item 30
+  measures, and with only the arithmetic half of that excess removed the
+  frontal's mirror residual goes from `3.52e-14` back to `4.04e-01`.
+  **Strand 3's entry criterion should be treated as open, not as met.**
 - *Historical, now closed:* this used to warn that item 25 was unresolved and
   the §69 control gate red at `aerodynamicsInterval` 6, so strand-2
   measurements would be read against a red benchmark. Both are settled, and the
   gate above was read against a green suite.
+
+**30. THE SHIP QUESTION FOR STRAND 2, ASKED AND ANSWERED — AND IT FOUND TWO
+DEFECTS ON THE WAY, ONE OF WHICH IS NOT STRAND 2'S.** Strand 2 landed the
+lagged circulation defaulting OFF and left "whether it ships" to strand 3. The
+gate it passed measures ONE collapse; turning the flag on ships it to every
+second of every flight, and nothing had asked what it does in between.
+`parapenting_pitch_eigenmodes --lag` is that question, in four parts. It costs
+about twenty minutes and it does not assert, because two of its four answers
+are disagreements rather than gates.
+
+**1. TRIM IS THE CONTROL AND IT PASSES.** Wagner's function goes to 1, so a
+wing holding a constant circulation forever has a lag state that has caught up
+with it, and the two aircraft must trim in the same place. Settled to the
+incidence-spread criterion at each one's own trim:
+
+| | speed | sink | glide | incidence | settle |
+|---|---|---|---|---|---|
+| quasi-steady | 10.604 | 0.965 | 10.946 | 4.924° | 370 s |
+| lagged state | 10.579 | 0.962 | 10.952 | 4.947° | **100 s** |
+
+Speed differs by 0.24%, glide by 0.06%. The lagged wing settles in **100 s
+against 370** — which is *not* evidence that it is better damped, and the block
+says so where the number is printed: the criterion is ten seconds of incidence
+spread under 0.01°, and a state that carries circulation forward smooths the
+incidence trace whether or not it removes any energy. The spectrum is what
+answers that.
+
+**2. THE LAG IS NOT THE PHUGOID'S MISSING DAMPING. IT IS A LARGE PENDULUM
+DAMPER.** Item 19's standing sentence is that "the phugoid's damping is not
+available from any term currently in the solver". The lag is a term that was
+not in the solver, and it is a candidate on physics rather than by elimination
+— unsteady circulatory lag is the classical reason an aerofoil oscillating in
+incidence is damped where a quasi-steady one is not. Measured at two transition
+times, so a number that moves with T is visible as the sampling talking:
+
+| wing | T | phugoid | ζ | σ /s | pendulum | ζ | σ /s |
+|---|---|---|---|---|---|---|---|
+| quasi-steady | 0.25 | 16.41 s | 0.0545 | -0.0209 | 1.84 s | 0.0933 | -0.320 |
+| **lagged** | 0.25 | **10.16 s** | 0.0387 | -0.0240 | 1.94 s | **0.2475** | **-0.828** |
+| quasi-steady | 0.10 | 16.63 s | 0.0660 | -0.0250 | 1.84 s | 0.0998 | -0.342 |
+| **lagged** | 0.10 | **9.91 s** | 0.0312 | -0.0198 | 1.90 s | **0.2499** | **-0.852** |
+
+- **The phugoid's ζ falls, and reading that as lost damping would be an error
+  of arithmetic.** ζ = σ/ωₙ. σ — the actual energy removed per second, and the
+  number that decides stability — is **-0.021 against -0.024 at T = 0.25 and
+  -0.025 against -0.020 at T = 0.10**: unchanged, within a spread the sampling
+  interval itself covers. What moved is ωₙ. The period drops from 16.4 s to
+  **10.2 s, a 40% fall**, and ζ falls because its denominator rose.
+- **So the answer to item 19's question is no.** The lag does not supply the
+  phugoid damping that eight other routes failed to supply. It is worth saying
+  plainly because the period moving 40% looks like a large effect on the mode,
+  and on the stability of that mode it is not one.
+- **What it does move is large and is in the wrong direction.** The pendulum's
+  ζ goes from 0.093-0.100 to **0.248-0.250** — nearly tripled, consistent at
+  both T. Item 19 established that the shipped structural damper is *right*
+  precisely because it lands the pendulum at ζ 0.108 against a measured 0.09,
+  and that reaching the phugoid with it costs "one visible swing where a real
+  recovery shows several — exactly the ring the pilot asked to keep". **The lag
+  spends that ring without being asked**, and by a similar amount to the
+  structural damper the same item declined to use.
+- **The honest caveat is structural.** The lagged aircraft carries a
+  per-section circulation state the six-state reduction does not contain, so
+  the matrix is a projection of a larger system. The columns are still honest —
+  the lag state lives in `CoupledState` and is copied with each perturbed
+  aircraft, which is what a real disturbance does to a real wing — but a mode
+  living mostly in the circulation would not appear in that table at all.
+
+**3. THE STEP RESPONSE FOUND AN ARITHMETIC DEFECT THAT IS NOT ABOUT THE FLAG AT
+ALL, AND IT REACHES THE SHIPPED AIRCRAFT.** `SolveUnsteady` runs once every
+`aerodynamicsInterval` steps and advances two states whose rates are per
+SECOND: the separation state, which is what gives stall its memory, and strand
+2's Wagner lag. **It was being handed the SIMULATION step.** At the shipped
+interval 6 both have therefore been running at **one sixth of real time**, for
+as long as the separation state has existed.
+
+- **This is a defect, not a modelling choice.** A rate per second times the
+  wrong number of seconds is arithmetic.
+- **The test that says so is schedule-independence**, which is the property an
+  aerodynamic state is supposed to have and did not. Fraction of a circulation
+  step closed after 1.0 s: **0.280 at interval 6 against 0.544 at interval 1**,
+  a factor of two apart on the same aircraft. Corrected, interval 6 gives
+  **0.523** against interval 1's 0.544 — they agree.
+- **The instrument self-checked without being asked to.** At interval 1 the
+  elapsed time IS the simulation step, so the correction must be a no-op there,
+  and the corrected and uncorrected interval-1 columns are identical to three
+  decimals at every row.
+- Behind `CoupledParagliderSolver::SetAerodynamicElapsedTime`, **defaulting OFF,
+  and the default is the wrong one.** That is uncomfortable and it is
+  deliberate: see what it costs, below.
+
+**4. AND A SECOND DISCREPANCY SURVIVES THAT FIX: THE IMPLEMENTED LAG IS NOT
+WAGNER'S.** Checked against R. T. Jones' published Φ(s) written out in the test
+rather than reached for from the solver, reading circulation straight out of
+the carried state instead of inferring it back through the aircraft's lift
+coefficient. At **interval 1, where the elapsed-time defect does not apply at
+all**:
+
+| semichords | gap closed | Wagner Φ(s) |
+|---|---|---|
+| 0.08 | **0.119** | **0.508** |
+| 0.45 | 0.214 | 0.546 |
+| 2.27 | 0.322 | 0.682 |
+| 9.09 | **0.544** | **0.869** |
+
+- **Wagner's defining feature is that half the lift arrives immediately.** This
+  wing delivers 12% of it. At nine semichords it has closed 54% of a gap the
+  published function closes 87% of.
+- **Strand 1 verified `WagnerLag` in isolation against Jones' values and that
+  verification stands.** What was never checked is the COMPOSITE: strand 2
+  wired it into a one-pass solve, and a single explicit pass across sections
+  carries lag of its own. The wing is lagged twice and only one of the two is
+  published. **The mechanism is not yet identified and should not be guessed
+  at** — the measurement says the composite response is far slower than Wagner,
+  not why.
+- **This is the general form of the lesson item 19 keeps relearning**, one turn
+  further out: a component verified against a published number, and then wired
+  into something that changes it, with nothing re-checking the assembled
+  answer against the same published number.
+
+**WHAT THIS COSTS, AND WHY THE CORRECTION DEFAULTS OFF.** With the elapsed time
+corrected, **seven gates fail** across `collapse_tests` and `coupled_tests` —
+every one of them a collapse benchmark, which is exactly what these two states
+are made of. Among them is **strand 2's own gate**: peak mirror residual
+**4.04e-01 against the 3.52e-14 item 27 reports**, so the symmetry that closed
+strand 2 does not survive its own aerodynamics running at the right speed.
+
+- **The flag-off path is unchanged and all twelve suites are green**, which is
+  the only reason this lands as a measurement rather than as a red tree.
+- **Turning it on is a level's re-derivation, not a line**, and it should be
+  taken as one: every collapse gate re-characterised against a wing whose stall
+  memory runs six times faster than the one they were written against.
+- **And it should probably wait for the Wagner discrepancy**, because fixing
+  the elapsed time alone leaves the composite response still several times
+  slower than the published function — so the gates would be re-derived once
+  and then need it again. The two are one piece of work.
+- **Item 27's headline is not retracted, it is re-scoped.** The lagged path did
+  hold mirror symmetry at round-off, and that measurement was real. What it
+  does not establish is what the strand-3 note claimed for it: that the
+  separated solve is single-valued under *Wagner's* lag. It was single-valued
+  under a much deeper one.
 
 ## Data gaps
 
@@ -2641,7 +2821,20 @@ and this is the closure measurement item 11 asked for** — they are real, they
 are small, and they do not reach the mode that blocks item 17.
 
 **SO THE PHUGOID'S DAMPING IS NOT AVAILABLE FROM ANY TERM CURRENTLY IN THE
-SOLVER**, and the honest next question is why it is as low as it is. At L/D
+SOLVER**, and the honest next question is why it is as low as it is.
+
+> **ONE MORE TERM HAS SINCE BEEN TRIED, AND THE SENTENCE ABOVE SURVIVES IT.**
+> Level 11 strand 2's lagged circulation is a term that was NOT in the solver
+> when this was written, and unsteady circulatory lag is the classical reason
+> an aerofoil oscillating in incidence is damped where a quasi-steady one is
+> not — so it was a candidate on physics rather than by elimination. Measured
+> (item 30): the phugoid's **σ does not move** — -0.021 against -0.024 at
+> T = 0.25, -0.025 against -0.020 at T = 0.10 — while its PERIOD falls 40%,
+> from 16.4 s to 10.2 s. ζ falls from 0.055 to 0.039, and reading that as lost
+> damping is an error of arithmetic: ζ = σ/ωₙ and what moved is the
+> denominator. **The lag reaches the phugoid's frequency and not its damping.**
+> What it does damp is the pendulum, from ζ 0.09 to 0.25 — the ring this file
+> spends several paragraphs above declining to spend. At L/D
 10.95 the classic 1/(√2·L/D) gives ζ 0.065 against a measured 0.035, and in
 absolute terms the damping RATE is worse than that ratio suggests: σ = ζ·ωn is
 0.0134/s here against 0.085/s for a rigid aircraft at the same L/D — **six

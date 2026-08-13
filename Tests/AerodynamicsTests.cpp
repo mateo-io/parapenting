@@ -177,6 +177,182 @@ int main()
               "seconds elapsed");
     }
 
+    // -- Level 11 strand 2, item 30: does the WIRED lag reproduce Wagner? --
+    //
+    // Everything above tests the COMPONENT, and it passes. Item 30 measured
+    // the composite through the coupled solver and found it closing 12% of a
+    // circulation step where Phi(0) is 0.5 - so either the wiring adds lag of
+    // its own, or the coupled measurement was reading something else. This
+    // block removes the coupled solver entirely: no pressure, no membrane, no
+    // collapse, no suspension, no settle. One wing, one airspeed step, and the
+    // circulation read straight out of the state it is carried in.
+    //
+    // THE CONTROL IS THE POINT OF THE BLOCK. The quasi-steady wing takes the
+    // same step, and a converged quasi-steady solve reaches its new answer
+    // within the solve, so its 'closed' must be ~1 immediately. That is what
+    // establishes the denominator every lagged number is quoted against - the
+    // one thing the coupled measurement never checked, and the first thing to
+    // suspect when arithmetic and measurement disagree.
+    {
+        std::printf("\nLevel 11 strand 2 (item 30): the WIRED lag against "
+                    "Wagner's own function\n");
+        const CanopyGeometry canopy;
+        const VortexStepMethodSolver wing(
+            canopy, SectionPolarTable::Analytic(), 45);
+
+        constexpr double TrimSpeedMps = 11.0;
+        constexpr double AlphaRad = 0.06;
+        constexpr double StepFactor = 1.20;
+        constexpr double StepSeconds = 1.0 / 120.0;
+
+        const auto totalCirculation = [](const VsmSeparationState& state)
+        {
+            double total = 0.0;
+            for (const double gamma : state.circulation) total += gamma;
+            return total;
+        };
+        // Jones' form, written out here rather than reached for from the
+        // solver, for the same reason strand 1 does it: a check against the
+        // code's own copy of a published curve is not a check.
+        const auto phi = [](double s)
+        {
+            return 1.0 - 0.165 * std::exp(-0.0455 * s)
+                       - 0.335 * std::exp(-0.30 * s);
+        };
+
+        // Mean chord, for reduced time. The solver spans the projected wing,
+        // so its own reference area over its own span is the chord the
+        // sections actually have rather than the root chord.
+        const double meanChordM = wing.ReferenceAreaM2() / wing.ReferenceSpanM();
+
+        struct Trace
+        {
+            double before = 0.0;
+            std::vector<double> circulation;
+            // What the lagged pass aimed at, span-summed. The two places the
+            // shortfall can live are the response and the target, and this is
+            // what tells them apart.
+            std::vector<double> target;
+        };
+        const auto march = [&](bool lagCirculation, int steps)
+        {
+            VsmSettings settings;
+            settings.lagCirculation = lagCirculation;
+            VsmSeparationState state;
+            Trace out;
+            // Hold trim long enough that both the separation state and the lag
+            // state are settled on it. A transient here would be indexed as a
+            // response to the step, which is exactly the seed error strand 2
+            // measured and fixed on its own gate.
+            for (int step = 0; step < 600; ++step)
+                wing.SolveUnsteady(Inflow(AlphaRad, TrimSpeedMps), state,
+                                   StepSeconds, settings);
+            out.before = totalCirculation(state);
+            for (int step = 0; step < steps; ++step)
+            {
+                const VsmSolution solved = wing.SolveUnsteady(
+                    Inflow(AlphaRad, TrimSpeedMps * StepFactor), state,
+                    StepSeconds, settings);
+                out.circulation.push_back(totalCirculation(state));
+                double aimed = 0.0;
+                for (const VsmSectionResult& section : solved.sections)
+                    aimed += section.quasiSteadyCirculation;
+                out.target.push_back(aimed);
+            }
+            return out;
+        };
+
+        // 240 steps is 2 s, which at the stepped speed is about twenty
+        // semichords - the range over which Phi does most of its arriving.
+        const Trace quasi = march(false, 240);
+        const Trace lagged = march(true, 240);
+
+        // Incidence is fixed and speed is up by `StepFactor`, and
+        // G = 1/2 V c Cl, so the quasi-steady target is the same factor above
+        // trim. Asserted through the control below rather than assumed.
+        const double gap = (StepFactor - 1.0) * quasi.before;
+        std::printf("  trim circulation %.4f quasi-steady, %.4f lagged "
+                    "(mean chord %.3f m)\n",
+                    quasi.before, lagged.before, meanChordM);
+        std::printf("%12s %12s %12s %12s %12s %12s\n", "t", "semichords",
+                    "quasi", "lagged", "aimed at", "Wagner Phi");
+        double worstLagged = 0.0;
+        for (const int step : {1, 2, 6, 12, 30, 60, 120, 240})
+        {
+            const std::size_t i = static_cast<std::size_t>(step) - 1;
+            if (i >= lagged.circulation.size()) continue;
+            const double seconds = step * StepSeconds;
+            const double s = ReducedTimeSemichords(
+                TrimSpeedMps * StepFactor, meanChordM, seconds);
+            const double closedQuasi =
+                (quasi.circulation[i] - quasi.before) / gap;
+            const double closedLagged =
+                (lagged.circulation[i] - lagged.before) / gap;
+            worstLagged = std::max(worstLagged, std::fabs(closedLagged
+                                                          - phi(s)));
+            const double aimed = (lagged.target[i] - lagged.before) / gap;
+            std::printf("%11.3fs %12.2f %12.3f %12.3f %12.3f %12.3f\n",
+                        seconds, s, closedQuasi, closedLagged, aimed, phi(s));
+        }
+
+        // THE CONTROL, and if this fails nothing else in the block is
+        // readable: the quasi-steady wing has to arrive at the target inside
+        // its own solve, which is what makes `gap` the right denominator.
+        Check(std::fabs((quasi.circulation.front() - quasi.before) / gap - 1.0)
+                  < 0.05,
+              "CONTROL: the quasi-steady wing closes its circulation step "
+              "within one solve, which is what makes the target 1.2x trim and "
+              "the denominator below meaningful");
+
+        // The measurement. NOT a tolerance the code passes - it is the size of
+        // a disagreement, bounded so it cannot move unnoticed while item 30 is
+        // open. Wagner's defining feature is that half the lift arrives at
+        // once; strand 1 checks that on the component and it holds there.
+        const double firstStep =
+            (lagged.circulation.front() - lagged.before) / gap;
+        std::printf("  first step closes %.3f where Wagner's Phi(0) is 0.500, "
+                    "worst gap %.3f\n", firstStep, worstLagged);
+        Check(firstStep < 0.45,
+              "KNOWN DEFECT (item 30): the wired lag delivers far less than "
+              "Wagner's instantaneous half. Strand 1's component check passes "
+              "and this composite one does not, so the wiring carries lag the "
+              "published function does not describe. Bounded, not fixed");
+
+        // AND THE DEFECT IS LOCATED, WHICH IS WHAT THE 'aimed at' COLUMN IS
+        // FOR. The shortfall is not in the response - it is in the target.
+        // Wagner is doing exactly its job, onto a target that has itself
+        // travelled only a fraction of the way, so the two multiply:
+        //
+        //     closed = Phi(s) x (how far the one-pass target has moved)
+        //
+        // Checked as a product rather than asserted as a story, because a
+        // mechanism that reproduces the number to three decimals is identified
+        // and one that merely points the right way is a hypothesis.
+        const double aimedFirst = (lagged.target.front() - lagged.before) / gap;
+        const double sFirst = ReducedTimeSemichords(
+            TrimSpeedMps * StepFactor, meanChordM, StepSeconds);
+        std::printf("  and it decomposes: Phi(%.3f) %.3f x target %.3f = "
+                    "%.3f against a measured %.3f\n",
+                    sFirst, phi(sFirst), aimedFirst, phi(sFirst) * aimedFirst,
+                    firstStep);
+        Check(std::fabs(phi(sFirst) * aimedFirst - firstStep) < 0.01,
+              "ITEM 30 LOCATED: the response is Wagner's and the TARGET is "
+              "not. One Jacobi pass across sections closes under a quarter of "
+              "a circulation step, and the lag is applied to that - the two "
+              "multiply, and their product is the measured shortfall");
+
+        // WHICH CONTRADICTS THE ASSUMPTION STRAND 2 WAS BUILT ON. Its design
+        // note drops the global fixed point across sections on the grounds
+        // that it is "the coupling the quasi-steady path already documents as
+        // the weak one". The quasi-steady column above closes 1.000 in one
+        // solve because its outer loop ITERATES; one pass of the same coupling
+        // leaves three quarters of the step on the table.
+        Check(aimedFirst < 0.5,
+              "and the cross-section coupling strand 2 dropped as 'the weak "
+              "one' carries most of a circulation step: one Jacobi pass closes "
+              "under half of it, where the iterated solve closes all of it");
+    }
+
     // -- section polars ---------------------------------------------------
     {
         const SectionPolarTable polar = SectionPolarTable::Analytic();

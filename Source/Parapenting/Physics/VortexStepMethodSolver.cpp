@@ -586,6 +586,10 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
                 largestCirculation = std::max(largestCirculation,
                                               std::fabs(circulation[i]));
 
+                solution.sections[i].circulation = circulation[i];
+                solution.sections[i].quasiSteadyCirculation =
+                    nextCirculation[i];
+
                 // Re-evaluate the section AT THE LAGGED CIRCULATION. The pass
                 // above reported whatever incidence the quasi-steady target
                 // sat at, which is not where this wing is: the lagged

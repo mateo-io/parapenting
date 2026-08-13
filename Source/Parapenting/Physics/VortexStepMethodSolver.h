@@ -218,6 +218,17 @@ struct VsmSeparationState
 struct VsmSectionResult
 {
     double circulation = 0.0;
+    // ITEM 30, DIAGNOSTIC ONLY. What the lagged pass aimed AT this tick,
+    // before Wagner's response was applied - the target, not the state. Set
+    // only under `VsmSettings::lagCirculation`; equal to `circulation` on
+    // every quasi-steady path, where the solve converges onto its own target.
+    //
+    // Here to answer one question and it is worth its own field: item 30
+    // measured the wired lag closing 12% of a circulation step where Jones'
+    // Phi(0) is 0.5, and there are exactly two places that can come from -
+    // the response applied to the target, or the target itself. Nothing else
+    // reads this.
+    double quasiSteadyCirculation = 0.0;
     double angleOfAttackRad = 0.0;
     double liftCoefficient = 0.0;
     double dragCoefficient = 0.0;
@@ -296,9 +307,20 @@ struct VsmSettings
     // and iterating it explicitly would make the answer depend on the mesh.
     // That term is solved implicitly here exactly as it is quasi-steadily, and
     // it is well posed on its own. What is dropped is the global fixed point
-    // ACROSS sections - the coupling the quasi-steady path already documents as
-    // the weak one - which becomes explicit in time, which is what a state is
+    // ACROSS sections, which becomes explicit in time, which is what a state is
     // allowed to be.
+    //
+    // THIS NOTE USED TO CALL THAT COUPLING "the weak one" AND ITEM 30 MEASURED
+    // THAT IT IS NOT. One Jacobi pass across sections closes 0.233 of a
+    // circulation step where the iterated solve closes 1.000, so what is
+    // dropped here carries three quarters of the answer. The consequence is
+    // that the wing is lagged TWICE - once by Wagner and once by this pass -
+    // and the unpublished one is the larger: the composite closes 12% of a step
+    // where Jones' Phi(0) is 0.5, and Phi(0.076) x 0.233 reproduces it to three
+    // decimals. `aerodynamics_tests` measures it, bounded rather than fixed.
+    // The self term above really is the strong one and really is implicit; what
+    // was wrong is the inference about the remainder. Weak PER ITERATION is not
+    // the same as weak IN TOTAL.
     //
     // Item 6 is why this is worth doing rather than a refinement: a wing in deep
     // stall has no stable steady state to find, because the separated branch's

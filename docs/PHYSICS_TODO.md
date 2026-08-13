@@ -57,15 +57,23 @@ wider than the flag:
 - **And the implemented lag is not Wagner's** even with that corrected: 12% of
   a circulation step closed where the published Φ(0) is 0.5. Strand 1's
   verification of the component stands; nothing ever re-checked the composite.
+  **Now located: the response is Wagner's and the TARGET is not.** One Jacobi
+  pass across sections closes 0.233 of a step where the iterated solve closes
+  1.000, and 0.508 × 0.233 = 0.118 against the measured 0.119. The
+  cross-section coupling strand 2 dropped as "the weak one" carries three
+  quarters of the answer.
 - **The lag is not item 19's missing phugoid damping.** σ unchanged, period
   down 40%, and the pendulum's ζ nearly tripled — which is the ring item 19
   spent several rounds declining to spend.
 
-So the front of the queue is now **item 30**: identify the second lag, fix both,
-and re-derive the collapse gates once against a wing whose aerodynamic states
-run at the right speed. Everything Level 11 does after that is read against
-those benchmarks, so doing it in the other order pays for the re-derivation
-twice.
+So the front of the queue is now **item 30**. Its first half is done — the
+second lag is identified, in the target rather than in the response — and what
+is left is a design decision and a re-derivation: **choose how the lagged path
+reaches its target without reintroducing the fixed point item 6 says does not
+exist**, then fix both defects and re-derive the collapse gates ONCE against a
+wing whose aerodynamic states run at the right speed. Everything Level 11 does
+after that is read against those benchmarks, so doing it in the other order
+pays for the re-derivation twice.
 
 After that, and unchanged: **item 19 and item 24 together** — the legacy pitch
 axis, which is what a pilot actually flies and where the only two handling
@@ -2503,12 +2511,55 @@ all**:
   wing delivers 12% of it. At nine semichords it has closed 54% of a gap the
   published function closes 87% of.
 - **Strand 1 verified `WagnerLag` in isolation against Jones' values and that
-  verification stands.** What was never checked is the COMPOSITE: strand 2
-  wired it into a one-pass solve, and a single explicit pass across sections
-  carries lag of its own. The wing is lagged twice and only one of the two is
-  published. **The mechanism is not yet identified and should not be guessed
-  at** — the measurement says the composite response is far slower than Wagner,
-  not why.
+  verification stands.** What was never checked is the COMPOSITE.
+
+**IDENTIFIED, AND IT IS THE TARGET RATHER THAN THE RESPONSE.** Measured in
+`aerodynamics_tests`, on the VSM alone — no coupled solver, no pressure,
+membrane, collapse or suspension, and no settle. It reproduces the coupled
+numbers to three decimals (0.119, 0.167, 0.215, 0.247, 0.327, 0.425, 0.552),
+so **the defect is inside the VSM** and none of the five subsystems removed
+had anything to do with it.
+
+| semichords | quasi-steady | lagged | **what the pass aimed at** | Wagner Φ |
+|---|---|---|---|---|
+| 0.08 | **1.000** | 0.119 | **0.233** | 0.508 |
+| 0.45 | 1.000 | 0.215 | 0.391 | 0.546 |
+| 2.27 | 1.000 | 0.327 | 0.477 | 0.682 |
+| 9.09 | 1.000 | 0.552 | 0.651 | 0.869 |
+| 18.19 | 1.000 | 0.687 | 0.756 | 0.926 |
+
+- **THE CONTROL IS THE COLUMN THAT MAKES THE REST READABLE, AND IT WAS MISSING
+  FROM THE FIRST MEASUREMENT.** The quasi-steady wing closes **1.000** in one
+  solve, at every row. That is what establishes that the target is 1.2× trim
+  and that the denominator every other number is quoted against is the right
+  one. Item 30's first pass through the coupled solver never printed it, and
+  without it "the lagged wing closes 0.119" has an obvious alternative
+  explanation — a wrong denominator — that could not be ruled out.
+- **Wagner is doing exactly its job.** The shortfall is that it is applied to a
+  target that has itself barely moved, and the two multiply:
+  **Φ(0.076) = 0.508 × target 0.233 = 0.118 against a measured 0.119.** Checked
+  as a product in the suite rather than told as a story, because a mechanism
+  that reproduces the number to three decimals is identified and one that
+  merely points the right way is a hypothesis.
+- **AND THAT CONTRADICTS THE ASSUMPTION STRAND 2 WAS BUILT ON.** Its design
+  note drops the global fixed point across sections on the stated grounds that
+  it is *"the coupling the quasi-steady path already documents as the weak
+  one"*. **It is not weak.** The quasi-steady column closes 1.000 in one solve
+  *because its outer loop iterates*; one Jacobi pass of the same coupling
+  closes **0.233**, leaving three quarters of a circulation step on the table.
+  The self term is implicit and well posed, exactly as the note says — the
+  cross-section coupling it was separated from is what carries the step.
+- **So "explicit in time" is not a small change of scheme here.** A state is
+  allowed to be explicit in time; what is not allowed is for that to be sold as
+  dropping a weak coupling when it is carrying most of the answer. The wing is
+  lagged twice, only one of the two is published, and **the unpublished one is
+  the larger**.
+- **What this does NOT settle** is what to do about it. Iterating the outer
+  loop under lag would restore the target and reintroduce the fixed point that
+  item 6 says does not exist in the separated regime — which is the whole
+  reason strand 2 wanted a state. Sub-iterating a fixed number of passes, or
+  lagging a converged target rather than a one-pass one, are both candidates
+  and neither has been measured.
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

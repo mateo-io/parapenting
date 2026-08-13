@@ -4134,8 +4134,47 @@ semichords where Φ is 0.87. Two mechanisms, and they are independent:
    had it since it was written.
 2. **The one-pass solve carries lag of its own.** A single explicit pass across
    sections is itself a relaxation in time, so the wing is lagged twice and
-   only one of the two is published. Not yet identified further, and it should
-   not be guessed at.
+   only one of the two is published.
+
+**§81b. THE SECOND LAG, LOCATED — AND THE TWO LESSONS ARE ABOUT INSTRUMENTS,
+NOT ABOUT WINGS.**
+
+The identification took two moves, and both are reusable.
+
+**Move one: remove everything that might be responsible.** The first
+measurement went through the coupled solver — pressure, membrane, collapse,
+suspension, a 370 s settle, a schedule. Re-run against the VSM alone, with all
+of that gone and no settle at all, it reproduces the same numbers to three
+decimals. That is worth more than it cost: it did not just localise the defect,
+it retired five hypotheses at once, and it turned a twenty-minute measurement
+into a two-second one.
+
+**Move two: print the control.** The first measurement asked "how far does the
+lagged wing travel?" and never asked the same question of the quasi-steady one.
+Its answer is **1.000 in one solve, at every row** — which is what establishes
+that the target is where it was assumed to be and the denominator is the right
+one. Without that column, "the lagged wing closes 0.119" has an obvious rival
+explanation that cannot be excluded: a wrong denominator. **A ratio without its
+control is a number, not a measurement**, and this file has now made that
+mistake in both directions — §80's three retrieval failures, and here.
+
+**What the control then revealed** is that the shortfall is not in the response
+at all. Wagner is applied correctly, to a target that has itself moved 23% of
+the way, and the two multiply: Φ(0.076) = 0.508 × 0.233 = **0.118 against a
+measured 0.119**. Reproducing the number to three decimals is what separates an
+identification from a hypothesis, and it is worth spending a field on the
+solver to get — `quasiSteadyCirculation` exists only so this could be asked.
+
+**AND THE PHYSICS UNDERNEATH IT IS A RETIRED ASSUMPTION.** Strand 2's design
+drops the global fixed point across sections on the stated grounds that it is
+"the coupling the quasi-steady path already documents as the weak one". Measured:
+one Jacobi pass of that coupling closes 0.233 of a circulation step where the
+iterated solve closes 1.000. **It is not weak — it carries three quarters of
+the answer.** The self-induced term really is the strong one and really is
+handled implicitly, exactly as the note says; the error is in what was inferred
+about the *remainder* from that. A term that is weak *per iteration* is not the
+same as a term that is weak *in total*, and the design note slid between the
+two without noticing.
 
 **The reusable part is the shape of the gap, not the numbers.** A component
 gate answers "is this function right". An integration gate answers "does the

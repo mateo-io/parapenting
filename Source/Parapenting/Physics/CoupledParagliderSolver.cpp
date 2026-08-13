@@ -726,6 +726,15 @@ void CoupledParagliderSolver::Step(
             // derivative measured on a wing with different drag from the one
             // flying would be a difference between two wings.
             settings.sectionDragOffset = SectionDragOffsetValue;
+            // Strand 2. False unless a test set it. Note this reaches the
+            // unsteady solve below but NOT the frozen and still probes: those
+            // call `SolveFrozen`, which passes no lag state and so stays
+            // quasi-steady. That is deliberate for now - a probe is a what-if
+            // about the same instant, and giving it its own marching lag state
+            // would make it a second aircraft - but it does mean the damping
+            // derivative is measured on the unlagged wing while the flying wing
+            // is lagged. Worth measuring before it is worth fixing.
+            settings.lagCirculation = LagCirculationValue;
             if (Profiling) ++ProfileValue.aeroTicks;
             const VsmSolution solved = [&]
             {

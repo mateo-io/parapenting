@@ -2207,7 +2207,7 @@ the oscillation, not a measurement of it.
   Deep brake and full bar do reach a steady state, but a fully separated one at
   86–91° of incidence — a steady state, not a trim point.
 
-## Level 11 — unsteady wake (STARTED, strand 1 of 4 landed)
+## Level 11 — unsteady wake (STARTED, strands 1 and 2 of 4 landed)
 
 **Budget 36 hours, and it took four sessions to specify before any of it was
 written.** The master plan's work list is four strands. They are not equally
@@ -2242,7 +2242,8 @@ envelope.
   not the implementation, and the only reason that was visible in one step is
   that the reference was computed independently instead of captured from the
   code's own output. A golden-output test would have frozen the error.
-- **NOT WIRED INTO THE FORCE ASSEMBLY, and that is strand 2, not an oversight.**
+- **Was not wired into the force assembly when this landed, and that was strand
+  2 rather than an oversight — item 27 has since wired it.**
   The VSM builds section forces from the polar's lift coefficient and lets
   circulation enter only through the induced velocity. Lagging one without the
   other reports a wing whose lift and downwash disagree. The indicial response
@@ -2250,21 +2251,88 @@ envelope.
   against, and checking it inside a coupled solve would have been strictly
   harder for no benefit.
 
-**27. Strand 2: wire the lag into the circulation solve.** The real work, and
-the one that touches the blocker. The Γ↔Cl relationship has to be lagged
-consistently: `Γ = ½ V c Cl`, so lagging the circulation and reading an
-unlagged polar is not a smaller version of the right answer, it is a wing whose
-downwash and lift come from different instants.
+**27. Strand 2: wire the lag into the circulation solve. DONE, and the gate
+passed.** Behind `VsmSettings::lagCirculation`, reached from the coupled solver
+by `SetLagCirculation`. **Defaults OFF — the shipped aircraft does not fly on
+this yet**, and turning it on is a decision that belongs with strand 3, not with
+the measurement below.
 
-- **Why this is the strand that can move the blocker.** A circulation that is a
-  STATE does not need a fixed point — it integrates forward. The separated
-  regime's missing single-valued solution is a property of the *steady* solve,
-  and the honest treatment named in item 6 is exactly this.
-- Not proven, and should not be assumed: it is possible the lag makes the
-  transient well posed while the underlying branch selection stays ambiguous.
-  The gate above decides it, and it already exists.
-- Done when: the symmetric frontal holds mirror symmetry through the tick that
-  currently breaks it, at the shipped schedule.
+- **The change is to the OUTER loop only.** The inner secant stays: a section's
+  own trailing legs pass half a panel width from its control point, so the
+  self-induced downwash has a gain of chord over panel width, and iterating it
+  explicitly would make the answer depend on the mesh. That term is still
+  implicit. What is dropped is the global fixed point ACROSS sections — the
+  coupling the quasi-steady path already documents as the weak one — which
+  becomes explicit in time, which is what a state is allowed to be.
+- **The Γ↔Cl consistency is satisfied by construction rather than by
+  agreement.** `Γ = ½ V c Cl`, so the force assembly reads the lift coefficient
+  back OUT of the lagged circulation, `Cl = 2Γ/(cV)`, instead of sampling the
+  polar a second time. The induced velocity uses the same `circulation` array,
+  so lift and downwash cannot come from different instants.
+- **Incidence is re-evaluated AT the lagged circulation**, not reported from the
+  quasi-steady target. This is not cosmetic: the collapse model's
+  `externalNoseCp` is a function of section incidence alone, so reporting the
+  target's incidence hands the pressure margin a field belonging to a wing that
+  does not exist — and that margin field is what the gate measures.
+- **Kept Jacobi, deliberately.** Updating circulation in place would make the
+  pass Gauss-Seidel, and a sweep running left to right gives one half-span an
+  extra update — an order-dependent seed, in the one solve whose mirror
+  symmetry is the gate.
+- Drag and moment follow the lagged incidence but are **not themselves lagged**.
+  Wagner's function is the indicial response of circulatory lift; there is no
+  published indicial response for profile drag or the quarter-chord couple to
+  check against, and inventing one would be a dial (guiding rule 13).
+- `converged` reports false in this mode, because a state does not converge to
+  anything on a tick. Safe: the coupled solver's rejection test reads
+  finiteness and magnitude only, never `converged` — which is item 24 again.
+
+**THE GATE, MEASURED.** The quasi-steady solve loses the margin field's mirror
+symmetry at **t=1.350 s** and cannot be iterated out of it — caps of 40, 200 and
+600 all break on that same tick, because the separated solve has nothing
+single-valued to converge to. With the circulation carried as a state:
+
+| | quasi-steady | lagged state |
+|---|---|---|
+| margin symmetry breaks | t=1.350 s | never |
+| fold symmetry breaks | t=1.400 s | never |
+| peak mirror residual | 7.23e-01 | **3.52e-14** |
+| deepest fold | 1.000 | 0.998 |
+
+It does not break at all, and it holds symmetry at round-off rather than merely
+under the threshold. **This settles the question item 27 recorded rather than
+assumed**: it was possible the lag would make the transient well posed while
+branch selection stayed ambiguous, which would have shown as a break that moved
+later or shrank without going away. It went away.
+
+- **The wing still takes a real frontal**, and that guard is in the gate. A lag
+  deep enough to stop the canopy folding would pass a symmetry test by deleting
+  the event it is supposed to survive. It folds to 0.998 against the
+  quasi-steady wing's 1.000 — the same collapse to three figures, measured in
+  the same harness rather than compared against a number from a different one,
+  which is why the fold-depth print was added to both blocks and not only the
+  new one.
+- **The seed is load-bearing and was wrong first.** A one-pass lagged solve
+  cannot start from zero circulation: the quasi-steady path tolerates it because
+  its outer loop iterates to the fixed point regardless of where it begins, but
+  one pass from zero has every section computing its target with no other
+  section's downwash, and `Settle` then adopts that over-lifted wing as the
+  state rather than passing through it. Measured before the fix: symmetry lost
+  at **t=0.000 s** with the canopy already fully collapsed. That is a seed
+  transient and says nothing about the aerodynamics. The lagged path now seeds
+  from a converged quasi-steady solve, and only the lagged path does — seeding
+  unconditionally would turn the quasi-steady first solve from a cold start into
+  a warm one, which converges to the same wing but not to the same bits.
+- **The flag-off path is bit-identical to before the change**, checked rather
+  than assumed: the whole coupled suite diffs to exactly the four new printed
+  lines, with `1.87e-15` entering the fold and the 1.350/1.400 breaks unmoved.
+
+**What is NOT settled, and should not be read into the above.** The frozen and
+still probes still call `SolveFrozen`, which passes no lag state and so stays
+quasi-steady. The damping derivative is therefore measured on an unlagged wing
+while the flying wing is lagged. That is deliberate for now — a probe is a
+what-if about the same instant, and giving it its own marching lag state would
+make it a second aircraft — but it is an inconsistency, and it is worth
+measuring before it is worth fixing.
 
 **28. Strand 3: shed and convect a free wake.** Trailing-edge vorticity shed and
 convected, the canopy flying through its own wake, with adaptive near-field
@@ -2277,10 +2345,16 @@ than instant response; a brake release with correct overshoot timing and no
 tuned delay; wake cost inside the frame budget for 60 s of aggressive
 manoeuvring. Strand 4 is mostly measurement once 2 and 3 are in.
 
-- **Note for whoever takes strand 2:** item 25 is unresolved, and at
-  `aerodynamicsInterval` 6 the §69 control gate fails. Strand 2's own gate is
-  in the same suite. Settle item 25 first or every strand-2 measurement will be
-  read against a benchmark whose control is red.
+- **Note for whoever takes strand 3:** strand 2 removed the entry criterion's
+  blocker but did not turn itself on. The separated solve is single-valued
+  under `lagCirculation` — that is what the symmetry result means — so §68's
+  entry criterion is met by the lagged path and not by the shipped one.
+  Deciding whether strand 3 builds on the lagged path or waits for it to ship
+  is the first question, not an implementation detail.
+- *Historical, now closed:* this used to warn that item 25 was unresolved and
+  the §69 control gate red at `aerodynamicsInterval` 6, so strand-2
+  measurements would be read against a red benchmark. Both are settled, and the
+  gate above was read against a green suite.
 
 ## Data gaps
 

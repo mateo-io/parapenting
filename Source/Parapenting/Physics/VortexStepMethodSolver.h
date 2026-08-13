@@ -143,13 +143,15 @@ struct VsmSolveInput
 // history to store. Phi(0) = 0.5 and Phi(inf) = 1 fall out of the states
 // starting at zero and ending at the target.
 //
-// NOT YET WIRED INTO THE FORCE ASSEMBLY, deliberately. The VSM builds section
-// forces from the polar's lift coefficient and lets circulation enter only
-// through the induced velocity, so lagging one without the other would report a
-// wing whose lift and downwash disagree. Doing that properly is strand 2. This
-// is landed and tested on its own because the indicial response is the part
-// with a published answer to check against, and checking it separately is
-// cheaper than debugging it inside a coupled solve.
+// WIRED INTO THE FORCE ASSEMBLY BY STRAND 2, behind `VsmSettings::lagCirculation`.
+// The consistency requirement that kept it unwired through strand 1 is real and
+// is what the wiring has to satisfy: the VSM builds section forces from a lift
+// coefficient and lets circulation enter the induced velocity, so lagging one
+// without the other reports a wing whose lift and downwash come from different
+// instants. `SolveHeld` therefore takes the lagged circulation as the state and
+// derives the lift coefficient back out of it, Cl = 2*Gamma/(c V), rather than
+// reading the polar a second time. Lift and downwash are then the same instant
+// by construction instead of by agreement.
 struct WagnerLag
 {
     // The two lag states, in whatever unit the lagged quantity is.
@@ -206,6 +208,10 @@ struct VsmSeparationState
     // converges. This is what makes running the VSM inside a flight loop
     // affordable at all.
     std::vector<double> circulation;
+    // Strand 2's per-section indicial state, used only when
+    // `VsmSettings::lagCirculation` is set. Empty otherwise, so a quasi-steady
+    // caller carries no cost and no state it does not read.
+    std::vector<WagnerLag> circulationLag;
     bool initialised = false;
 };
 
@@ -279,6 +285,31 @@ struct VsmSettings
     // item 12 refuses to ship; the difference is that this one is set by a test
     // at the moment of asking and is zero everywhere else.
     double sectionDragOffset = 0.0;
+
+    // LEVEL 11, STRAND 2. Make the bound circulation a STATE that integrates
+    // forward under Wagner's indicial response, instead of a fixed point solved
+    // afresh every tick.
+    //
+    // What this changes is the OUTER loop only. The inner secant stays: a
+    // section's own trailing legs pass half a panel width from its control
+    // point, so the self-induced downwash has a gain of chord over panel width
+    // and iterating it explicitly would make the answer depend on the mesh.
+    // That term is solved implicitly here exactly as it is quasi-steadily, and
+    // it is well posed on its own. What is dropped is the global fixed point
+    // ACROSS sections - the coupling the quasi-steady path already documents as
+    // the weak one - which becomes explicit in time, which is what a state is
+    // allowed to be.
+    //
+    // Item 6 is why this is worth doing rather than a refinement: a wing in deep
+    // stall has no stable steady state to find, because the separated branch's
+    // negative lift slope inverts the downwash feedback between sections. That
+    // is a property of the STEADY solve. A circulation that integrates forward
+    // is not asked to find it.
+    //
+    // DEFAULTS OFF, and the shipped aircraft does not fly on it until the gate
+    // in `coupled_tests` says it should - the symmetric frontal holding mirror
+    // symmetry through the tick that currently breaks it.
+    bool lagCirculation = false;
 };
 
 // Everything hanging below the wing. On a paraglider this is not a correction
@@ -429,10 +460,16 @@ public:
 private:
     VortexStepMethodSolver() = default;
     void BuildInfluenceMatrix(double coreFraction);
+    // `lag` non-null selects strand 2: one Jacobi pass producing each section's
+    // quasi-steady circulation, then a Wagner step of `lagDeltaSeconds` toward
+    // it, instead of iterating to a fixed point. `warmCirculation` carries the
+    // state in and out in that mode rather than merely seeding it.
     VsmSolution SolveHeld(
         const VsmSolveInput& input, const VsmSettings& settings,
         const std::vector<double>* heldSeparation,
-        std::vector<double>* warmCirculation) const;
+        std::vector<double>* warmCirculation,
+        std::vector<WagnerLag>* lag = nullptr,
+        double lagDeltaSeconds = 0.0) const;
 
     std::vector<VsmSection> SectionList;
     SectionPolarTable Polars;

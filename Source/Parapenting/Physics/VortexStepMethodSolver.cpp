@@ -301,11 +301,48 @@ VsmSolution VortexStepMethodSolver::SolveUnsteady(
         state.sectionSeparation.resize(SectionList.size());
         for (std::size_t i = 0; i < SectionList.size(); ++i)
             state.sectionSeparation[i] = seed.sections[i].separation;
+
+        // Strand 2 needs the CIRCULATION seeded here too, and only strand 2:
+        // seeding it unconditionally would change the quasi-steady path's
+        // first solve from a cold start to a warm one, which converges to the
+        // same wing but not to the same bits.
+        //
+        // A one-pass lagged solve cannot be started from zero. The
+        // quasi-steady path tolerates a zero start because its outer loop
+        // iterates to the fixed point regardless of where it begins; the
+        // lagged path takes ONE pass, so a zero start means every section
+        // computes its target in the absence of any other section's downwash,
+        // which is a wing carrying far too much lift - and `Settle` then
+        // adopts that as the state rather than passing through it. Measured
+        // before this was added: the frontal lost mirror symmetry at t=0.000 s
+        // with the canopy already fully collapsed, which is the seed transient
+        // and not the aerodynamics under test.
+        if (settings.lagCirculation)
+        {
+            state.circulation.resize(SectionList.size());
+            for (std::size_t i = 0; i < SectionList.size(); ++i)
+                state.circulation[i] = seed.sections[i].circulation;
+        }
         state.initialised = true;
     }
 
+    // Strand 2's lag states start settled on the circulation the wing is
+    // already carrying, for the same reason the separation state starts at
+    // equilibrium: a wing that has been holding this loading forever carries no
+    // transient, and starting them at zero would inject one at t=0.
+    if (settings.lagCirculation
+        && state.circulationLag.size() != SectionList.size())
+    {
+        state.circulationLag.assign(SectionList.size(), WagnerLag{});
+        if (state.circulation.size() == SectionList.size())
+            for (std::size_t i = 0; i < SectionList.size(); ++i)
+                state.circulationLag[i].Settle(state.circulation[i]);
+    }
+
     const VsmSolution solution = SolveHeld(
-        input, settings, &state.sectionSeparation, &state.circulation);
+        input, settings, &state.sectionSeparation, &state.circulation,
+        settings.lagCirculation ? &state.circulationLag : nullptr,
+        deltaSeconds);
 
     // Advance the state with the incidence this solve found. Separation
     // spreads faster than it clears.
@@ -347,8 +384,10 @@ VsmSolution VortexStepMethodSolver::SolveFrozen(
 VsmSolution VortexStepMethodSolver::SolveHeld(
     const VsmSolveInput& input, const VsmSettings& settings,
     const std::vector<double>* heldSeparation,
-    std::vector<double>* warmCirculation) const
+    std::vector<double>* warmCirculation,
+    std::vector<WagnerLag>* lag, double lagDeltaSeconds) const
 {
+    const bool lagging = lag != nullptr;
     const std::size_t count = SectionList.size();
     VsmSolution solution;
     solution.sections.resize(count);
@@ -356,8 +395,18 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
 
     std::vector<double> circulation(count, 0.0);
     std::vector<double> nextCirculation(count, 0.0);
+    // The in-plane speed each section saw at its own quasi-steady circulation.
+    // Kept because the lagged pass converts circulation back to a lift
+    // coefficient, Cl = 2*Gamma/(c V), and needs the same V the target was
+    // built from rather than a second, slightly different, recomputation.
+    std::vector<double> sectionSpeed(count, 0.0);
+    // Every section's inflow with its OWN circulation excluded, kept so the
+    // lagged pass can re-evaluate incidence at the lagged circulation instead
+    // of reporting the incidence the target happened to sit at.
+    std::vector<Vec3> sectionExternal(count);
     if (warmCirculation && warmCirculation->size() == count)
         circulation = *warmCirculation;
+    if (lagging && lag->size() != count) lag->assign(count, WagnerLag{});
 
     const double dynamicPressureScale = 0.5 * input.airDensityKgM3;
     // The air's velocity relative to the wing. Converted here, once.
@@ -408,7 +457,13 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
     double relaxation = std::clamp(settings.relaxation, 0.01, 1.0);
     double previousResidual = 1.0e30;
 
-    for (int iteration = 0; iteration < settings.maxIterations; ++iteration)
+    // Lagging makes the circulation a state, so there is no fixed point to
+    // iterate toward: one Jacobi pass builds the quasi-steady target and the
+    // Wagner step below does the advancing. Iterating here instead would
+    // converge the state onto its own target every tick, which is the
+    // quasi-steady answer with extra steps.
+    const int outerPasses = lagging ? 1 : settings.maxIterations;
+    for (int iteration = 0; iteration < outerPasses; ++iteration)
     {
         double largestChange = 0.0;
         double largestCirculation = 1.0e-9;
@@ -427,6 +482,7 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             const Vec3 rotational = Cross(
                 input.angularVelocityBodyRadps, section.controlPointM);
             external += freestream - rotational + sectionGust(i);
+            sectionExternal[i] = external;
 
             const double brake =
                 input.leftBrake * (1.0 - section.rightSideFraction)
@@ -487,6 +543,7 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
 
             double speed = 0.0;
             const double alpha = sectionFlow(i, external, gamma, speed);
+            sectionSpeed[i] = speed;
             const SectionPolarSample polar = heldSeparation
                 ? Polars.SampleAtSeparation(
                       alpha, brake, (*heldSeparation)[i], cellPressure)
@@ -509,6 +566,90 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
                 -Dot(freeInPlane, section.normal),
                 Dot(freeInPlane, section.chordDirection))
                 - sectionIncidenceOffset(i);
+        }
+
+        if (lagging)
+        {
+            // Advanced in its own pass, not in the loop above, so that every
+            // section's target is built from the SAME circulation distribution.
+            // Updating in place would make this Gauss-Seidel, and a sweep that
+            // runs left to right would give the left half of the wing one more
+            // update than the right - an order-dependent seed, in the one solve
+            // whose mirror symmetry is the gate.
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                const double ds = ReducedTimeSemichords(
+                    sectionSpeed[i], SectionList[i].chordM, lagDeltaSeconds);
+                circulation[i] = (*lag)[i].Advance(nextCirculation[i], ds);
+                largestChange = std::max(largestChange,
+                    std::fabs(nextCirculation[i] - circulation[i]));
+                largestCirculation = std::max(largestCirculation,
+                                              std::fabs(circulation[i]));
+
+                // Re-evaluate the section AT THE LAGGED CIRCULATION. The pass
+                // above reported whatever incidence the quasi-steady target
+                // sat at, which is not where this wing is: the lagged
+                // circulation induces a different downwash on the section, so
+                // it flies at a different angle. That distinction is not
+                // cosmetic here - the collapse model's `externalNoseCp` is a
+                // function of section incidence alone, so reporting the
+                // target's incidence would hand the pressure margin a field
+                // belonging to a wing that does not exist.
+                double speed = 0.0;
+                const double alpha = sectionFlow(
+                    i, sectionExternal[i], circulation[i], speed);
+                const double brake =
+                    input.leftBrake * (1.0 - SectionList[i].rightSideFraction)
+                    + input.rightBrake * SectionList[i].rightSideFraction;
+                const double cellPressure =
+                    input.internalPressureCoefficient.empty() ? 1.0
+                    : input.internalPressureCoefficient[
+                          std::min(i,
+                                   input.internalPressureCoefficient.size() - 1)];
+                const SectionPolarSample polar = heldSeparation
+                    ? Polars.SampleAtSeparation(
+                          alpha, brake, (*heldSeparation)[i], cellPressure)
+                    : Polars.SampleAtEquilibrium(alpha, brake, cellPressure);
+
+                solution.sections[i].angleOfAttackRad = alpha;
+                // Drag and moment are read off the polar at that incidence,
+                // NOT lagged. Wagner's function is the indicial response of
+                // circulatory lift; there is no published indicial response
+                // for profile drag or for the quarter-chord couple to check
+                // against, and inventing one would be a dial (guiding rule
+                // 13). They follow the incidence, which is itself lagged
+                // through the circulation, so they are not frozen either.
+                solution.sections[i].dragCoefficient =
+                    polar.dragCoefficient + settings.sectionDragOffset;
+                solution.sections[i].momentCoefficient =
+                    polar.momentCoefficient;
+
+                // Lift read back OUT of the lagged circulation rather than off
+                // the polar. This is the consistency item 27 names: the
+                // induced velocity below uses `circulation`, so taking the
+                // lift coefficient from the polar instead would be a wing
+                // whose downwash and lift come from different instants. At a
+                // settled state the two agree by construction, because the
+                // target the lag converges on is the polar's own answer.
+                if (speed > 1.0e-6)
+                    solution.sections[i].liftCoefficient =
+                        2.0 * circulation[i] / (SectionList[i].chordM * speed);
+
+                const Vec3 freeInPlane = -(freestream
+                    - SectionList[i].spanDirection
+                        * Dot(freestream, SectionList[i].spanDirection));
+                solution.sections[i].inducedAngleRad = alpha - std::atan2(
+                    -Dot(freeInPlane, SectionList[i].normal),
+                    Dot(freeInPlane, SectionList[i].chordDirection))
+                    - sectionIncidenceOffset(i);
+            }
+            solution.iterations = 1;
+            solution.residual = largestChange / largestCirculation;
+            // A state does not converge to anything this tick, so saying it
+            // did would be a false diagnostic. The residual above is the
+            // distance still to travel, which is a transient and not an error.
+            solution.converged = false;
+            break;
         }
 
         for (std::size_t i = 0; i < count; ++i)

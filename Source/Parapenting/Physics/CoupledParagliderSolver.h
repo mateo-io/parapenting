@@ -618,6 +618,13 @@ public:
     void SetSectionDragOffset(double offset) { SectionDragOffsetValue = offset; }
     double SectionDragOffset() const { return SectionDragOffsetValue; }
 
+    // LEVEL 11, STRAND 2: solve the circulation as a lagged STATE rather than
+    // as a fixed point, under Wagner's indicial response. Off by default, so
+    // the shipped aircraft is bit-identical to having no hook until the gate
+    // says otherwise. See `VsmSettings::lagCirculation` for what it changes.
+    void SetLagCirculation(bool lag) { LagCirculationValue = lag; }
+    bool LagCirculation() const { return LagCirculationValue; }
+
     // AN IMPOSED ANTISYMMETRIC TWIST, linear in span, radians at the right
     // tip and nose-up positive. THIS IS AN INSTRUMENT, NOT PHYSICS: nothing
     // supplies it in flight, it is zero by default, and the default is
@@ -877,6 +884,7 @@ private:
     ConstructionProbe ConstructionProbeSettings;
     double SwingDampingRatioValue = 0.35;
     double SectionDragOffsetValue = 0.0;
+    bool LagCirculationValue = false;
     double ImposedSpanwiseTwistRadValue = 0.0;
     int FlightSolveIterationCapValue = 40;
     HarnessDragReference HarnessDragReferenceValue =

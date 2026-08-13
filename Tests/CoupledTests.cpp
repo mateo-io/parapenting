@@ -1223,6 +1223,9 @@ int main()
             double marginAtBreak = 0.0;
             double previousFold = 0.0;
             double previousMargin = 0.0;
+            // Run-wide, so the lagged block below can be compared against this
+            // harness rather than against a fold depth from a different one.
+            double deepestFold = 0.0;
             double incidenceBreakTime = -1.0;
             double internalBreakTime = -1.0;
             double peakResidual = 0.0;
@@ -1247,6 +1250,7 @@ int main()
                 double internalResidual = 0.0;
                 for (std::size_t i = 0; i < count; ++i)
                     deepest = std::max(deepest, fold.sections[i].collapse);
+                deepestFold = std::max(deepestFold, deepest);
                 for (std::size_t i = 0; i < count / 2; ++i)
                 {
                     const std::size_t mirror = count - 1 - i;
@@ -1316,6 +1320,7 @@ int main()
                         "one step, %.0f ms later\n",
                         foldBreakTime, foldBeforeBreak, foldAtBreak,
                         1000.0 * (foldBreakTime - marginBreakTime));
+            std::printf("  deepest fold %.3f\n", deepestFold);
 
             // The wing enters the fold mirror-symmetric. Every seed candidate
             // §65-§67 examined is upstream of this moment, so any of them
@@ -1361,6 +1366,122 @@ int main()
                   "before it appears in the fold - so it arrives from the "
                   "separated solve upstream, and the collapse solver reveals "
                   "it rather than making it");
+        }
+
+        // -- LEVEL 11 STRAND 2: the same frontal, circulation as a state -----
+        //
+        // Item 27's gate. The block above measures the break under the
+        // quasi-steady solve: the margin field loses mirror symmetry in a
+        // single aerodynamic tick at t=1.350 s, and the cap sweep says it is
+        // not short of iterations - 40, 200 and 600 break on the same tick,
+        // because the separated solve has nothing single-valued to converge
+        // to. This runs the identical frontal with `SetLagCirculation`, which
+        // makes the bound circulation integrate forward under Wagner's
+        // indicial response instead of being re-solved as a fixed point.
+        //
+        // The claim under test is item 27's, and it is not assumed: a
+        // circulation that is a STATE does not need a fixed point, so the
+        // branch ambiguity that produces the O(1) jump may simply not arise.
+        // It is equally possible the lag makes the transient well posed while
+        // the underlying branch selection stays ambiguous, in which case the
+        // break moves later or shrinks without going away. Both outcomes are
+        // readable here, which is why this measures before it asserts.
+        {
+            CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+            wing.SetLagCirculation(true);
+            CoupledState state;
+            Fly(wing, handsOff, 10.0, &state);
+
+            const double dt = wing.Schedule().timeStepS;
+            const int steps = static_cast<int>(14.0 / dt);
+            const int gustSteps = static_cast<int>(1.0 / dt);
+
+            constexpr double BrokenSymmetry = 1.0e-9;
+            double marginBreakTime = -1.0;
+            double foldBreakTime = -1.0;
+            double peakResidual = 0.0;
+            double deepestFold = 0.0;
+
+            for (int step = 0; step < steps; ++step)
+            {
+                CoupledAtmosphere air;
+                if (step < gustSteps)
+                {
+                    air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                    air.gustSpanFrom = -1.0;
+                    air.gustSpanTo = 1.0;
+                }
+                wing.Step(state, handsOff, air);
+
+                const CollapseResult& fold = wing.Diagnostics().collapseState;
+                const std::size_t count = fold.sections.size();
+                double residual = 0.0;
+                double marginResidual = 0.0;
+                for (std::size_t i = 0; i < count; ++i)
+                    deepestFold = std::max(deepestFold,
+                                           fold.sections[i].collapse);
+                for (std::size_t i = 0; i < count / 2; ++i)
+                {
+                    const std::size_t m = count - 1 - i;
+                    residual = std::max(residual,
+                        std::fabs(fold.sections[i].collapse
+                                  - fold.sections[m].collapse));
+                    marginResidual = std::max(marginResidual,
+                        std::fabs(fold.sections[i].pressureMargin
+                                  - fold.sections[m].pressureMargin));
+                }
+                peakResidual = std::max(peakResidual, residual);
+
+                const double time = step * dt;
+                if (marginBreakTime < 0.0 && marginResidual > BrokenSymmetry)
+                    marginBreakTime = time;
+                if (foldBreakTime < 0.0 && residual > BrokenSymmetry)
+                    foldBreakTime = time;
+            }
+
+            std::printf("Symmetric frontal with circulation as a lagged "
+                        "state:\n");
+            std::printf("  margin symmetry breaks at t=%.3f s (quasi-steady: "
+                        "1.350 s)\n", marginBreakTime);
+            std::printf("  fold symmetry breaks at t=%.3f s (quasi-steady: "
+                        "1.400 s)\n", foldBreakTime);
+            std::printf("  peak mirror residual %.2e, deepest fold %.3f\n",
+                        peakResidual, deepestFold);
+
+            // The frontal must still BE a frontal. A lag deep enough to stop
+            // the wing folding at all would pass a symmetry gate by removing
+            // the event it is supposed to survive, which is the way this
+            // change could look like success while being a regression. This
+            // wing folds to 0.998 against the quasi-steady wing's 1.000 - the
+            // same collapse to three figures - so the symmetry gate below is
+            // not bought by declining to collapse. Both blocks print the depth
+            // so the comparison is this harness against itself.
+            Check(deepestFold > 0.1,
+                  "the lagged wing still takes a real frontal - the symmetry "
+                  "gate below is a wing that folded symmetrically, not a wing "
+                  "that declined to fold");
+
+            // ITEM 27's DONE-CRITERION. The quasi-steady solve loses the
+            // margin field's mirror symmetry at t=1.350 s and cannot be cured
+            // by iterating - 40, 200 and 600 all break on that same tick. With
+            // the circulation carried as a state it does not break at all:
+            // -1.0 here is the never-broke sentinel, and the peak residual
+            // over the whole event stays at round-off.
+            //
+            // What this settles is the open question item 27 recorded rather
+            // than assumed. It was possible the lag would make the transient
+            // well posed while branch selection stayed ambiguous, which would
+            // have shown up as a break that moved later or shrank without
+            // going away. It went away.
+            Check(marginBreakTime < 0.0 && foldBreakTime < 0.0,
+                  "LEVEL 11 STRAND 2: the symmetric frontal holds mirror "
+                  "symmetry through the whole event once the circulation is a "
+                  "lagged state - the tick that breaks the quasi-steady solve "
+                  "at t=1.350 s passes without a break");
+            Check(peakResidual < 1.0e-9,
+                  "and it holds it at round-off rather than merely staying "
+                  "under the break threshold - a separated solve that never "
+                  "had to pick a branch never acquires the asymmetry");
         }
 
         // -- what produces the jump, and whether iterations can cure it -----

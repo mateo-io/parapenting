@@ -457,12 +457,30 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
     double relaxation = std::clamp(settings.relaxation, 0.01, 1.0);
     double previousResidual = 1.0e30;
 
-    // Lagging makes the circulation a state, so there is no fixed point to
-    // iterate toward: one Jacobi pass builds the quasi-steady target and the
-    // Wagner step below does the advancing. Iterating here instead would
-    // converge the state onto its own target every tick, which is the
-    // quasi-steady answer with extra steps.
-    const int outerPasses = lagging ? 1 : settings.maxIterations;
+    // HOW MANY PASSES BUILD THE TARGET THE WAGNER STEP THEN AIMS AT.
+    //
+    // This comment used to read: "Lagging makes the circulation a state, so
+    // there is no fixed point to iterate toward: one Jacobi pass builds the
+    // quasi-steady target and the Wagner step below does the advancing.
+    // Iterating here instead would converge the state onto its own target
+    // every tick, which is the quasi-steady answer with extra steps."
+    //
+    // THE LAST SENTENCE IS FALSE AND ITEM 30 MEASURED THE COST OF BELIEVING
+    // IT. Wagner's function is the indicial response of circulation toward its
+    // STEADY value, so iterating the target and then lagging ONCE per tick is
+    // not "the quasi-steady answer with extra steps" - it is the only
+    // arrangement in which the published function means what it says. What one
+    // pass produces is a target that has itself travelled 0.233 of a step, and
+    // Wagner applied to that gives 0.508 x 0.233 = 0.118 where Phi(0) is 0.5.
+    //
+    // The state is still a state: it is advanced exactly once per solve, from
+    // its own lag registers, and it is never asked to converge to anything.
+    // What iterates is the TARGET, which is allowed to.
+    //
+    // Defaults to 1, which is bit-identical to the behaviour above.
+    const int outerPasses =
+        lagging ? std::max(1, settings.lagTargetPasses)
+                : settings.maxIterations;
     for (int iteration = 0; iteration < outerPasses; ++iteration)
     {
         double largestChange = 0.0;
@@ -568,7 +586,9 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
                 - sectionIncidenceOffset(i);
         }
 
-        if (lagging)
+        // The Wagner step happens ONCE, on the last pass. Everything before it
+        // is the ordinary quasi-steady relaxation building the target.
+        if (lagging && iteration == outerPasses - 1)
         {
             // Advanced in its own pass, not in the loop above, so that every
             // section's target is built from the SAME circulation distribution.
@@ -672,7 +692,13 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
 
         solution.iterations = iteration + 1;
         solution.residual = largestChange / largestCirculation;
-        if (solution.residual < settings.convergenceTolerance)
+        // Under lag the loop always runs its full count, because breaking out
+        // early would skip the Wagner pass that only the LAST iteration
+        // performs. It also keeps the cost per solve a fixed, declared number
+        // rather than one that depends on how convergeable the current flow
+        // happens to be - which in the separated regime is exactly the
+        // property item 6 says is missing.
+        if (!lagging && solution.residual < settings.convergenceTolerance)
         {
             solution.converged = true;
             break;

@@ -4165,6 +4165,33 @@ measured 0.119**. Reproducing the number to three decimals is what separates an
 identification from a hypothesis, and it is worth spending a field on the
 solver to get — `quasiSteadyCirculation` exists only so this could be asked.
 
+**§81c. AND THE OBVIOUS REPAIR WAS MEASURED AND RULED OUT, WHICH IS WORTH MORE
+THAN TRYING IT WOULD HAVE BEEN.**
+
+Once the shortfall was located in the target, the fix looks like one line: build
+the target with more passes. Measured across seven budgets in both regimes, it
+converges at trim — 0.991 in 32 passes, against a shipped flight solve that
+already pays for 40 — and past the stall it does not converge at *any* budget up
+to 64. It does not merely fail to arrive: it lands one to five times the step
+away, on the wrong side, **and where it lands depends on the budget**.
+Non-monotone in pass count is the signature of an iteration with nothing
+attracting it, and it is item 6's "no single-valued solution" made visible as a
+function of something, rather than asserted.
+
+- **A negative result with a number on it closes a route; an untried idea does
+  not.** The next session would otherwise have spent itself on the same repair,
+  and would have found it working beautifully in every attached-flow test
+  before failing on the one benchmark that matters.
+- **The regime where it works is the regime where it is not needed.** Strand 2
+  exists for the separated case. Any scheme validated at trim and shipped for
+  collapses has been tested where the question does not arise.
+- **The denominator was printed before the ratio, this time.** §81b's lesson,
+  applied one section later at the first opportunity: the separated wing's trim
+  circulation is 843.5 against 337.9 attached, so the column is a measurement
+  rather than a division by something small. Retrieving a lesson in the session
+  after writing it is not automatic — §80 recorded three failures to do exactly
+  that — so it is worth noting when it happens.
+
 **AND THE PHYSICS UNDERNEATH IT IS A RETIRED ASSUMPTION.** Strand 2's design
 drops the global fixed point across sections on the stated grounds that it is
 "the coupling the quasi-steady path already documents as the weak one". Measured:

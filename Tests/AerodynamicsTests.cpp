@@ -234,10 +234,12 @@ int main()
             // what tells them apart.
             std::vector<double> target;
         };
-        const auto march = [&](bool lagCirculation, int steps)
+        const auto march = [&](bool lagCirculation, int steps,
+                               int targetPasses = 1, double alphaRad = AlphaRad)
         {
             VsmSettings settings;
             settings.lagCirculation = lagCirculation;
+            settings.lagTargetPasses = targetPasses;
             VsmSeparationState state;
             Trace out;
             // Hold trim long enough that both the separation state and the lag
@@ -245,13 +247,13 @@ int main()
             // response to the step, which is exactly the seed error strand 2
             // measured and fixed on its own gate.
             for (int step = 0; step < 600; ++step)
-                wing.SolveUnsteady(Inflow(AlphaRad, TrimSpeedMps), state,
+                wing.SolveUnsteady(Inflow(alphaRad, TrimSpeedMps), state,
                                    StepSeconds, settings);
             out.before = totalCirculation(state);
             for (int step = 0; step < steps; ++step)
             {
                 const VsmSolution solved = wing.SolveUnsteady(
-                    Inflow(AlphaRad, TrimSpeedMps * StepFactor), state,
+                    Inflow(alphaRad, TrimSpeedMps * StepFactor), state,
                     StepSeconds, settings);
                 out.circulation.push_back(totalCirculation(state));
                 double aimed = 0.0;
@@ -351,6 +353,111 @@ int main()
               "and the cross-section coupling strand 2 dropped as 'the weak "
               "one' carries most of a circulation step: one Jacobi pass closes "
               "under half of it, where the iterated solve closes all of it");
+
+        // -- THE DESIGN MEASUREMENT: what does the target cost? ------------
+        //
+        // Item 30's remaining half is a decision, and this is the number it
+        // turns on. If the target needs a handful of passes, iterating it is
+        // affordable and the composite can be made to follow Wagner. If it
+        // needs hundreds, or if the count explodes where item 6 says there is
+        // no fixed point, then a converged target is not available and the
+        // scheme has to be something else.
+        //
+        // Reported at trim AND deep in the separated regime, because those are
+        // the two regimes with different answers and the second is the one
+        // strand 2 exists for.
+        // 25 degrees is well past the section stall - deep in the separated
+        // branch, which is where item 6 says the negative lift slope inverts
+        // the downwash feedback and the steady solve has nothing single-valued
+        // to converge to. Each case computes its own gap from its own trim,
+        // because the separated wing does not carry the attached one's
+        // circulation.
+        constexpr double SeparatedAlphaRad = 0.436;
+        const auto closureAt = [&](int passes, double alphaRad)
+        {
+            const Trace t = march(true, 1, passes, alphaRad);
+            const double ownGap = (StepFactor - 1.0) * t.before;
+            return std::fabs(ownGap) > 1.0e-9
+                ? (t.target.front() - t.before) / ownGap : 0.0;
+        };
+        // The quasi-steady control at each incidence, which is what "closed"
+        // is measured against. If the separated one does NOT reach 1.000, that
+        // is item 6 showing up rather than a problem with this table - and it
+        // is the answer to the design question either way, so it prints.
+        const Trace quasiSeparated = march(false, 1, 1, SeparatedAlphaRad);
+        const double quasiSeparatedGap =
+            (StepFactor - 1.0) * quasiSeparated.before;
+        const double quasiSeparatedClosed =
+            std::fabs(quasiSeparatedGap) > 1.0e-9
+                ? (quasiSeparated.circulation.front() - quasiSeparated.before)
+                      / quasiSeparatedGap
+                : 0.0;
+
+        // THE DENOMINATOR, PRINTED BEFORE ANY RATIO BUILT ON IT. A ratio whose
+        // divisor has not been shown is the mistake this item already made
+        // once, and the separated wing is exactly where a trim circulation
+        // could be near zero, oscillating, or signed - any of which would make
+        // the column beside it meaningless rather than interesting.
+        const Trace separatedTrim = march(true, 1, 1, SeparatedAlphaRad);
+        std::printf("\n  Trim circulation the separated column is measured "
+                    "against: %.4f, against\n  %.4f attached. Gap %.4f. A "
+                    "denominator that is sane is what makes the\n  numbers "
+                    "below a measurement rather than a division.\n",
+                    separatedTrim.before, quasi.before,
+                    (StepFactor - 1.0) * separatedTrim.before);
+
+        std::printf("\n  What the target costs, in Jacobi passes per solve:\n");
+        std::printf("%14s %16s %18s\n", "passes", "closed at trim",
+                    "closed at 25 deg");
+        for (const int passes : {1, 2, 4, 8, 16, 32, 64})
+            std::printf("%14d %16.3f %18.3f\n", passes,
+                        closureAt(passes, AlphaRad),
+                        closureAt(passes, SeparatedAlphaRad));
+        std::printf("%14s %16.3f %18.3f\n", "quasi-steady", 1.000,
+                    quasiSeparatedClosed);
+        std::printf("\n  'closed' is the TARGET, not the state - what one "
+                    "solve's passes reach before\n  Wagner is applied. The "
+                    "bottom row is the iterated quasi-steady solve, which is\n"
+                    "  what a converged target would be worth.\n\n");
+
+        // THE DESIGN ANSWER, AND IT HAS TWO HALVES THAT POINT OPPOSITE WAYS.
+        //
+        // ATTACHED: the target converges monotonically, and ~32 passes is
+        // PARITY with the 40-iteration cap the shipped flight solve already
+        // pays for and which item 19 measured converged. Affordable.
+        Check(closureAt(32, AlphaRad) > 0.95,
+              "ITEM 30: with the flow attached the target converges, in about "
+              "the same number of passes the shipped quasi-steady solve "
+              "already pays for - so a target Wagner can honestly be applied "
+              "to costs no more than today's aerodynamics");
+
+        // SEPARATED: it does not converge at ANY fixed budget up to 64, and it
+        // does not merely fail to arrive - it lands 1 to 5 times the step away,
+        // on the wrong side, and WHERE it lands depends on the budget. That is
+        // not an unconverged solve, it is an iteration with nothing attracting
+        // it, which is item 6 measured as a function of pass count for the
+        // first time.
+        //
+        // So "iterate the target" is not the fix: it works where the flow is
+        // attached and fails where it is separated, which is the regime strand
+        // 2 exists for. The full 600-iteration adaptive solve does land (the
+        // quasi-steady row), which is why the quasi-steady path works at all -
+        // but it gets there by an amount of work that has no bound, and buying
+        // a fixed-cost state with an unbounded solve inside it is not a state.
+        bool monotoneSeparated = true;
+        double previousSeparated = closureAt(1, SeparatedAlphaRad);
+        for (const int passes : {2, 4, 8, 16, 32, 64})
+        {
+            const double now = closureAt(passes, SeparatedAlphaRad);
+            if (now < previousSeparated) monotoneSeparated = false;
+            previousSeparated = now;
+        }
+        Check(!monotoneSeparated
+                  && std::fabs(closureAt(64, SeparatedAlphaRad)) > 1.0,
+              "AND THE OTHER HALF: past the stall the target is non-monotone "
+              "in the pass count and lands whole multiples of the step away, "
+              "so a fixed budget does not buy a converged target where item 6 "
+              "says there is no fixed point. Iterating is not the fix");
     }
 
     // -- section polars ---------------------------------------------------

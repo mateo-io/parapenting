@@ -66,14 +66,18 @@ wider than the flag:
   down 40%, and the pendulum's ζ nearly tripled — which is the ring item 19
   spent several rounds declining to spend.
 
-So the front of the queue is now **item 30**. Its first half is done — the
-second lag is identified, in the target rather than in the response — and what
-is left is a design decision and a re-derivation: **choose how the lagged path
-reaches its target without reintroducing the fixed point item 6 says does not
-exist**, then fix both defects and re-derive the collapse gates ONCE against a
-wing whose aerodynamic states run at the right speed. Everything Level 11 does
-after that is read against those benchmarks, so doing it in the other order
-pays for the re-derivation twice.
+So the front of the queue is now **item 30**, and two of its three parts are
+done. The second lag is identified — in the target, not the response — and the
+obvious repair has been measured and **ruled out**: iterating the target
+converges at trim for the price the shipped solve already pays, and past the
+stall it lands whole multiples of the step away with the answer depending on
+the budget. What is left is genuinely the hard part, and it is now a narrow
+question rather than an open one: **Wagner describes approach to a steady value,
+and in the separated regime this wing has none a bounded solve can find.** The
+three remaining routes are written out under item 30. **The collapse gates
+should be re-derived first** — the frontal is a separated-flow event, so it is
+the benchmark that decides between those routes, and it is currently
+characterised against aerodynamic states running six times slow.
 
 After that, and unchanged: **item 19 and item 24 together** — the legacy pitch
 axis, which is what a pilot actually flies and where the only two handling
@@ -2554,12 +2558,62 @@ had anything to do with it.
   dropping a weak coupling when it is carrying most of the answer. The wing is
   lagged twice, only one of the two is published, and **the unpublished one is
   the larger**.
-- **What this does NOT settle** is what to do about it. Iterating the outer
-  loop under lag would restore the target and reintroduce the fixed point that
-  item 6 says does not exist in the separated regime — which is the whole
-  reason strand 2 wanted a state. Sub-iterating a fixed number of passes, or
-  lagging a converged target rather than a one-pass one, are both candidates
-  and neither has been measured.
+**THE DESIGN QUESTION IS NOW MEASURED, AND THE ANSWER IS NO: ITERATING THE
+TARGET IS NOT THE FIX.** The obvious repair is to build the target with more
+than one Jacobi pass and apply Wagner to that, which is what
+`VsmSettings::lagTargetPasses` now makes measurable (default 1, bit-identical
+to what strand 2 shipped). Both regimes, each against its own trim, with the
+denominator printed before any ratio built on it:
+
+| passes | closed at trim | closed at 25° |
+|---|---|---|
+| 1 | 0.233 | -1.974 |
+| 2 | 0.339 | -3.094 |
+| 4 | 0.507 | -2.211 |
+| 8 | 0.725 | -5.333 |
+| 16 | 0.914 | -0.918 |
+| 32 | **0.991** | -3.922 |
+| 64 | **1.000** | -1.865 |
+| *quasi-steady* | *1.000* | *1.076* |
+
+- **ATTACHED, IT WORKS AND IT IS AFFORDABLE.** The target converges
+  monotonically and reaches 0.991 in 32 passes. **The shipped flight solve
+  already runs a 40-iteration cap**, and item 19 measured it converged there —
+  so a target Wagner can honestly be applied to costs no more than the
+  aerodynamics the aircraft flies on today, plus one Wagner step.
+- **SEPARATED, IT FAILS, AND NOT BY MISSING.** Past the stall the target lands
+  **one to five times the step away, on the wrong side, and where it lands
+  depends on the budget** — non-monotone in pass count, which is not an
+  unconverged solve but an iteration with nothing attracting it. This is item 6
+  measured as a function of pass count for the first time rather than asserted.
+- **The denominator was checked before the column was read**, because this item
+  already made that mistake once: separated trim circulation is **843.5 against
+  337.9 attached**, a gap of 168.7. The numbers are a measurement, not a
+  division by something small.
+- **So the scheme cannot be "more passes".** It works where the flow is
+  attached and fails where it is separated, which is precisely the regime
+  strand 2 exists for. The full 600-iteration adaptive solve *does* land
+  (the quasi-steady row, 1.076) — that is why the quasi-steady path works at
+  all — but it gets there by an amount of work with no bound, and **a
+  fixed-cost state with an unbounded solve inside it is not a state.**
+
+**WHAT IS LEFT, AND IT IS NOW A NARROW QUESTION.** Wagner's function describes
+approach to a STEADY value, and in the separated regime this wing does not have
+one that a bounded solve can find. So either:
+
+- the lag is applied to something other than a converged fixed point, and then
+  what it means has to be stated — it is no longer Jones' Φ and should not be
+  reported as it; or
+- the separated regime gets a different formulation entirely, which is item 6's
+  own suggestion and a level rather than a fix; or
+- the target is iterated where that converges and the scheme degrades
+  deliberately where it does not, which is honest only if the degradation is
+  declared and gated rather than discovered later.
+
+**None of these is chosen here, and none should be chosen without the collapse
+gates in front of it** — the frontal is a separated-flow event, so it is the
+benchmark that would decide between them, and it is currently characterised
+against aerodynamic states running six times slow.
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

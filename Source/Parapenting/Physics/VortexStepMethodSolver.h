@@ -332,6 +332,24 @@ struct VsmSettings
     // in `coupled_tests` says it should - the symmetric frontal holding mirror
     // symmetry through the tick that currently breaks it.
     bool lagCirculation = false;
+
+    // ITEM 30. How many Jacobi passes build the target the Wagner step aims
+    // at, per solve. Only read when `lagCirculation` is set.
+    //
+    // 1 is what strand 2 shipped and is bit-identical to it. It is also
+    // measurably wrong: one pass closes 0.233 of a circulation step where the
+    // iterated solve closes 1.000, so the wing carries that shortfall on top
+    // of Wagner's own lag and the composite bears no resemblance to the
+    // published function. See `aerodynamics_tests`.
+    //
+    // This is NOT the same knob as `maxIterations`, and the difference is the
+    // whole point: `maxIterations` is a cap on a loop that stops when it
+    // converges, and a solve that wants more of them is a solve in trouble.
+    // This is a fixed, declared amount of work done every solve whether or not
+    // anything converges - which is what keeps the separated regime, where
+    // item 6 says there is no fixed point to find, costing the same as any
+    // other and reporting no convergence it does not have.
+    int lagTargetPasses = 1;
 };
 
 // Everything hanging below the wing. On a paraglider this is not a correction

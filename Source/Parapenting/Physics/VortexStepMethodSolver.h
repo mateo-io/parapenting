@@ -262,6 +262,22 @@ struct VsmSolution
     // value means the solve was fighting the stall knee.
     double finalRelaxation = 0.0;
     bool converged = false;
+
+    // ITEM 30. HOW FAR THE TARGET ITSELF CONVERGED, under `lagCirculation`
+    // only. -1 where it was not measured, which is every quasi-steady solve
+    // and every lagged solve running a single pass - one pass has no
+    // pass-to-pass change to report, and reporting 0 there would say
+    // "converged" about a quantity nobody looked at.
+    //
+    // This is NOT `residual` and the distinction is the point. Under lag
+    // `residual` is the distance the STATE still has to travel, which is a
+    // transient and not an error - a healthy lagged solve reports a large one.
+    // Nothing therefore reported whether the target the Wagner step aims at
+    // is a converged fixed point or an iterate wandering, and item 30 measured
+    // that past the stall it is the second. This is that signal, so the
+    // separated regime can be DECLARED at fixed cost rather than discovered
+    // downstream in a collapse gate.
+    double targetResidual = -1.0;
 };
 
 struct VsmSettings

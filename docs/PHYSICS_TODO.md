@@ -2597,6 +2597,70 @@ denominator printed before any ratio built on it:
   all — but it gets there by an amount of work with no bound, and **a
   fixed-cost state with an unbounded solve inside it is not a state.**
 
+**AND THEN THE ATTACHED HALF WAS CLOSED: ON A CONVERGED TARGET THE COMPOSITE
+IS WAGNER'S.** Everything above measures the TARGET, which is one factor of the
+product — nobody had marched the wing on a converged target and asked the
+original question again. Same sweep, same harness, `lagTargetPasses = 64`:
+
+| semichords | closed (64 passes) | closed (1 pass) | Wagner Φ(s) |
+|---|---|---|---|
+| 0.08 | **0.510** | 0.119 | **0.508** |
+| 0.15 | 0.519 | 0.167 | 0.516 |
+| 0.45 | 0.554 | 0.215 | 0.546 |
+| 0.91 | 0.600 | 0.247 | 0.587 |
+| 2.27 | 0.701 | 0.327 | 0.682 |
+| 4.55 | 0.799 | 0.425 | 0.780 |
+| 9.09 | 0.882 | 0.552 | 0.869 |
+| 18.19 | 0.935 | 0.687 | 0.926 |
+
+Worst gap over the whole sweep **0.020**, against 0.389 at one pass. **Wagner's
+defining feature is that half the lift arrives immediately, and this wing
+delivers 0.510.**
+
+- **Asserted against Jones' curve, not against the old number.** "Closer than
+  one pass" would pass for a wing still several times slow. The gate is the
+  published function at every row, and the second check — worst gap under half
+  the old one — exists only to record that this is the same solver and the same
+  harness, so the change is of scheme and not of instrument.
+- **It was not a formality, and it could have failed.** The passes that build
+  the target start FROM the lagged state, so their fixed point is the
+  quasi-steady answer for a wing carrying the lagged downwash, not the final
+  one. That it reproduces the indicial response of the published function is a
+  measurement; had it not, "iterate the target" would have been wrong on the
+  attached side too.
+- **The composite now runs very slightly FAST, consistently: 0.510 against
+  0.508, 0.935 against 0.926.** Under 2% and in one direction, which is the
+  signature of the previous point — the target the state aims at each tick
+  sits marginally above the true steady value while the circulation is still
+  low. It is inside the gate and it is not noise; recorded so that if it grows
+  it is already a known quantity.
+
+**AND THE SEPARATED REGIME CAN NOW BE DECLARED RATHER THAN DISCOVERED**, which
+is the precondition of route 3 below. `VsmSolution::targetResidual` reports the
+pass-to-pass change in the TARGET, under `lagCirculation` only:
+
+| passes | target residual, trim | target residual, 25° |
+|---|---|---|
+| 2 | 1.88e-02 | 2.42e+00 |
+| 8 | 7.96e-03 | 9.86e-01 |
+| 32 | **2.58e-04** | **3.01e-01** |
+| 64 | **2.61e-06** | 1.01e+00 |
+
+- **This is NOT `residual`, and the distinction is why nothing was reporting
+  it.** Under lag `residual` is the distance the STATE still has to travel — a
+  transient, large on a perfectly healthy solve. So the solver had no field
+  that answered "is the thing I am aiming at a fixed point?", and item 30
+  measured that past the stall it is not one.
+- **Five to six orders of magnitude separate the regimes at the same fixed
+  cost.** The separated column does not shrink with budget at all — 0.30 at 32
+  passes and 1.01 at 64 — which is the non-monotone table above seen from
+  inside the solve rather than from a test harness.
+- **One pass reports −1, meaning NOT MEASURED, and that is deliberate.** One
+  pass has no pass-to-pass change; reporting 0 there would claim convergence
+  about a quantity nobody looked at, in exactly the setting that ships.
+- **It changes no numbers.** It reads `nextCirculation`, enters no circulation,
+  and is computed only under lag.
+
 **WHAT IS LEFT, AND IT IS NOW A NARROW QUESTION.** Wagner's function describes
 approach to a STEADY value, and in the separated regime this wing does not have
 one that a bounded solve can find. So either:
@@ -2608,7 +2672,13 @@ one that a bounded solve can find. So either:
   own suggestion and a level rather than a fix; or
 - the target is iterated where that converges and the scheme degrades
   deliberately where it does not, which is honest only if the degradation is
-  declared and gated rather than discovered later.
+  declared and gated rather than discovered later. **This is now the route with
+  both of its halves measured**: the converging side reproduces Jones' function
+  to 0.020 over the whole sweep at a cost the shipped solve already pays, and
+  the degradation is visible from inside the solve on the tick it happens,
+  through `targetResidual`, at fixed cost. What is still missing is the DECISION
+  about what the scheme does when that signal fires — which is a modelling
+  choice about separated flow, not a measurement.
 
 **None of these is chosen here, and none should be chosen without the collapse
 gates in front of it** — the frontal is a separated-flow event, so it is the

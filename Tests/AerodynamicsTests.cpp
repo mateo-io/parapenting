@@ -233,6 +233,9 @@ int main()
             // shortfall can live are the response and the target, and this is
             // what tells them apart.
             std::vector<double> target;
+            // How far the target's own iteration settled on the last solve.
+            // -1 where the solve did not measure it.
+            double targetResidual = -1.0;
         };
         const auto march = [&](bool lagCirculation, int steps,
                                int targetPasses = 1, double alphaRad = AlphaRad)
@@ -260,6 +263,7 @@ int main()
                 for (const VsmSectionResult& section : solved.sections)
                     aimed += section.quasiSteadyCirculation;
                 out.target.push_back(aimed);
+                out.targetResidual = solved.targetResidual;
             }
             return out;
         };
@@ -458,6 +462,111 @@ int main()
               "in the pass count and lands whole multiples of the step away, "
               "so a fixed budget does not buy a converged target where item 6 "
               "says there is no fixed point. Iterating is not the fix");
+
+        // -- IS THE COMPOSITE WAGNER'S ONCE THE TARGET IS CONVERGED? -------
+        //
+        // Everything above measured the TARGET, which is one factor of the
+        // product. Nobody has yet marched the wing on a converged target and
+        // asked the original question again: does `closed(s)` become Phi(s)?
+        //
+        // It is not a formality. The state is advanced from its own registers
+        // once per solve, and the passes that build the target start FROM the
+        // lagged state rather than from the previous target - so the fixed
+        // point they converge to is the quasi-steady answer for a wing whose
+        // downwash is the lagged one. Whether that reproduces the indicial
+        // response of the published function is a measurement, and if it does
+        // not, "iterate the target" would have been wrong on the attached side
+        // too and not only on the separated one.
+        const Trace converged = march(true, 240, 64);
+        std::printf("\n  The same sweep on a CONVERGED target (64 passes), "
+                    "which is the arrangement\n  in which Jones' function is "
+                    "supposed to mean what it says:\n");
+        std::printf("%12s %12s %14s %12s %12s\n", "t", "semichords",
+                    "closed (64)", "closed (1)", "Wagner Phi");
+        double worstConverged = 0.0;
+        for (const int step : {1, 2, 6, 12, 30, 60, 120, 240})
+        {
+            const std::size_t i = static_cast<std::size_t>(step) - 1;
+            if (i >= converged.circulation.size()) continue;
+            const double seconds = step * StepSeconds;
+            const double s = ReducedTimeSemichords(
+                TrimSpeedMps * StepFactor, meanChordM, seconds);
+            const double closed =
+                (converged.circulation[i] - converged.before) / gap;
+            worstConverged = std::max(worstConverged,
+                                      std::fabs(closed - phi(s)));
+            std::printf("%11.3fs %12.2f %14.3f %12.3f %12.3f\n", seconds, s,
+                        closed,
+                        (lagged.circulation[i] - lagged.before) / gap, phi(s));
+        }
+        const double convergedFirst =
+            (converged.circulation.front() - converged.before) / gap;
+        std::printf("  first step closes %.3f against Phi(0) = 0.500, worst "
+                    "gap over the sweep %.3f\n  (one pass: %.3f and %.3f)\n",
+                    convergedFirst, worstConverged, firstStep, worstLagged);
+
+        // THE HALF THAT WORKS, ASSERTED AS THE PUBLISHED FUNCTION AND NOT AS
+        // AN IMPROVEMENT. "Closer than one pass" would pass for a wing still
+        // several times slow; the check is against Jones' curve itself, at
+        // every row of the sweep.
+        Check(worstConverged < 0.05,
+              "ITEM 30, THE ATTACHED HALF CLOSED: with the target converged "
+              "the composite response IS Wagner's, across the whole sweep and "
+              "not merely at the first step. The lag the wing carried twice is "
+              "carried once, and the once is the published one");
+        Check(worstConverged < 0.5 * worstLagged,
+              "and it is the same solver and the same harness that measured "
+              "the defect, so the improvement is a change of scheme rather "
+              "than a change of instrument");
+
+        // -- CAN THE SEPARATED REGIME BE DECLARED RATHER THAN DISCOVERED? --
+        //
+        // The remaining route in item 30's list is the third: iterate where
+        // that converges and degrade deliberately where it does not, "honest
+        // only if the degradation is declared and gated rather than discovered
+        // later". Declaring it needs a signal available INSIDE the solve, at
+        // the fixed cost the state is supposed to have. `residual` is not that
+        // signal - under lag it reports the distance the state still has to
+        // travel, which is large on a healthy solve. `targetResidual` is.
+        //
+        // This does not choose the route. It measures whether the route is
+        // available at all, which is what "not chosen without the collapse
+        // gates in front of it" leaves open and what a gate would need.
+        std::printf("\n  Does the solve KNOW which regime it is in? The "
+                    "target's own residual,\n  at fixed cost, on the same two "
+                    "incidences:\n");
+        std::printf("%14s %20s %20s\n", "passes", "target resid trim",
+                    "target resid 25 deg");
+        const auto residualAt = [&](int passes, double alphaRad)
+        {
+            return march(true, 1, passes, alphaRad).targetResidual;
+        };
+        for (const int passes : {2, 4, 8, 16, 32, 64})
+            std::printf("%14d %20.3e %20.3e\n", passes,
+                        residualAt(passes, AlphaRad),
+                        residualAt(passes, SeparatedAlphaRad));
+        std::printf("  A single pass reports %.1f at both, which is the "
+                    "sentinel: one pass has no\n  pass-to-pass change, and "
+                    "reporting zero there would claim convergence about\n  a "
+                    "quantity nobody measured.\n\n",
+                    residualAt(1, AlphaRad));
+
+        Check(residualAt(1, AlphaRad) < 0.0
+                  && residualAt(1, SeparatedAlphaRad) < 0.0,
+              "one pass reports NOT MEASURED rather than converged, which is "
+              "the shipped setting and the one where a false green would be "
+              "worst");
+        Check(residualAt(32, AlphaRad) < 1.0e-3,
+              "attached, the target's own residual falls to where a gate could "
+              "read it - so 'converged' is a claim the solve can make about "
+              "itself rather than one the test makes on its behalf");
+        Check(residualAt(32, SeparatedAlphaRad)
+                  > 100.0 * residualAt(32, AlphaRad),
+              "AND SEPARATED IT DOES NOT, BY ORDERS OF MAGNITUDE. The regime "
+              "where iterating the target fails is visible from inside the "
+              "solve at fixed cost, so route 3's degradation can be DECLARED "
+              "on the tick it happens instead of surfacing later as a collapse "
+              "gate nobody can attribute");
     }
 
     // -- section polars ---------------------------------------------------

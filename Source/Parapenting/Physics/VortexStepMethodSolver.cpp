@@ -457,6 +457,12 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
     double relaxation = std::clamp(settings.relaxation, 0.01, 1.0);
     double previousResidual = 1.0e30;
 
+    // Last pass's target, kept only under lag, so that `targetResidual` can
+    // say whether the iterated target is settling on something. Nothing else
+    // reads it and it does not enter any circulation, so the numbers this
+    // solve produces are unchanged by its presence.
+    std::vector<double> previousTarget;
+
     // HOW MANY PASSES BUILD THE TARGET THE WAGNER STEP THEN AIMS AT.
     //
     // This comment used to read: "Lagging makes the circulation a state, so
@@ -584,6 +590,27 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
                 -Dot(freeInPlane, section.normal),
                 Dot(freeInPlane, section.chordDirection))
                 - sectionIncidenceOffset(i);
+        }
+
+        // Does the target the Wagner step will aim at have a fixed point, and
+        // did these passes find it? Measured as the pass-to-pass change in the
+        // target itself, which is a different question from `residual` below
+        // and the one nothing was asking. Read-only: it changes no circulation.
+        if (lagging)
+        {
+            if (!previousTarget.empty())
+            {
+                double change = 0.0;
+                double largest = 1.0e-9;
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    change = std::max(change,
+                        std::fabs(nextCirculation[i] - previousTarget[i]));
+                    largest = std::max(largest, std::fabs(nextCirculation[i]));
+                }
+                solution.targetResidual = change / largest;
+            }
+            previousTarget = nextCirculation;
         }
 
         // The Wagner step happens ONCE, on the last pass. Everything before it

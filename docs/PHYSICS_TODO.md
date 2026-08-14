@@ -75,9 +75,17 @@ the budget. What is left is genuinely the hard part, and it is now a narrow
 question rather than an open one: **Wagner describes approach to a steady value,
 and in the separated regime this wing has none a bounded solve can find.** The
 three remaining routes are written out under item 30. **The collapse gates
-should be re-derived first** — the frontal is a separated-flow event, so it is
-the benchmark that decides between those routes, and it is currently
-characterised against aerodynamic states running six times slow.
+should be re-derived first** — but NOT for the reason this line used to give.
+It used to say "the frontal is a separated-flow event, so it is the benchmark
+that decides between those routes". **That sentence is false and was measured
+so.** The canopy folds past 0.1 at **t=0.017 s with separation exactly 0.000**,
+and separation does not leave zero until **t=1.000 s** — the frontal has two
+phases, and the fold is a pressure-balance event in ATTACHED flow. What decides
+between item 30's routes is the frontal's SECOND phase, from about 1.0 s, where
+the separation develops and §68's symmetry break lives. The gates are still
+characterised against aerodynamic states running six times slow, so they still
+need re-deriving; what changes is that they measure two mechanisms mixed
+together and only one of them is Level 11's.
 
 After that, and unchanged: **item 19 and item 24 together** — the legacy pitch
 axis, which is what a pilot actually flies and where the only two handling
@@ -2938,9 +2946,46 @@ one that a bounded solve can find. So either:
   the regime is no longer the missing piece. The response is.**
 
 **None of these is chosen here, and none should be chosen without the collapse
-gates in front of it** — the frontal is a separated-flow event, so it is the
-benchmark that would decide between them, and it is currently characterised
-against aerodynamic states running six times slow.
+gates in front of it** — and this line used to justify that by saying "the
+frontal is a separated-flow event". **It is not, and the trace is below.** What
+would decide between these routes is the frontal's SECOND phase, not the fold.
+The gates are still characterised against aerodynamic states running six times
+slow, so they still need re-deriving.
+
+**AND THE PREMISE THE ORDERING RESTED ON IS FALSE: THE FRONTAL IS NOT A
+SEPARATED-FLOW EVENT.** Traced tick by tick through the symmetric frontal —
+the collapse model's own pressure balance beside its own output:
+
+| t | worst fold | worst separation | worst margin |
+|---|---|---|---|
+| 0.000 s | 0.045 | **0.000** | −0.356 |
+| **0.017 s** | **0.124** | **0.000** | −0.356 |
+| 0.100 s | 0.549 | **0.000** | −0.688 |
+| 0.250 s | 0.721 | **0.000** | −0.165 |
+| 0.500 s | 0.498 | **0.000** | +0.414 |
+| **1.000 s** | 0.226 | **0.100** | +1.664 |
+| 1.992 s | 0.801 | 0.832 | −0.088 |
+
+- **The canopy folds past 0.1 at t=0.017 s with separation exactly 0.000, and
+  separation does not leave zero until t=1.000 s.** Nearly a second separates
+  them, and the wing is attached to within a hundredth at the moment it folds,
+  so this is not an ordering a threshold could reverse. The margin is already
+  −0.356 on the tick the gust lands: **the collapse is driven by the pressure
+  balance at attached incidence.**
+- **THE FRONTAL HAS TWO PHASES AND THEY ARE DIFFERENT MECHANISMS.** Phase 1,
+  0 to ~0.5 s: a pressure collapse in attached flow, which then RECOVERS — the
+  fold goes 0.721 → 0.498 → 0.226 as the margin swings positive. Phase 2, from
+  ~1.0 s: separation develops and the fold deepens again to 0.801. **§68's
+  symmetry break at 1.350 s and item 6's crossing at 1.150 s are both in phase
+  2.** Level 11 is about phase 2 only.
+- **Which explains why the collapse gates have been hard to attribute all
+  along.** Every one of them reports both phases in a single number, and the
+  two answer to different things — the elapsed-time correction and the
+  circulation lag reach phase 2, while phase 1 is a pressure event that neither
+  touches.
+- **It also explains the asymmetric rows of the sensitivity sweep.** The 2 m/s
+  gust folds to 0.181 with peak separation 0.000 for the whole run: that is a
+  frontal which never reaches phase 2 at all.
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

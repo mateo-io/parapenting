@@ -2378,6 +2378,116 @@ int main()
             // case, because the flight solve is capped at 40 iterations and a
             // gust is enough to miss tolerance inside that budget. It reports
             // the cap, not the branch.
+            // -- IS THE FRONTAL A SEPARATED-FLOW EVENT AT ALL? -------------
+            //
+            // The table above has a consequence bigger than the criterion it
+            // was measuring. `PHYSICS_TODO` states, in the roadmap and again
+            // under item 30, that "the frontal is a separated-flow event, so
+            // it is the benchmark that decides between those routes" - and
+            // that sentence is load-bearing: it is why the collapse gates are
+            // named as what must be re-derived before Level 11's remaining
+            // routes can be chosen, and part of why Level 11 sits where it
+            // does in the ladder.
+            //
+            // The 2 m/s asymmetric gust folds the canopy to 0.181 with peak
+            // separation 0.000. That is a collapse with no separated flow
+            // anywhere on the wing, at any moment, which the sentence does not
+            // allow. So the ordering question is worth asking directly:
+            // during the symmetric frontal, does the fold FOLLOW separation,
+            // or does separation follow the fold?
+            //
+            // Traced tick by tick through the event. The margin is the
+            // collapse model's own pressure balance, so this is that model's
+            // input and output beside each other in time.
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(2.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                double foldStart = -1.0;
+                double separationStart = -1.0;
+                double separationAtFoldStart = -1.0;
+                double marginAtFoldStart = 0.0;
+
+                std::printf("  Is the frontal a separated-flow event? The "
+                            "collapse model's input and\n  output, tick by "
+                            "tick through the symmetric frontal:\n");
+                std::printf("%10s %12s %14s %14s\n", "t", "worst fold",
+                            "worst separatn", "worst margin");
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+                    const double time = step * dt;
+
+                    double worstSeparation = 0.0;
+                    for (const double separation :
+                         state.separation.sectionSeparation)
+                        worstSeparation =
+                            std::max(worstSeparation, separation);
+                    double worstFold = 0.0;
+                    double worstMargin = 1.0e9;
+                    for (const SectionCollapseDiagnostics& section :
+                         wing.Diagnostics().collapseState.sections)
+                    {
+                        worstFold = std::max(worstFold, section.collapse);
+                        worstMargin =
+                            std::min(worstMargin, section.pressureMargin);
+                    }
+
+                    if (foldStart < 0.0 && worstFold > 0.1)
+                    {
+                        foldStart = time;
+                        separationAtFoldStart = worstSeparation;
+                        marginAtFoldStart = worstMargin;
+                    }
+                    if (separationStart < 0.0 && worstSeparation > 0.01)
+                        separationStart = time;
+
+                    // Only the first few ticks and then a coarse sample: the
+                    // whole question is decided in the first 100 ms, and
+                    // printing 240 rows would bury it.
+                    if (step < 6 || step == 12 || step == 30 || step == 60
+                        || step == 120 || step == 239)
+                        std::printf("%9.3fs %12.3f %14.3f %14.3f\n", time,
+                                    worstFold, worstSeparation, worstMargin);
+                }
+                std::printf("  fold passes 0.1 at t=%.3f s, where separation "
+                            "is %.3f and the worst\n  margin is %.3f; "
+                            "separation first leaves zero at t=%.3f s\n\n",
+                            foldStart, separationAtFoldStart,
+                            marginAtFoldStart, separationStart);
+
+                // THE ORDERING, MEASURED. If the fold arrives while the wing
+                // is still attached, then the collapse is driven by the
+                // pressure balance at attached incidence and the separated
+                // solve is downstream of it - which inverts the sentence the
+                // roadmap uses to order this work.
+                Check(foldStart >= 0.0 && separationStart >= 0.0,
+                      "both events happen inside the traced window, so the "
+                      "comparison is between two measured times rather than "
+                      "one and a sentinel");
+                Check(foldStart < separationStart,
+                      "THE FRONTAL IS NOT A SEPARATED-FLOW EVENT: the canopy "
+                      "folds BEFORE any section leaves attached flow. The "
+                      "collapse is driven by the pressure balance at attached "
+                      "incidence, and the separation that follows is a "
+                      "consequence of the fold rather than its cause");
+                Check(separationAtFoldStart < 0.01,
+                      "and the wing is attached to within a hundredth at the "
+                      "moment it folds, so this is not a marginal ordering "
+                      "that a threshold could reverse");
+            }
+
             const Timing symmetric = timeCriterion(benches[3]);
             const Timing asymmetric = timeCriterion(benches[1]);
             Check(symmetric.divergesAt == 0.0 && asymmetric.divergesAt == 0.0,

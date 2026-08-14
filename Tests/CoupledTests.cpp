@@ -2084,6 +2084,126 @@ int main()
                   "and the slowest schedule still folds the wing, so what "
                   "moves is when the asymmetry arrives and not whether the "
                   "frontal happens");
+
+            // -- DOES THE CRITERION FIRE BEFORE THE BREAK, IN FLIGHT? ------
+            //
+            // `aerodynamics_tests` has measured item 6's mechanism - the
+            // cross-section iteration stops converging at 12.0 degrees, which
+            // is exactly where the section's lift slope changes sign - and
+            // that the SEPARATION STATE the solver already carries moves
+            // sharply across the same two degrees: 0.000 at 10, 0.085 at 11,
+            // 0.288 at 12. So the criterion needs no new field.
+            //
+            // What that does not establish is the only thing that makes it
+            // useful: WHEN it fires relative to the failure. A criterion that
+            // lights up on the same tick the symmetry breaks is a post-mortem
+            // with extra steps. One that lights up earlier is a warning, and
+            // route 3 can act on a warning.
+            //
+            // Measured on the SHIPPED quasi-steady wing at the shipped
+            // schedule, reading the separation state the solver was already
+            // updating - no lag, no instruments, nothing added. Thresholds are
+            // printed rather than chosen silently, and the one that matters is
+            // 0.288, which is the separation at the incidence where item 6's
+            // crossing was located.
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(3.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                double marginBreak = -1.0;
+                double separationAtBreak = 0.0;
+                double firstAboveTenth = -1.0;
+                double firstAboveCriterion = -1.0;
+                double firstAboveHalf = -1.0;
+
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+                    const double time = step * dt;
+
+                    double worstSeparation = 0.0;
+                    for (const double separation :
+                         state.separation.sectionSeparation)
+                        worstSeparation =
+                            std::max(worstSeparation, separation);
+                    if (firstAboveTenth < 0.0 && worstSeparation > 0.100)
+                        firstAboveTenth = time;
+                    if (firstAboveCriterion < 0.0 && worstSeparation > 0.288)
+                        firstAboveCriterion = time;
+                    if (firstAboveHalf < 0.0 && worstSeparation > 0.500)
+                        firstAboveHalf = time;
+
+                    const CollapseResult& fold =
+                        wing.Diagnostics().collapseState;
+                    const std::size_t count = fold.sections.size();
+                    double marginResidual = 0.0;
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                        marginResidual = std::max(marginResidual,
+                            std::fabs(fold.sections[i].pressureMargin
+                                      - fold.sections[count - 1 - i]
+                                            .pressureMargin));
+                    if (marginBreak < 0.0 && marginResidual > 1.0e-9)
+                    {
+                        marginBreak = time;
+                        separationAtBreak = worstSeparation;
+                    }
+                }
+
+                std::printf("  Item 6's criterion in flight, on the shipped "
+                            "wing, from the separation\n  state the solver "
+                            "already carries - nothing added:\n");
+                std::printf("    worst section separation first exceeds "
+                            "0.100 at t=%.3f s\n", firstAboveTenth);
+                std::printf("    ...0.288 (item 6's crossing) at t=%.3f s\n",
+                            firstAboveCriterion);
+                std::printf("    ...0.500 at t=%.3f s\n", firstAboveHalf);
+                std::printf("    margin symmetry breaks at t=%.3f s, with "
+                            "worst separation %.3f\n",
+                            marginBreak, separationAtBreak);
+                // The lead stated in the unit a scheme would act in. A
+                // warning is worth what it buys in TICKS, not in seconds:
+                // anything a solve does about it happens on an aerodynamic
+                // tick, and at the shipped interval those are 50 ms apart.
+                const double aerodynamicTickS =
+                    dt * wing.Schedule().aerodynamicsInterval;
+                std::printf("    -> %.0f ms of warning, which is %.1f "
+                            "aerodynamic ticks at the shipped schedule\n\n",
+                            1000.0 * (marginBreak - firstAboveCriterion),
+                            (marginBreak - firstAboveCriterion)
+                                / aerodynamicTickS);
+
+                // THE CONTROL, AGAIN THE SHIPPED NUMBER. If this run does not
+                // break where Sec 68 says, it is not the benchmark.
+                Check(std::fabs(marginBreak - 1.350) < 1.0e-9,
+                      "CONTROL: this run reproduces Sec 68's break at "
+                      "t=1.350 s, so the lead times below are measured against "
+                      "the documented event");
+
+                // AND THE ANSWER. A criterion that fires on the breaking tick
+                // is a post-mortem; one that fires before it is a warning.
+                Check(firstAboveCriterion > 0.0
+                          && firstAboveCriterion < marginBreak,
+                      "ITEM 6's CRITERION IS A WARNING AND NOT A POST-MORTEM: "
+                      "the separation state crosses the value that marks the "
+                      "lift slope's sign change BEFORE the margin field loses "
+                      "symmetry, on the shipped wing, from a state that is "
+                      "already updated every tick");
+                Check(separationAtBreak > 0.288,
+                      "and the wing is on the negative-slope branch by the "
+                      "time the break happens, so the two are the same event "
+                      "seen at two moments rather than two coincident ones");
+            }
         }
 
         // -- what produces the jump, and whether iterations can cure it -----

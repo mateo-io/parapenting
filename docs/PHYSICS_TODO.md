@@ -939,6 +939,28 @@ between sections; a wing in deep stall has no stable steady state to find.
   incidence, before any iterating — a table lookup rather than a failed solve.
   That is what route 3 (item 30) needs to declare the separated regime on
   ENTRY instead of diagnosing it afterwards, and it costs one sample.
+- **AND IT COSTS NOTHING, BECAUSE THE SOLVER ALREADY CARRIES IT.** Asked before
+  adding a field, which is the point: the separation state moves sharply across
+  exactly the two degrees the slope's sign changes over — **0.000 at 10°, 0.085
+  at 11°, 0.288 at 12°** — and it is updated every tick already. A new
+  per-section diagnostic would have been a second description of a state the
+  solver has.
+- **AND IT FIRES BEFORE THE FAILURE, WHICH IS THE ONLY THING THAT MAKES IT
+  USEFUL.** A criterion that lights up on the breaking tick is a post-mortem
+  with extra steps. Measured on the shipped quasi-steady wing at the shipped
+  schedule, reading nothing but the separation state:
+
+  | event | t |
+  |---|---|
+  | worst section separation exceeds 0.100 | 1.050 s |
+  | **exceeds 0.288 — item 6's crossing** | **1.150 s** |
+  | **margin symmetry breaks** (§68) | **1.350 s** |
+  | exceeds 0.500 | 1.450 s |
+
+  **200 ms of warning — four aerodynamic ticks at the shipped schedule**, and
+  the wing is at separation 0.404 by the time the break lands, so the two are
+  one event seen at two moments rather than two coincident ones. The lead is
+  stated in ticks because that is the unit a scheme can act in.
 - **Two instruments had to be thrown away to get this, and both are the
   obvious one.** First, a contraction factor — the ratio of target residuals
   at k and k+1 passes, which is the textbook statistic for "does this iterate
@@ -2876,9 +2898,12 @@ one that a bounded solve can find. So either:
   through `targetResidual`, at fixed cost. **And the signal no longer has to be
   a failed iteration**: item 6's criterion is the sign of dCl/dα, which is a
   polar lookup at a section's own incidence, so the degradation can be declared
-  on ENTRY rather than detected after the passes are spent. What is still
-  missing is the DECISION about what the scheme does when it fires — which is a
-  modelling choice about separated flow, not a measurement.
+  on ENTRY rather than detected after the passes are spent. **And it is cheaper
+  than that again: the separation state already tracks it, and on the shipped
+  wing it crosses 200 ms — four aerodynamic ticks — before §68's symmetry
+  break.** What is still missing is the DECISION about what the scheme does when
+  it fires, which is a modelling choice about separated flow and not a
+  measurement. **The signal is no longer the missing piece. The response is.**
 
 **None of these is chosen here, and none should be chosen without the collapse
 gates in front of it** — the frontal is a separated-flow event, so it is the

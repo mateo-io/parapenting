@@ -699,6 +699,49 @@ int main()
               "section's own incidence, without running the iteration that "
               "would fail - which is what lets a scheme declare the separated "
               "regime on entry rather than diagnose it afterwards");
+
+        // -- AND CAN THE SOLVER ALREADY SEE IT, WITH NOTHING ADDED? --------
+        //
+        // The criterion is a polar lookup, which is cheap but not free: on
+        // the tick it would cost two samples a section. Before adding a field
+        // for it, the question worth asking is whether the wing ALREADY
+        // carries something that locates the same crossing - because the
+        // separation state is exactly "how separated is this section", it is
+        // already updated every tick, and if it moves at 12 degrees too then
+        // the answer to route 3's signal is a comparison rather than a new
+        // quantity.
+        //
+        // Measuring that before building the field is the point. A new
+        // diagnostic added on the assumption that nothing else reports this
+        // would be a second description of a state the solver already has.
+        std::printf("  Does a state the solver ALREADY carries locate the "
+                    "same crossing?\n");
+        std::printf("%10s %14s %18s\n", "alpha", "dCl/dalpha",
+                    "separation eqm");
+        double separationAtSignChange = -1.0;
+        double separationBelowIt = -1.0;
+        for (const double alphaDeg : {8.0, 10.0, 11.0, 12.0, 14.0, 25.0})
+        {
+            const double alphaRad = alphaDeg * Pi / 180.0;
+            const double separation =
+                polars.SeparationEquilibrium(alphaRad, 0.0, 0.0);
+            std::printf("%9.1f%s %14.3f %18.3f\n", alphaDeg, " deg",
+                        localSlope(alphaRad), separation);
+            if (alphaDeg == 12.0) separationAtSignChange = separation;
+            if (alphaDeg == 10.0) separationBelowIt = separation;
+        }
+        std::printf("\n");
+
+        // WHETHER IT DOES IS THE MEASUREMENT, AND THE ANSWER DECIDES WHETHER
+        // ANY FIELD GETS ADDED AT ALL. If separation moves sharply across the
+        // same two degrees the slope's sign does, then the wing already
+        // reports the criterion and route 3's signal costs nothing new.
+        Check(separationAtSignChange > separationBelowIt + 0.1,
+              "THE SOLVER ALREADY CARRIES IT: the separation state moves "
+              "sharply across the same two degrees the lift slope changes "
+              "sign over, so the criterion item 6 establishes is readable "
+              "from a state that is already updated every tick - no new "
+              "per-section field is needed to declare the separated regime");
     }
 
     // -- section polars ---------------------------------------------------

@@ -1484,6 +1484,180 @@ int main()
                   "had to pick a branch never acquires the asymmetry");
         }
 
+        // -- ITEM 30: THE SAME GATE ON A LAG THAT IS ACTUALLY WAGNER'S ------
+        //
+        // The block above is strand 2's headline and it was measured on a lag
+        // that is not the published one, for two independent reasons item 30
+        // measured separately:
+        //
+        //   * the aerodynamic states were advanced by the SIMULATION step
+        //     while the solve runs once per `aerodynamicsInterval`, so at the
+        //     shipped 6 the lag ran six times slow. Arithmetic, not a choice.
+        //   * the Wagner step is applied to a target built by ONE Jacobi pass,
+        //     which has itself travelled a quarter of a circulation step, so
+        //     the wing is lagged twice and the unpublished lag is the larger.
+        //
+        // `aerodynamics_tests` has since closed the second one where the flow
+        // is attached: at 64 passes the composite reproduces Jones' Phi(s) to
+        // 0.020 over the whole sweep. Item 30 measured the FIRST correction
+        // alone against this gate and the symmetry went from 3.52e-14 to
+        // 4.04e-01 - it did not survive. What has never been run is BOTH
+        // corrections together, and that is the configuration the strand-3
+        // entry criterion actually rests on. Nothing here asserts a symmetry
+        // result, because which way it goes is the measurement.
+        //
+        // A collapse is a separated event, and `aerodynamics_tests` says the
+        // target has no fixed point past the stall - so this also asks whether
+        // the solve KNOWS, on the tick it happens, through the residual item
+        // 30 added for exactly this.
+        {
+            struct Frontal
+            {
+                double marginBreak = -1.0;
+                double foldBreak = -1.0;
+                double peakResidual = 0.0;
+                double deepestFold = 0.0;
+                // The target's own convergence, worst over the event and at
+                // the moment symmetry goes.
+                double worstTargetResidual = -1.0;
+                double targetResidualAtBreak = -1.0;
+            };
+            const auto frontal = [&](bool elapsedTime, int passes)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetLagCirculation(true);
+                wing.SetAerodynamicElapsedTime(elapsedTime);
+                wing.SetLagTargetPasses(passes);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(14.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                constexpr double BrokenSymmetry = 1.0e-9;
+                Frontal out;
+
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+
+                    const double targetResidual =
+                        wing.Diagnostics().vsmTargetResidual;
+                    out.worstTargetResidual =
+                        std::max(out.worstTargetResidual, targetResidual);
+
+                    const CollapseResult& fold =
+                        wing.Diagnostics().collapseState;
+                    const std::size_t count = fold.sections.size();
+                    double residual = 0.0;
+                    double marginResidual = 0.0;
+                    for (std::size_t i = 0; i < count; ++i)
+                        out.deepestFold = std::max(out.deepestFold,
+                                                   fold.sections[i].collapse);
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                    {
+                        const std::size_t m = count - 1 - i;
+                        residual = std::max(residual,
+                            std::fabs(fold.sections[i].collapse
+                                      - fold.sections[m].collapse));
+                        marginResidual = std::max(marginResidual,
+                            std::fabs(fold.sections[i].pressureMargin
+                                      - fold.sections[m].pressureMargin));
+                    }
+                    out.peakResidual = std::max(out.peakResidual, residual);
+
+                    const double time = step * dt;
+                    if (out.marginBreak < 0.0
+                        && marginResidual > BrokenSymmetry)
+                    {
+                        out.marginBreak = time;
+                        out.targetResidualAtBreak = targetResidual;
+                    }
+                    if (out.foldBreak < 0.0 && residual > BrokenSymmetry)
+                        out.foldBreak = time;
+                }
+                return out;
+            };
+
+            // Four wings, one frontal, one harness. The first row is the block
+            // above re-run inside this lambda rather than quoted from it, so
+            // any difference between them is this instrument and not the
+            // aircraft; the rest turn one correction on at a time, which is
+            // what makes an outcome attributable to a correction.
+            struct Row { const char* name; bool elapsed; int passes; };
+            const Row rows[] = {
+                {"strand 2 as shipped      ", false, 1},
+                {"+ elapsed time only      ", true,  1},
+                {"+ Wagner target only     ", false, 40},
+                {"+ BOTH (the real Wagner) ", true,  40},
+            };
+            std::printf("\nItem 30: strand 2's own gate on a lag that is "
+                        "actually Wagner's\n");
+            std::printf("%-26s %12s %12s %12s %10s %14s\n", "configuration",
+                        "margin brk", "fold brk", "peak resid", "fold",
+                        "worst tgt res");
+            Frontal measured[4];
+            for (int i = 0; i < 4; ++i)
+            {
+                measured[i] = frontal(rows[i].elapsed, rows[i].passes);
+                std::printf("%-26s %12.3f %12.3f %12.2e %10.3f %14.2e\n",
+                            rows[i].name, measured[i].marginBreak,
+                            measured[i].foldBreak, measured[i].peakResidual,
+                            measured[i].deepestFold,
+                            measured[i].worstTargetResidual);
+            }
+            std::printf("  break times of -1.000 mean symmetry never broke. "
+                        "The quasi-steady wing\n  breaks at 1.350 / 1.400 s "
+                        "and cannot be iterated out of it.\n");
+
+            // THE CONTROL. The first row must reproduce the block above, or
+            // the three rows under it are being read against a moving
+            // baseline. Same wing, same gust, same 14 s.
+            Check(measured[0].marginBreak < 0.0 && measured[0].foldBreak < 0.0
+                      && measured[0].peakResidual < 1.0e-9,
+                  "CONTROL: strand 2 as shipped reproduces its own gate inside "
+                  "this harness - so the rows below differ from it by the "
+                  "correction each turns on and by nothing else");
+
+            // EVERY ROW MUST STILL BE A FRONTAL. A lag deep enough to stop the
+            // wing folding passes a symmetry gate by deleting the event, which
+            // is the way any of these could look like success while being a
+            // regression - and the deep-lag rows are exactly where that risk
+            // lives.
+            for (int i = 0; i < 4; ++i)
+                Check(measured[i].deepestFold > 0.1,
+                      "every configuration still takes a real frontal, so the "
+                      "symmetry numbers beside them are wings that folded "
+                      "rather than wings that declined to");
+
+            // AND THE SOLVE KNOWS WHICH REGIME IT IS IN, ON THE TICK. The
+            // multi-pass rows run a target that `aerodynamics_tests` measured
+            // has no fixed point past the stall, and this is that measurement
+            // arriving through the coupled solver in flight rather than in a
+            // bare-VSM harness: the target's own residual is O(1) somewhere in
+            // the event. The one-pass rows report -1, NOT MEASURED, which is
+            // the honest answer for a single pass and is what the shipped
+            // setting reports.
+            Check(measured[0].worstTargetResidual < 0.0
+                      && measured[1].worstTargetResidual < 0.0,
+                  "the one-pass configurations report the target residual as "
+                  "not measured rather than as converged - one pass has no "
+                  "pass-to-pass change, and this is the setting that ships");
+            Check(measured[3].worstTargetResidual > 1.0e-3,
+                  "ITEM 30, IN FLIGHT: with the target iterated, the collapse "
+                  "drives it somewhere it does not converge, and the solve "
+                  "reports that on the tick rather than leaving it to be "
+                  "inferred from a symmetry break downstream. Item 6 measured "
+                  "through the coupled solver for the first time");
+        }
+
         // -- what produces the jump, and whether iterations can cure it -----
         //
         // §67 left one question: which upstream step produces the O(1) jump in

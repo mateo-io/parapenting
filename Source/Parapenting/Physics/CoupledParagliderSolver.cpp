@@ -735,6 +735,7 @@ void CoupledParagliderSolver::Step(
             // derivative is measured on the unlagged wing while the flying wing
             // is lagged. Worth measuring before it is worth fixing.
             settings.lagCirculation = LagCirculationValue;
+            settings.lagTargetPasses = LagTargetPassesValue;
             if (Profiling) ++ProfileValue.aeroTicks;
             // HOW MUCH TIME THE AERODYNAMIC STATES HAVE ACTUALLY LIVED
             // THROUGH, which is not `dt`. `SolveUnsteady` runs once per
@@ -797,6 +798,7 @@ void CoupledParagliderSolver::Step(
             {
                 diagnostics.aerodynamicsRejected = true;
                 diagnostics.vsmResidual = solved.residual;
+                diagnostics.vsmTargetResidual = solved.targetResidual;
                 diagnostics.vsmConverged = false;
                 diagnostics.meanPressureCoefficient =
                     state.heldPressureCoefficientMean;
@@ -917,6 +919,7 @@ void CoupledParagliderSolver::Step(
             }
 
             diagnostics.vsmResidual = solved.residual;
+            diagnostics.vsmTargetResidual = solved.targetResidual;
             diagnostics.vsmConverged = solved.converged;
             diagnostics.aerodynamicsSolvedThisStep = true;
 

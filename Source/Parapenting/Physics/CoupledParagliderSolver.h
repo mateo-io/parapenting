@@ -351,6 +351,13 @@ struct CoupledDiagnostics
     double meanPressureCoefficient = 0.0;
     double vsmResidual = 0.0;
     bool vsmConverged = false;
+    // ITEM 30. `VsmSolution::targetResidual` - how far the TARGET the Wagner
+    // step aims at converged, under `SetLagCirculation` only, and -1 where it
+    // was not measured. Distinct from `vsmResidual` above, which under lag
+    // reports the distance the STATE still has to travel and is large on a
+    // perfectly healthy solve. This is the field that says whether the wing is
+    // aiming at a fixed point at all, which past the stall it is not.
+    double vsmTargetResidual = -1.0;
     bool aerodynamicsSolvedThisStep = false;
     // Set when a solve was rejected and the previous load held instead. This
     // is a numerical safety envelope, not flight behaviour (guiding rule 12):
@@ -641,6 +648,21 @@ public:
     void SetAerodynamicElapsedTime(bool use) { AerodynamicElapsedTimeValue = use; }
     bool AerodynamicElapsedTime() const { return AerodynamicElapsedTimeValue; }
 
+    // HOW MANY JACOBI PASSES BUILD THE TARGET THE WAGNER STEP AIMS AT.
+    // `VsmSettings::lagTargetPasses`, reachable from the coupled solve so that
+    // a collapse gate can be run on a wing whose circulation lag is actually
+    // Wagner's. 1 is what strand 2 shipped and is bit-identical to it; it is
+    // also the setting under which the composite closes 12% of a circulation
+    // step where Jones' Phi(0) is 0.5, because the lag is applied to a target
+    // that has itself travelled a quarter of the way. `aerodynamics_tests`
+    // measures that at 64 passes the composite reproduces the published
+    // function to 0.020 over the whole sweep - WITH THE FLOW ATTACHED. Past
+    // the stall the target has no fixed point to converge to (item 6), which
+    // is exactly the regime a collapse gate runs in, and `targetResidual`
+    // reports it. Only read when `SetLagCirculation` is set.
+    void SetLagTargetPasses(int passes) { LagTargetPassesValue = passes; }
+    int LagTargetPasses() const { return LagTargetPassesValue; }
+
     // AN IMPOSED ANTISYMMETRIC TWIST, linear in span, radians at the right
     // tip and nose-up positive. THIS IS AN INSTRUMENT, NOT PHYSICS: nothing
     // supplies it in flight, it is zero by default, and the default is
@@ -902,6 +924,7 @@ private:
     double SectionDragOffsetValue = 0.0;
     bool LagCirculationValue = false;
     bool AerodynamicElapsedTimeValue = false;
+    int LagTargetPassesValue = 1;
     double ImposedSpanwiseTwistRadValue = 0.0;
     int FlightSolveIterationCapValue = 40;
     HarnessDragReference HarnessDragReferenceValue =

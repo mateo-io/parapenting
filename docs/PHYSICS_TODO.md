@@ -2372,7 +2372,10 @@ result in this table is real and is not retracted — it was taken on this
 solver, in this harness. What it does not establish is the claim the strand-3
 note built on it, that the separated solve is single-valued under *Wagner's*
 lag. Correcting only the arithmetic half of the excess takes the peak mirror
-residual from **3.52e-14 to 4.04e-01**.
+residual from **3.52e-14 to 4.04e-01**. **AND CORRECTING BOTH HALVES MOVES THE
+BREAK TO t=0.050 s, twenty-seven times EARLIER than the quasi-steady wing's
+1.350 s** — so the symmetry in this table came from the lag being too deep, and
+item 27's headline is retracted. Item 30 carries the four-row measurement.
 
 **What is NOT settled, and should not be read into the above.** The frozen and
 still probes still call `SolveFrozen`, which passes no lag state and so stays
@@ -2402,7 +2405,11 @@ manoeuvring. Strand 4 is mostly measurement once 2 and 3 are in.
   deeper than the one Wagner describes, for two separate reasons item 30
   measures, and with only the arithmetic half of that excess removed the
   frontal's mirror residual goes from `3.52e-14` back to `4.04e-01`.
-  **Strand 3's entry criterion should be treated as open, not as met.**
+  **Strand 3's entry criterion is NOT met — no longer "treat as open", it is
+  measured.** With both corrections applied the frontal breaks at **0.050 s**
+  against the quasi-steady wing's 1.350 s, so the correctly-lagged path is not
+  merely failing to supply single-valuedness, it is worse than the path that
+  ships. Strand 3 must not start on the strength of strand 2.
 - *Historical, now closed:* this used to warn that item 25 was unresolved and
   the §69 control gate red at `aerodynamicsInterval` 6, so strand-2
   measurements would be read against a red benchmark. Both are settled, and the
@@ -2661,6 +2668,52 @@ pass-to-pass change in the TARGET, under `lagCirculation` only:
 - **It changes no numbers.** It reads `nextCirculation`, enters no circulation,
   and is computed only under lag.
 
+**AND THEN THE GATE WAS RUN ON THE REAL WAGNER, AND STRAND 2'S HEADLINE DOES
+NOT SURVIVE IT.** Both corrections together for the first time — the elapsed
+time AND a target iterated to 40 passes, reachable from the coupled solve by
+`SetLagTargetPasses`. Same frontal, same gust, same 14 s, all four rows measured
+in one harness rather than quoted across blocks:
+
+| configuration | margin break | fold break | peak mirror resid | fold | worst target resid |
+|---|---|---|---|---|---|
+| strand 2 as shipped | never | never | **3.52e-14** | 0.998 | not measured |
+| + elapsed time only | 1.050 s | 1.150 s | 4.04e-01 | 1.000 | not measured |
+| + Wagner target only | 0.250 s | 0.250 s | **8.90e-01** | 1.000 | **9.70e+01** |
+| **+ BOTH (the real Wagner)** | **0.050 s** | 0.100 s | 5.40e-01 | 1.000 | 2.90e+00 |
+
+- **It does not merely fail to hold symmetry — it breaks EARLIER THAN THE
+  QUASI-STEADY WING.** The shipped quasi-steady solve breaks at 1.350 s. The
+  correctly-lagged wing breaks at **0.050 s**, twenty-seven times sooner, on
+  the second aerodynamic tick after the gust. Every step toward the published
+  function makes the gate worse, monotonically: never → 1.050 → 0.250 → 0.050.
+- **So item 27's headline is now retracted rather than re-scoped.** The
+  previous entry said the symmetry result "was real and is not retracted — it
+  was taken on this solver, in this harness". That still holds as a statement
+  about what was measured. What it means is now settled and it is the
+  unwelcome reading: **the symmetry came from the depth of the lag, not from
+  the circulation being a state.** A lag several times slower than Wagner's
+  smooths the tick that picks a branch; Wagner's own lag does not.
+- **The wing still folds in every row** — 1.000 against the shipped 0.998 — so
+  none of these numbers is a symmetry bought by declining to collapse. That
+  guard is in the gate, on all four rows, for the reason item 27 put it there.
+- **STRAND 3's ENTRY CRITERION IS NOT MET, AND THIS IS THE MEASUREMENT THAT
+  SAYS SO.** §68 asks for a separated solve that is SINGLE-VALUED. The lagged
+  path was believed to supply it. It does not, once the lag is the one Jones
+  published. Strand 3 should not start on the strength of strand 2.
+- **The `+ Wagner target only` row is the worst of the four, and that is
+  consistent rather than odd**: iterating the target without correcting the
+  elapsed time drives a non-convergent iteration hard while the response that
+  would smooth it still runs six times slow. Its target residual is **97**.
+
+**AND THE SOLVE REPORTS THE REGIME ON THE TICK, IN FLIGHT.** The target
+residual reaches 2.9 (both corrections) and 97 (target only) during the event,
+through `CoupledDiagnostics::vsmTargetResidual`. This is item 6 measured
+through the coupled solver for the first time rather than in a bare-VSM
+harness: the collapse drives the target somewhere it does not converge, and the
+solve now says so on the tick instead of leaving it to be inferred from a
+symmetry break several ticks downstream. The one-pass rows report −1, NOT
+MEASURED, which is the honest answer for a single pass and is what ships.
+
 **WHAT IS LEFT, AND IT IS NOW A NARROW QUESTION.** Wagner's function describes
 approach to a STEADY value, and in the separated regime this wing does not have
 one that a bounded solve can find. So either:
@@ -2705,11 +2758,12 @@ strand 2 does not survive its own aerodynamics running at the right speed.
   the elapsed time alone leaves the composite response still several times
   slower than the published function — so the gates would be re-derived once
   and then need it again. The two are one piece of work.
-- **Item 27's headline is not retracted, it is re-scoped.** The lagged path did
-  hold mirror symmetry at round-off, and that measurement was real. What it
-  does not establish is what the strand-3 note claimed for it: that the
-  separated solve is single-valued under *Wagner's* lag. It was single-valued
-  under a much deeper one.
+- **Item 27's headline is now RETRACTED, not re-scoped.** This entry used to
+  say the re-scoping was enough. The four-row table above closes it: run on
+  Wagner's actual lag the same frontal breaks at 0.050 s, so the round-off
+  symmetry was a property of a lag several times too deep and not of carrying
+  circulation as a state. The measurement was real; the mechanism it was
+  attributed to is not the one that produced it.
 
 ## Data gaps
 

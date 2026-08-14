@@ -2714,6 +2714,67 @@ solve now says so on the tick instead of leaving it to be inferred from a
 symmetry break several ticks downstream. The one-pass rows report −1, NOT
 MEASURED, which is the honest answer for a single pass and is what ships.
 
+**AND THEN THE MECHANISM WAS CHASED DOWN, AND IT IS NOT UNSTEADINESS AT ALL.**
+The four-row table is monotone, and its rows differ in how deep the lag is, so
+the obvious reading is that strand 2's symmetry was bought with lag depth.
+**That is a hypothesis with four points and two confounds, and it is wrong.**
+`VsmSettings::lagDepthScale` divides the reduced time by a declared factor —
+an instrument, 1.0 is Wagner's own depth and bit-identical — so depth is the
+only thing that moves:
+
+| × Wagner's lag | margin break, 40 passes | margin break, 1 pass |
+|---|---|---|
+| 1 | 0.050 | 1.050 |
+| 4 | 0.050 | 1.100 |
+| 16 | 0.050 | 1.100 |
+| 64 | **0.050** | **1.100** |
+
+- **Sixty-four times Wagner's lag does not delay the break by one tick.** With
+  the target iterated it is not a function of depth at all; with one pass it
+  buys a single aerodynamic tick and then stops, and it never holds.
+- **Swept at BOTH target settings on purpose.** Sweeping only at 40 passes asks
+  whether depth can rescue an iterated target; the answer matters, but one pass
+  is the configuration strand 2's symmetry actually lived in, and a sweep run
+  only where the symmetry was already gone would have looked conclusive while
+  answering the wrong question.
+
+**SO IT WAS THE OTHER STATE — AND THEN IT WASN'T THAT EITHER.** The elapsed-time
+defect slowed TWO states by the same factor and one flag corrected both, so no
+measurement to this point could separate them. `separationDepthScale` does the
+same job for the stall memory, which makes the attribution a 2×2 on a wing whose
+elapsed time is correct:
+
+| circulation lag | stall memory | margin break | fold |
+|---|---|---|---|
+| 1× | 1× | 1.050 | 1.000 |
+| 6× | 1× | 1.100 | 1.000 |
+| 1× | 6× | 1.150 | 1.000 |
+| **6×** | **6×** | **never** | **0.998** |
+
+- **NEITHER STATE ALONE HOLDS IT.** Each buys 50–100 ms in the same direction.
+  Both together buy the entire event. **The symmetry is not a property of
+  either state**, so it is not a property of circulation being carried as a
+  state — which is the mechanism strand 2's design note claims.
+- **What it is a statement about is the COUPLING.** What holds the frontal
+  symmetric is the aerodynamics *as a whole* running six times slower than the
+  120 Hz structure it feeds. The collapse solver was being handed a field that
+  could not move at its own speed, and that — not unsteadiness — is what
+  removed the branch choice.
+- **The control is the fourth row and it is exact.** 6×/6× reconstructs the
+  elapsed-time defect out of two instruments on a wing whose flag says the
+  elapsed time is correct, and reproduces item 27's printed numbers: never
+  breaks, folds to 0.998 where every other cell folds to 1.000. The instruments
+  measure the defect rather than something adjacent to it.
+- **Every cell still folds**, so no row here is a symmetry bought by declining
+  to collapse.
+
+**WHAT THIS COSTS STRAND 3, STATED PLAINLY.** The entry criterion asks for a
+separated solve that is single-valued. The only configuration this project has
+ever seen hold the symmetric frontal is one where the aerodynamic states are
+six times too slow, and that configuration is a defect rather than a scheme. A
+free wake will not inherit single-valuedness from strand 2, because strand 2
+never had it. **Item 6 is the open problem, and it is upstream of the wake.**
+
 **WHAT IS LEFT, AND IT IS NOW A NARROW QUESTION.** Wagner's function describes
 approach to a STEADY value, and in the separated regime this wing does not have
 one that a bounded solve can find. So either:

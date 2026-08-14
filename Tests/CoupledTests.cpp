@@ -1656,6 +1656,275 @@ int main()
                   "reports that on the tick rather than leaving it to be "
                   "inferred from a symmetry break downstream. Item 6 measured "
                   "through the coupled solver for the first time");
+
+            // -- WHAT ACTUALLY HELD THE SYMMETRY, PRICED ------------------
+            //
+            // The four rows above are monotone in break time, and they also
+            // differ in how DEEP the lag is: strand 2's configuration lags
+            // roughly six times too slow from the elapsed-time defect and
+            // again from applying Wagner to a quarter-travelled target. So the
+            // obvious reading - that the symmetry was bought by depth alone
+            // rather than by circulation being a state - is a hypothesis with
+            // four points and two confounds, and it is exactly the kind of
+            // reading this item has already had to retract once.
+            //
+            // `SetLagDepthScale` removes the confounds. Everything else is
+            // held at the CORRECT setting - real elapsed time, converged
+            // target, Wagner's own response - and the depth is the only thing
+            // that moves. If break time is a continuous function of it, then
+            // "the lagged solve is single-valued" was never a mechanism: it
+            // was a threshold, and what this prints is its price in multiples
+            // of the published response.
+            //
+            // Which is the number strand 3 needs. An unsteady formulation that
+            // has to be N times slower than Wagner to hold a frontal is not
+            // buying single-valuedness from unsteadiness, and knowing N before
+            // the wake is built is worth more than discovering it after.
+            const auto atDepth = [&](double scale, int passes)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetLagCirculation(true);
+                wing.SetAerodynamicElapsedTime(true);
+                wing.SetLagTargetPasses(passes);
+                wing.SetLagDepthScale(scale);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(14.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                constexpr double BrokenSymmetry = 1.0e-9;
+                struct Depth
+                {
+                    double marginBreak = -1.0;
+                    double peakResidual = 0.0;
+                    double deepestFold = 0.0;
+                };
+                Depth out;
+
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+
+                    const CollapseResult& fold =
+                        wing.Diagnostics().collapseState;
+                    const std::size_t count = fold.sections.size();
+                    double residual = 0.0;
+                    double marginResidual = 0.0;
+                    for (std::size_t i = 0; i < count; ++i)
+                        out.deepestFold = std::max(out.deepestFold,
+                                                   fold.sections[i].collapse);
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                    {
+                        const std::size_t m = count - 1 - i;
+                        residual = std::max(residual,
+                            std::fabs(fold.sections[i].collapse
+                                      - fold.sections[m].collapse));
+                        marginResidual = std::max(marginResidual,
+                            std::fabs(fold.sections[i].pressureMargin
+                                      - fold.sections[m].pressureMargin));
+                    }
+                    out.peakResidual = std::max(out.peakResidual, residual);
+                    if (out.marginBreak < 0.0
+                        && marginResidual > BrokenSymmetry)
+                        out.marginBreak = step * dt;
+                }
+                return out;
+            };
+
+            // Swept at BOTH target settings, and the second column is the one
+            // that makes the first readable. Sweeping depth only at 40 passes
+            // asks whether depth can rescue an iterated target; sweeping it at
+            // 1 pass asks the question that matters, because one pass is the
+            // configuration strand 2's symmetry actually lived in. A sweep
+            // that varied depth only where the symmetry was already gone would
+            // have answered the wrong question and looked conclusive doing it.
+            std::printf("\n  What the symmetry cost, in multiples of Wagner's "
+                        "own lag. Elapsed time is\n  correct throughout; "
+                        "margin break time, -1 meaning it never broke:\n");
+            std::printf("%16s %18s %18s\n", "x Wagner", "40 passes",
+                        "1 pass (strand 2)");
+            constexpr double Depths[] = {1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0};
+            bool iteratedMoves = false;
+            double firstHoldingDepth = -1.0;
+            double foldAtHold = 0.0;
+            double onePassAtWagnerDepth = 0.0;
+            for (const double scale : Depths)
+            {
+                const auto iterated = atDepth(scale, 40);
+                const auto onePass = atDepth(scale, 1);
+                std::printf("%16.0f %18.3f %18.3f\n", scale,
+                            iterated.marginBreak, onePass.marginBreak);
+                if (std::fabs(iterated.marginBreak - 0.050) > 1.0e-9)
+                    iteratedMoves = true;
+                if (scale == 1.0) onePassAtWagnerDepth = onePass.marginBreak;
+                if (onePass.marginBreak < 0.0 && firstHoldingDepth < 0.0)
+                {
+                    firstHoldingDepth = scale;
+                    foldAtHold = onePass.deepestFold;
+                }
+            }
+            std::printf("  -> first depth at which ONE PASS holds symmetry "
+                        "for the whole event: %.0fx\n\n", firstHoldingDepth);
+
+            // AND THE HYPOTHESIS THIS SWEEP WAS BUILT TO TEST IS REFUTED.
+            // The expectation written into this block was that break time
+            // would be a continuous function of lag depth - that strand 2's
+            // symmetry was bought by depth alone. With the target iterated it
+            // is not a function of depth AT ALL: sixty-four times Wagner's lag
+            // breaks on the same tick as Wagner's own, 0.050 s, and the peak
+            // residual does not trend either. Depth is not the mechanism.
+            Check(!iteratedMoves,
+                  "REFUTED, AND THIS IS THE FINDING: with the target iterated "
+                  "the frontal breaks at t=0.050 s at EVERY lag depth from 1x "
+                  "to 64x Wagner's. Sixty-four times the lag does not delay it "
+                  "by one tick, so the break is not something a deeper lag was "
+                  "ever smoothing");
+
+            // WHICH ISOLATES IT TO THE TARGET. One pass and forty passes are
+            // the two columns, and only the target moves between them: at one
+            // pass the break time DOES depend on depth, at forty it does not
+            // depend on it at all. So what destroys the symmetry is iterating
+            // a target that has no fixed point to iterate toward - item 6,
+            // arriving through the collapse gate rather than through a residual
+            // - and what strand 2 was actually relying on is that ONE Jacobi
+            // pass never asks for one.
+            Check(onePassAtWagnerDepth >= 0.0
+                      && onePassAtWagnerDepth > 0.050 + 1.0e-9,
+                  "and at ONE pass the same wing at the same depth breaks "
+                  "later, so the two columns differ by the target and the "
+                  "target is what carries the effect");
+            // AND AT ONE PASS IT BARELY MOVES EITHER: 1.050 s at Wagner's own
+            // depth against 1.100-1.150 at four to sixty-four times it, and it
+            // NEVER holds. Sixty-four times the circulation lag buys one
+            // aerodynamic tick. So the depth that produced strand 2's result
+            // was not the circulation's at any setting, which is what sends
+            // the next block after the other state.
+            Check(firstHoldingDepth < 0.0,
+                  "and at one pass no lag depth up to 64x holds the frontal "
+                  "either - it buys a single tick and then stops - so strand "
+                  "2's symmetry did not come from the circulation lag being "
+                  "deep, at any depth");
+            (void)foldAtHold;
+
+            // -- SO IT WAS THE OTHER STATE: THE 2x2 THAT SEPARATES THEM -----
+            //
+            // The elapsed-time defect slowed TWO states by the same factor and
+            // one flag corrected both, so nothing measured so far can tell
+            // them apart. The sweeps above rule out the circulation lag at any
+            // depth. That leaves the separation state - the stall memory, and
+            // the state item 6's branch ambiguity actually lives in.
+            //
+            // At the shipped interval 6 the defect ran both six times slow, so
+            // 6x is the setting that reproduces it and 1x is the truth. Four
+            // wings, one frontal.
+            std::printf("  Which of the two slowed states held the symmetry? "
+                        "6x is what the\n  elapsed-time defect did; 1x is real "
+                        "time. Margin break, -1 = never:\n");
+            std::printf("%18s %18s %14s\n", "circulation lag", "stall memory",
+                        "margin brk");
+            const auto pair = [&](double lagScale, double separationScale)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetLagCirculation(true);
+                wing.SetAerodynamicElapsedTime(true);
+                wing.SetLagDepthScale(lagScale);
+                wing.SetSeparationDepthScale(separationScale);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(14.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                double marginBreak = -1.0;
+                double deepest = 0.0;
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+                    const CollapseResult& fold =
+                        wing.Diagnostics().collapseState;
+                    const std::size_t count = fold.sections.size();
+                    double marginResidual = 0.0;
+                    for (std::size_t i = 0; i < count; ++i)
+                        deepest = std::max(deepest, fold.sections[i].collapse);
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                        marginResidual = std::max(marginResidual,
+                            std::fabs(fold.sections[i].pressureMargin
+                                      - fold.sections[count - 1 - i]
+                                            .pressureMargin));
+                    if (marginBreak < 0.0 && marginResidual > 1.0e-9)
+                        marginBreak = step * dt;
+                }
+                return std::pair<double, double>{marginBreak, deepest};
+            };
+            const auto bothReal = pair(1.0, 1.0);
+            const auto lagSlow = pair(6.0, 1.0);
+            const auto stallSlow = pair(1.0, 6.0);
+            const auto bothSlow = pair(6.0, 6.0);
+            std::printf("%18s %18s %14.3f\n", "1x", "1x", bothReal.first);
+            std::printf("%18s %18s %14.3f\n", "6x", "1x", lagSlow.first);
+            std::printf("%18s %18s %14.3f\n", "1x", "6x", stallSlow.first);
+            std::printf("%18s %18s %14.3f\n", "6x", "6x", bothSlow.first);
+            std::printf("  folds: %.3f / %.3f / %.3f / %.3f\n\n",
+                        bothReal.second, lagSlow.second, stallSlow.second,
+                        bothSlow.second);
+
+            // THE CONTROL FIRST, AND IT IS WHAT MAKES THE OTHER THREE CELLS
+            // READABLE: 6x/6x is the elapsed-time defect reconstructed out of
+            // two instruments, on a wing whose flag says the elapsed time is
+            // CORRECT. It reproduces strand 2 exactly - never breaks, folds to
+            // 0.998 against the other cells' 1.000, both of which are item
+            // 27's own printed numbers. The instruments are measuring the
+            // thing they were built to measure.
+            Check(bothSlow.first < 0.0,
+                  "CONTROL: six times slow on BOTH states reconstructs strand "
+                  "2's configuration from the other side - correct elapsed "
+                  "time, two deliberate mis-scalings - and reproduces its "
+                  "result exactly, so these instruments are measuring the "
+                  "defect and not something adjacent to it");
+
+            // AND THE ATTRIBUTION IS A CONJUNCTION, WHICH IS NOT WHAT EITHER
+            // HYPOTHESIS SO FAR EXPECTED. Neither state slowed ALONE holds the
+            // frontal: the circulation lag alone buys 50 ms, the stall memory
+            // alone buys 100 ms, and both together buy the whole event. The
+            // symmetry is not a property of either state - it needs the
+            // aerodynamics as a WHOLE running six times slower than the
+            // structure it is coupled to.
+            //
+            // Which is a statement about the COUPLING and not about
+            // unsteadiness. Strand 2's design note claims the mechanism is
+            // circulation being carried as a state; three sweeps and this 2x2
+            // say it is that the collapse solver, running at 120 Hz, was being
+            // fed an aerodynamic field that could not move at its own speed.
+            Check(lagSlow.first >= 0.0 && stallSlow.first >= 0.0,
+                  "NEITHER STATE ALONE HOLDS IT: six times slow on the "
+                  "circulation lag alone still breaks, and six times slow on "
+                  "the stall memory alone still breaks. The symmetry needs "
+                  "both, so it is not a property of either state");
+            Check(stallSlow.first > lagSlow.first
+                      && lagSlow.first > bothReal.first,
+                  "and each buys a little time in the same direction - 1.050, "
+                  "1.100, 1.150 - so the effect is the aerodynamics as a whole "
+                  "being slow against the structure it feeds, not one state's "
+                  "physics");
+            for (const auto& outcome : {bothReal, lagSlow, stallSlow, bothSlow})
+                Check(outcome.second > 0.1,
+                      "every cell of the 2x2 still folds the wing, so none of "
+                      "these is a symmetry bought by declining to collapse");
         }
 
         // -- what produces the jump, and whether iterations can cure it -----

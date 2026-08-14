@@ -366,6 +366,44 @@ struct VsmSettings
     // item 6 says there is no fixed point to find, costing the same as any
     // other and reporting no convergence it does not have.
     int lagTargetPasses = 1;
+
+    // HOW MANY TIMES SLOWER THAN WAGNER'S THE LAG RUNS. THIS IS AN INSTRUMENT,
+    // NOT PHYSICS, and it defaults to 1.0 - Wagner's own depth - so nothing
+    // flies on it and the default is bit-identical to having no hook.
+    //
+    // It exists to answer one question, and the question is the one item 30's
+    // four-row gate created rather than settled. Every step from strand 2's
+    // shipped configuration toward the published function made the symmetric
+    // frontal break EARLIER, monotonically: never, then 1.050 s, then 0.250 s,
+    // then 0.050 s. Those four rows differ in lag depth among other things, so
+    // the obvious reading - that the symmetry was bought by depth alone and
+    // not by circulation being a state - is a hypothesis with three points and
+    // two confounds.
+    //
+    // Dividing the reduced time by this scale makes depth the ONLY thing that
+    // moves, on an otherwise correct wing: correct elapsed time, converged
+    // target, Wagner's own response. If break time is a continuous function of
+    // it, "the lagged solve is single-valued" was never a mechanism - it was a
+    // threshold, and the price of buying symmetry that way is the number this
+    // reports.
+    double lagDepthScale = 1.0;
+
+    // THE SAME INSTRUMENT FOR THE OTHER STATE, and it exists because the first
+    // one refuted its own hypothesis. `lagDepthScale` above says the frontal's
+    // break time barely moves with circulation-lag depth and never holds
+    // symmetry at any depth to 64x - so the depth that mattered was not the
+    // circulation's.
+    //
+    // The elapsed-time defect slowed TWO states, not one, and the second is
+    // the separation state - the stall memory, which is where item 6's branch
+    // ambiguity actually lives. Correcting the elapsed time corrected both at
+    // once, so no measurement so far separates them. This scale divides the
+    // time handed to the separation update ALONE, which makes the attribution
+    // a 2x2 rather than an argument.
+    //
+    // AN INSTRUMENT, NOT PHYSICS. 1.0 is the real rate and is bit-identical to
+    // having no hook; `coupled_tests` is its only caller.
+    double separationDepthScale = 1.0;
 };
 
 // Everything hanging below the wing. On a paraglider this is not a correction

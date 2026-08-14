@@ -663,6 +663,21 @@ public:
     void SetLagTargetPasses(int passes) { LagTargetPassesValue = passes; }
     int LagTargetPasses() const { return LagTargetPassesValue; }
 
+    // `VsmSettings::lagDepthScale` - HOW MANY TIMES SLOWER THAN WAGNER'S THE
+    // LAG RUNS. AN INSTRUMENT, NOT PHYSICS: 1.0 is Wagner's own depth and is
+    // bit-identical to having no hook. `coupled_tests` is its only caller, and
+    // it exists to price what strand 2's symmetry actually cost.
+    void SetLagDepthScale(double scale) { LagDepthScaleValue = scale; }
+    double LagDepthScale() const { return LagDepthScaleValue; }
+
+    // `VsmSettings::separationDepthScale` - how many times slower than real
+    // the STALL MEMORY runs. AN INSTRUMENT, NOT PHYSICS: 1.0 is the real rate
+    // and is bit-identical to having no hook. It exists so that the two states
+    // the elapsed-time defect slowed can be told apart, which no measurement
+    // before it could do.
+    void SetSeparationDepthScale(double scale) { SeparationDepthScaleValue = scale; }
+    double SeparationDepthScale() const { return SeparationDepthScaleValue; }
+
     // AN IMPOSED ANTISYMMETRIC TWIST, linear in span, radians at the right
     // tip and nose-up positive. THIS IS AN INSTRUMENT, NOT PHYSICS: nothing
     // supplies it in flight, it is zero by default, and the default is
@@ -925,6 +940,8 @@ private:
     bool LagCirculationValue = false;
     bool AerodynamicElapsedTimeValue = false;
     int LagTargetPassesValue = 1;
+    double LagDepthScaleValue = 1.0;
+    double SeparationDepthScaleValue = 1.0;
     double ImposedSpanwiseTwistRadValue = 0.0;
     int FlightSolveIterationCapValue = 40;
     HarnessDragReference HarnessDragReferenceValue =

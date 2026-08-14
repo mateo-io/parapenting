@@ -357,7 +357,13 @@ VsmSolution VortexStepMethodSolver::SolveUnsteady(
         const double rate = target > state.sectionSeparation[i]
             ? settings.separationOnsetRatePerS
             : settings.reattachmentRatePerS;
-        const double step = std::clamp(rate * deltaSeconds, 0.0, 1.0);
+        // Divided by the depth instrument, which is 1.0 everywhere except in
+        // the block of `coupled_tests` that has to tell the two slowed states
+        // apart. See `VsmSettings::separationDepthScale`.
+        const double step = std::clamp(
+            rate * deltaSeconds
+                / std::max(1.0e-6, settings.separationDepthScale),
+            0.0, 1.0);
         state.sectionSeparation[i] +=
             (target - state.sectionSeparation[i]) * step;
     }
@@ -625,8 +631,14 @@ VsmSolution VortexStepMethodSolver::SolveHeld(
             // whose mirror symmetry is the gate.
             for (std::size_t i = 0; i < count; ++i)
             {
+                // Reduced time, divided by the depth instrument. At the
+                // default 1.0 this is exactly `ReducedTimeSemichords` and the
+                // division is by one; anything else is a deliberately
+                // mis-scaled lag, which only a test sets. See
+                // `VsmSettings::lagDepthScale` for why that is worth having.
                 const double ds = ReducedTimeSemichords(
-                    sectionSpeed[i], SectionList[i].chordM, lagDeltaSeconds);
+                    sectionSpeed[i], SectionList[i].chordM, lagDeltaSeconds)
+                    / std::max(1.0e-6, settings.lagDepthScale);
                 circulation[i] = (*lag)[i].Advance(nextCirculation[i], ds);
                 largestChange = std::max(largestChange,
                     std::fabs(nextCirculation[i] - circulation[i]));

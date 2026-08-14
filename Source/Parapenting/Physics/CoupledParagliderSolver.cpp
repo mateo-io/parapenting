@@ -736,6 +736,8 @@ void CoupledParagliderSolver::Step(
             // is lagged. Worth measuring before it is worth fixing.
             settings.lagCirculation = LagCirculationValue;
             settings.lagTargetPasses = LagTargetPassesValue;
+            settings.lagDepthScale = LagDepthScaleValue;
+            settings.separationDepthScale = SeparationDepthScaleValue;
             if (Profiling) ++ProfileValue.aeroTicks;
             // HOW MUCH TIME THE AERODYNAMIC STATES HAVE ACTUALLY LIVED
             // THROUGH, which is not `dt`. `SolveUnsteady` runs once per

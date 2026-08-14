@@ -2204,6 +2204,188 @@ int main()
                       "time the break happens, so the two are the same event "
                       "seen at two moments rather than two coincident ones");
             }
+
+            // -- AND IS IT A CRITERION, OR A PROPERTY OF ONE GUST? ---------
+            //
+            // Everything above was measured on the symmetric 4 m/s frontal.
+            // That is one event, and this session has already had to retract
+            // three readings taken from a single configuration - so a
+            // criterion established on one benchmark and generalised by
+            // assumption is exactly the shape of the last three mistakes.
+            //
+            // A criterion needs two properties and only one of them has been
+            // shown. SENSITIVITY: it fires before the event, on collapses
+            // other than the one it was found on. SPECIFICITY: it stays quiet
+            // when nothing is happening. The second is the one that would kill
+            // it, and it is cheap - a criterion that also fires in still air
+            // is not a criterion, it is a wing that is always about to stall.
+            //
+            // Both measured here, on the shipped wing, across the collapse
+            // benchmarks this file already flies: still air as the negative
+            // control, the 2 m/s and 4 m/s asymmetric gusts, and the symmetric
+            // frontal. The observable differs by benchmark - the symmetric case
+            // loses mirror symmetry, the asymmetric ones just fold - so what is
+            // timed against the criterion is the FOLD, which every one of them
+            // has.
+            std::printf("  Is it a criterion or a property of one gust? "
+                        "Across the collapse\n  benchmarks, on the shipped "
+                        "wing. 'fires' is the separation crossing:\n");
+            std::printf("%-28s %10s %10s %10s %9s %8s\n", "benchmark",
+                        "fires", "solve div", "folds", "peak sep", "pk fold");
+            struct Bench
+            {
+                const char* name;
+                double gustMps;
+                double spanFrom;
+                double spanTo;
+            };
+            const Bench benches[] = {
+                {"still air (control)       ",  0.0, -1.0, 1.0},
+                {"asymmetric gust 2 m/s     ", -2.0, -1.0, 0.0},
+                {"asymmetric gust 4 m/s     ", -4.0, -1.0, 0.0},
+                {"symmetric frontal 4 m/s   ", -4.0, -1.0, 1.0},
+            };
+            struct Timing
+            {
+                double fires = -1.0;
+                double folds = -1.0;
+                double peakSeparation = 0.0;
+                double peakFold = 0.0;
+                double divergesAt = -1.0;
+            };
+            const auto timeCriterion = [&](const Bench& bench)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(6.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                Timing out;
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps && bench.gustMps != 0.0)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, bench.gustMps};
+                        air.gustSpanFrom = bench.spanFrom;
+                        air.gustSpanTo = bench.spanTo;
+                    }
+                    wing.Step(state, handsOff, air);
+                    const double time = step * dt;
+
+                    double worstSeparation = 0.0;
+                    for (const double separation :
+                         state.separation.sectionSeparation)
+                        worstSeparation =
+                            std::max(worstSeparation, separation);
+                    if (out.fires < 0.0 && worstSeparation > 0.288)
+                        out.fires = time;
+                    out.peakSeparation =
+                        std::max(out.peakSeparation, worstSeparation);
+
+                    double worstFold = 0.0;
+                    for (const SectionCollapseDiagnostics& section :
+                         wing.Diagnostics().collapseState.sections)
+                        worstFold = std::max(worstFold, section.collapse);
+                    out.peakFold = std::max(out.peakFold, worstFold);
+                    if (out.folds < 0.0 && worstFold > 0.1)
+                        out.folds = time;
+
+                    // THE EVENT ITEM 6 IS ACTUALLY ABOUT, which is not the
+                    // fold. The solver reports its own convergence every
+                    // aerodynamic tick, and a separated solve that has nothing
+                    // single-valued to find is exactly what stops converging -
+                    // so this is item 6's claim in flight, available on every
+                    // benchmark including the asymmetric ones that have no
+                    // mirror symmetry to lose.
+                    if (out.divergesAt < 0.0
+                        && wing.Diagnostics().aerodynamicsSolvedThisStep
+                        && !wing.Diagnostics().vsmConverged)
+                        out.divergesAt = time;
+                }
+                return out;
+            };
+
+            bool everyFoldWarned = true;
+            bool controlStayedQuiet = true;
+            double worstLeadMs = 1.0e9;
+            for (const Bench& bench : benches)
+            {
+                const Timing timing = timeCriterion(bench);
+                const bool warned = timing.fires >= 0.0
+                    && timing.divergesAt >= 0.0
+                    && timing.fires < timing.divergesAt;
+                std::printf("%-28s %10.3f %10.3f %10.3f %9.3f %8.3f\n",
+                            bench.name, timing.fires, timing.divergesAt,
+                            timing.folds, timing.peakSeparation,
+                            timing.peakFold);
+                if (bench.gustMps == 0.0)
+                {
+                    // The negative control: nothing fires and nothing folds.
+                    if (timing.fires >= 0.0 || timing.divergesAt >= 0.0)
+                        controlStayedQuiet = false;
+                }
+                else
+                {
+                    if (!warned) everyFoldWarned = false;
+                    else
+                        worstLeadMs = std::min(worstLeadMs,
+                            1000.0 * (timing.divergesAt - timing.fires));
+                }
+            }
+            std::printf("  -1 means it never happened in the six seconds "
+                        "flown.\n\n");
+
+            // SPECIFICITY, AND THIS IS THE ONE THAT COULD HAVE KILLED IT. A
+            // criterion that also fires in still air says nothing: the wing
+            // would be permanently declared separated, and route 3 would
+            // degrade its scheme in nominal flight.
+            Check(controlStayedQuiet,
+                  "SPECIFICITY: in still air the criterion never fires and the "
+                  "wing never folds, so it is a criterion rather than a wing "
+                  "that is always about to stall - which is the reading that "
+                  "would have made it worthless");
+
+            // AND SENSITIVITY FAILS, WHICH IS THE FINDING. The criterion does
+            // NOT generalise: on both asymmetric gusts the wing folds - to
+            // 0.181 and 0.724 - with the criterion never firing, because their
+            // peak separation is 0.000 and 0.149 against a crossing at 0.288.
+            // A canopy can collapse at attached incidence, and most of these
+            // benchmarks do.
+            //
+            // So the lead measured in the block above is real but it is
+            // NARROWER than it reads. It leads the SOLVE's loss of mirror
+            // symmetry on the symmetric frontal, which is the event item 6 is
+            // about. It does not lead the CANOPY's fold, and those are
+            // different events more than a second apart: the fold arrives
+            // 8-25 ms after the gust, and the separation crossing at 1.150 s.
+            //
+            // Which was worth finding before anything was built on it. Route 3
+            // could reasonably have read "the criterion fires four ticks
+            // early" as "the wing knows a collapse is coming", and it does not.
+            Check(!everyFoldWarned,
+                  "SENSITIVITY FAILS, AND THAT IS THE RESULT: the asymmetric "
+                  "gusts fold the canopy to 0.181 and 0.724 without the "
+                  "criterion ever firing. It predicts the SOLVE losing "
+                  "single-valuedness, not the canopy collapsing - a wing can "
+                  "fold at attached incidence, and most of these benchmarks do");
+
+            // AND THE OTHER SIGNAL A SCHEME WOULD REACH FOR IS WORSE. The
+            // solver already reports `vsmConverged`, which looks like item 6's
+            // observable and is not: it goes false on t=0.000 in EVERY gust
+            // case, because the flight solve is capped at 40 iterations and a
+            // gust is enough to miss tolerance inside that budget. It reports
+            // the cap, not the branch.
+            const Timing symmetric = timeCriterion(benches[3]);
+            const Timing asymmetric = timeCriterion(benches[1]);
+            Check(symmetric.divergesAt == 0.0 && asymmetric.divergesAt == 0.0,
+                  "and `vsmConverged` is NOT the signal to reach for: it goes "
+                  "false on the first gust step of every benchmark, including "
+                  "one whose peak separation is 0.000, so it is reporting the "
+                  "40-iteration cap rather than item 6's missing fixed point");
+            (void)worstLeadMs;
         }
 
         // -- what produces the jump, and whether iterations can cure it -----

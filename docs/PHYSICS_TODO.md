@@ -961,6 +961,35 @@ between sections; a wing in deep stall has no stable steady state to find.
   the wing is at separation 0.404 by the time the break lands, so the two are
   one event seen at two moments rather than two coincident ones. The lead is
   stated in ticks because that is the unit a scheme can act in.
+- **AND THE SCOPE OF THAT IS NARROWER THAN IT READS — SENSITIVITY FAILS.**
+  Swept across every collapse benchmark in `coupled_tests`, because a criterion
+  found on one event and generalised by assumption is the shape of the three
+  readings this item has already retracted:
+
+  | benchmark | criterion fires | folds | peak separation | peak fold |
+  |---|---|---|---|---|
+  | still air (control) | never | never | 0.000 | 0.000 |
+  | asymmetric gust 2 m/s | **never** | 0.025 s | 0.000 | **0.181** |
+  | asymmetric gust 4 m/s | **never** | 0.008 s | 0.149 | **0.724** |
+  | symmetric frontal 4 m/s | 1.150 s | 0.017 s | 1.000 | 1.000 |
+
+  **Both asymmetric gusts fold the canopy without the criterion ever firing**,
+  because their peak separation is 0.000 and 0.149 against a crossing at 0.288.
+  **A canopy can collapse at attached incidence, and most of these benchmarks
+  do.** So the 200 ms lead is real but it leads *the solve losing mirror
+  symmetry*, which is the event item 6 is about — not *the canopy folding*,
+  which arrives 8–25 ms after the gust in every case. Route 3 could reasonably
+  have read "fires four ticks early" as "the wing knows a collapse is coming",
+  and it does not.
+- **SPECIFICITY HOLDS**, which is the half that could have killed it outright:
+  in still air the criterion never fires and the wing never folds. It is not a
+  wing permanently declaring itself separated.
+- **AND `vsmConverged` IS NOT THE SIGNAL TO REACH FOR**, which matters because
+  it is the field that looks like item 6's observable. It goes false on
+  t=0.000 in *every* gust case — including the one whose peak separation is
+  0.000 — because the flight solve is capped at 40 iterations and a gust is
+  enough to miss tolerance inside that budget. **It reports the cap, not the
+  branch.**
 - **Two instruments had to be thrown away to get this, and both are the
   obvious one.** First, a contraction factor — the ratio of target residuals
   at k and k+1 passes, which is the textbook statistic for "does this iterate
@@ -2901,9 +2930,12 @@ one that a bounded solve can find. So either:
   on ENTRY rather than detected after the passes are spent. **And it is cheaper
   than that again: the separation state already tracks it, and on the shipped
   wing it crosses 200 ms — four aerodynamic ticks — before §68's symmetry
-  break.** What is still missing is the DECISION about what the scheme does when
-  it fires, which is a modelling choice about separated flow and not a
-  measurement. **The signal is no longer the missing piece. The response is.**
+  break. **But it is a signal for the SOLVE's failure only**: swept across the
+  collapse benchmarks, both asymmetric gusts fold the canopy without it ever
+  firing, so it must not be wired up as a collapse predictor. What is still
+  missing is the DECISION about what the scheme does when it fires, which is a
+  modelling choice about separated flow and not a measurement. **The signal for
+  the regime is no longer the missing piece. The response is.**
 
 **None of these is chosen here, and none should be chosen without the collapse
 gates in front of it** — the frontal is a separated-flow event, so it is the

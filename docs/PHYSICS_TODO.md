@@ -831,6 +831,12 @@ else different: **4 checks fail at 6, all pass at 12.**
   hold, and a different hold moves them. No conclusion of §68's changes — the
   finding was that fifteen times the iteration budget breaks on the *same*
   tick, and that is a statement about iterations, not about the hold.
+  **AND ITEM 30 HAS SINCE MEASURED THE CURVE THEY SIT ON.** The frontal's
+  symmetry break moves monotonically with the aerodynamic hold on the shipped
+  quasi-steady wing — **1.083 s at 120 Hz through 1.350 s at the shipped
+  interval 6 to 1.600 s at 5 Hz**. These three gates are not three independent
+  facts that went stale; they are one curve read at two points. Re-deriving
+  them means pinning them to the curve rather than to a hold.
 - **The fourth is not stale.** It is §69's **control**:
   `!shipped.safetyEnvelopeEngaged` on the 4 m/s symmetric frontal. At 12 the
   shipped wing flies it with the envelope idle; **at 6 it engages.** Two
@@ -2767,6 +2773,43 @@ elapsed time is correct:
   measure the defect rather than something adjacent to it.
 - **Every cell still folds**, so no row here is a symmetry bought by declining
   to collapse.
+
+**AND THE SAME STATEMENT MADE WITH THE SCHEDULE — WHICH IS WHERE §68 AND ITEM
+25 JOIN THIS.** If the symmetry needs the aerodynamics running slower than the
+structure, there is a second and completely independent way to say it: leave
+every state's physics alone and change how often the collapse solver is handed
+a new field. That is `aerodynamicsInterval`, a shipped number rather than an
+instrument, and it had never been swept against this gate. **On the shipped
+quasi-steady wing — no lag, no instruments, no corrections:**
+
+| interval | aero rate | margin break | fold |
+|---|---|---|---|
+| 1 | 120 Hz | **1.083 s** | 1.000 |
+| 2 | 60 Hz | 1.150 s | 1.000 |
+| 3 | 40 Hz | 1.225 s | 1.000 |
+| **6 (ships)** | 20 Hz | **1.350 s** | 1.000 |
+| 12 | 10 Hz | 1.400 s | 1.000 |
+| 24 | 5 Hz | **1.600 s** | 1.000 |
+
+- **§68's attribution is true and is not a fact about the aerodynamics.** "The
+  margin field loses symmetry on a single aerodynamic tick" holds at every
+  row — but *which* tick is the schedule's to choose, and it moves half a
+  second across the range, monotonically, on the aircraft that ships.
+- **Item 25 is the same curve seen from a different gate.** Four gates fail at
+  interval 6 and pass at 12; three of them pin break times and residuals
+  identified at the 0.1 s hold. This is why. They are not independent facts
+  about the wing, they are one curve read at two points.
+- **The control is the shipped number, exactly.** Interval 6 reproduces §68's
+  1.350 s to the tick, so the other rows are the schedule moving and not a
+  different aircraft.
+- **BUT THE SCHEDULE ONLY POSTPONES IT — IT NEVER REMOVES IT**, and that
+  distinction is the useful part. Slowing the two states held the frontal for
+  the whole event; no hold from 120 Hz to 5 Hz does. They are not the same
+  currency, and the 2×2 says why: it takes BOTH states slow, and a quasi-steady
+  wing has no circulation state for the schedule to reach. **The symmetry is
+  not bought by feeding the structure less often. It is bought by the
+  aerodynamic field being unable to change, in both of the ways it can change**
+  — which is a defect wearing two costumes rather than a scheme.
 
 **WHAT THIS COSTS STRAND 3, STATED PLAINLY.** The entry criterion asks for a
 separated solve that is single-valued. The only configuration this project has

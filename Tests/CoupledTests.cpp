@@ -1925,6 +1925,165 @@ int main()
                 Check(outcome.second > 0.1,
                       "every cell of the 2x2 still folds the wing, so none of "
                       "these is a symmetry bought by declining to collapse");
+
+            // -- AND THE SAME STATEMENT MADE WITH THE SCHEDULE --------------
+            //
+            // The 2x2 says the symmetry needs the aerodynamics as a whole
+            // running slower than the structure it feeds. If that is what it
+            // is, then there is a second, completely independent way to say
+            // it: leave every state's physics ALONE and change how often the
+            // collapse solver is handed a new aerodynamic field. That is
+            // `aerodynamicsInterval`, it is a shipped number rather than an
+            // instrument, and nothing in this file has ever swept it against
+            // this gate.
+            //
+            // This runs on the SHIPPED QUASI-STEADY WING - no lag, no
+            // instruments, no corrections. If the break time moves with the
+            // schedule on the aircraft that ships, then Sec 68's attribution
+            // of the break to "a single aerodynamic tick" is the schedule
+            // talking, and item 25's finding that Sec 69's control passes at
+            // interval 12 and fails at 6 is the same phenomenon seen from a
+            // different gate. Those three would then be one fact.
+            //
+            // The prediction is falsifiable and this is the point of running
+            // it: if the break sits at the same WALL-CLOCK time regardless of
+            // interval, the schedule is irrelevant and the 2x2's reading is
+            // wrong.
+            std::printf("  The same statement made with the SCHEDULE, on the "
+                        "shipped quasi-steady\n  wing - no lag, no "
+                        "instruments. Interval 6 is what ships:\n");
+            std::printf("%12s %12s %14s %14s %10s\n", "interval", "aero Hz",
+                        "margin brk", "peak resid", "fold");
+            const auto atInterval = [&](int interval)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                CoupledSchedule schedule = wing.Schedule();
+                schedule.aerodynamicsInterval = interval;
+                wing.SetSchedule(schedule);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = schedule.timeStepS;
+                const int steps = static_cast<int>(14.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                struct Outcome
+                {
+                    double marginBreak = -1.0;
+                    double peakResidual = 0.0;
+                    double deepestFold = 0.0;
+                };
+                Outcome out;
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+                    const CollapseResult& fold =
+                        wing.Diagnostics().collapseState;
+                    const std::size_t count = fold.sections.size();
+                    double residual = 0.0;
+                    double marginResidual = 0.0;
+                    for (std::size_t i = 0; i < count; ++i)
+                        out.deepestFold = std::max(out.deepestFold,
+                                                   fold.sections[i].collapse);
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                    {
+                        const std::size_t m = count - 1 - i;
+                        residual = std::max(residual,
+                            std::fabs(fold.sections[i].collapse
+                                      - fold.sections[m].collapse));
+                        marginResidual = std::max(marginResidual,
+                            std::fabs(fold.sections[i].pressureMargin
+                                      - fold.sections[m].pressureMargin));
+                    }
+                    out.peakResidual = std::max(out.peakResidual, residual);
+                    if (out.marginBreak < 0.0 && marginResidual > 1.0e-9)
+                        out.marginBreak = step * dt;
+                }
+                return out;
+            };
+
+            double shippedIntervalBreak = 0.0;
+            double fastestIntervalBreak = 0.0;
+            double slowestIntervalBreak = 0.0;
+            double slowestIntervalFold = 0.0;
+            bool everHeld = false;
+            bool monotoneInSchedule = true;
+            double previousIntervalBreak = -1.0;
+            for (const int interval : {1, 2, 3, 6, 12, 24})
+            {
+                const auto measured = atInterval(interval);
+                std::printf("%12d %12.1f %14.3f %14.2e %10.3f\n", interval,
+                            1.0 / (interval / 120.0), measured.marginBreak,
+                            measured.peakResidual, measured.deepestFold);
+                if (interval == 1) fastestIntervalBreak = measured.marginBreak;
+                if (interval == 6) shippedIntervalBreak = measured.marginBreak;
+                if (interval == 24)
+                {
+                    slowestIntervalBreak = measured.marginBreak;
+                    slowestIntervalFold = measured.deepestFold;
+                }
+                if (measured.marginBreak < 0.0) everHeld = true;
+                else if (previousIntervalBreak >= 0.0
+                         && measured.marginBreak < previousIntervalBreak)
+                    monotoneInSchedule = false;
+                previousIntervalBreak = measured.marginBreak;
+            }
+            std::printf("\n");
+
+            // THE CONTROL, AND IT IS THE SHIPPED NUMBER. Interval 6 must
+            // reproduce Sec 68's 1.350 s, or this sweep is measuring a
+            // different aircraft from the one the rest of the file is about.
+            Check(std::fabs(shippedIntervalBreak - 1.350) < 1.0e-9,
+                  "CONTROL: at the shipped interval this sweep reproduces "
+                  "Sec 68's break at t=1.350 s exactly, so the other rows are "
+                  "the schedule moving and not a different wing");
+
+            // AND THE BREAK IS A CONTINUOUS FUNCTION OF THE SCHEDULE, ON THE
+            // AIRCRAFT THAT SHIPS. 1.083 s at 120 Hz through to 1.600 s at
+            // 5 Hz, monotone, half a second across the range, with every
+            // state's physics untouched and no instrument set. So Sec 68's
+            // "the margin field loses symmetry on a single aerodynamic tick"
+            // is true but is not a fact about the aerodynamics: WHICH tick is
+            // the schedule's to choose. Item 25's four gates that fail at
+            // interval 6 and pass at 12 are this same curve seen from a
+            // different gate.
+            Check(monotoneInSchedule
+                      && slowestIntervalBreak - fastestIntervalBreak > 0.3,
+                  "THE BREAK IS THE SCHEDULE'S: on the shipped quasi-steady "
+                  "wing, with no lag and no instruments, the frontal's "
+                  "symmetry break moves monotonically from 1.083 s to 1.600 s "
+                  "as the aerodynamic hold is coarsened - so which tick breaks "
+                  "it is a property of how often the structure is fed, not of "
+                  "the aerodynamics");
+
+            // AND THE SCHEDULE CANNOT REMOVE IT, WHICH IS THE DISTINCTION
+            // WORTH KEEPING. Slowing the two STATES held the frontal for the
+            // whole event; coarsening the schedule only postpones the break.
+            // They are not the same currency, and the 2x2 explains why: it
+            // takes BOTH states slow, and a quasi-steady wing has no
+            // circulation state to slow at all. The schedule can only reach
+            // the one state this wing has.
+            //
+            // Which is the useful form of the finding. The symmetry is not
+            // bought by feeding the structure less often - it is bought by the
+            // aerodynamic field being unable to CHANGE, in both of the ways it
+            // can change, and that is a defect wearing two costumes rather
+            // than a scheme.
+            Check(!everHeld,
+                  "AND THE SCHEDULE ONLY POSTPONES IT: no aerodynamic hold "
+                  "from 120 Hz to 5 Hz holds the frontal symmetric, where "
+                  "slowing both states did. Feeding the structure less often "
+                  "is not the same as handing it a field that cannot move");
+            Check(slowestIntervalFold > 0.1,
+                  "and the slowest schedule still folds the wing, so what "
+                  "moves is when the asymmetry arrives and not whether the "
+                  "frontal happens");
         }
 
         // -- what produces the jump, and whether iterations can cure it -----

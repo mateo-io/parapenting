@@ -919,7 +919,44 @@ between sections; a wing in deep stall has no stable steady state to find.
 
 - Locked as a known-failure check: `Check(!converged, "KNOWN FAILURE: ...")`,
   which fails loudly if someone ever fixes it.
-- The honest treatment is Level 11's unsteady wake.
+- **AND THE MECHANISM IS NOW MEASURED RATHER THAN ASSERTED.** The sentence
+  above has been carried since it was written. `aerodynamics_tests` sweeps
+  incidence through the stall and locates two crossings *independently* — one
+  from the polar alone with no solve in it, one from the iteration alone with
+  no polar in it:
+
+  | α | dCl/dα | residual @8 | residual @64 | 8× bought | converges |
+  |---|---|---|---|---|---|
+  | 2° | 7.033 | 7.98e-03 | 2.61e-06 | 3053× | yes |
+  | 10° | 6.846 | 7.92e-03 | 2.70e-06 | 2931× | yes |
+  | **12°** | **−3.073** | 1.83e+00 | 4.51e-01 | **4×** | **NO** |
+  | 18° | −1.970 | 8.28e-01 | 1.03e+00 | 1× | NO |
+  | 25° | −0.840 | 2.06e+00 | 1.15e+00 | 2× | NO |
+
+  **The lift slope changes sign by 12.0°. The iteration stops converging by
+  12.0°.** Item 6's sentence is the one the solver obeys.
+- **The criterion is therefore available from the POLAR**, at a section's own
+  incidence, before any iterating — a table lookup rather than a failed solve.
+  That is what route 3 (item 30) needs to declare the separated regime on
+  ENTRY instead of diagnosing it afterwards, and it costs one sample.
+- **Two instruments had to be thrown away to get this, and both are the
+  obvious one.** First, a contraction factor — the ratio of target residuals
+  at k and k+1 passes, which is the textbook statistic for "does this iterate
+  converge". It does not separate the regimes at all: at 25°, where the target
+  provably wanders one to five times the step away, the 8-to-9 ratio is
+  **0.429**, which reads as healthy contraction. A single pair of passes cannot
+  tell contraction from an iterate part-way round a cycle. Second, a magnitude
+  threshold on the residual — but the attached floor is 2.6e-06 against the
+  solver's own 1e-06 tolerance, so reading that constant literally calls a
+  converged solve non-convergent, and any looser number is chosen to make the
+  answer come out. What needs no chosen constant is whether **eight times the
+  budget bought anything**: 3000× attached, 1–4× separated, and in one row the
+  residual is *larger* at 64 passes than at 8.
+- The honest treatment is Level 11's unsteady wake. **But item 30 has since
+  measured that strand 2 does not supply it** — the only configuration that
+  ever held the symmetric frontal is one where the aerodynamic states run six
+  times slow, which is a defect and not a scheme. **Item 6 is upstream of the
+  wake, not downstream of it.**
 - Note this is about the *cold* solve. Inside the coupled solver, with Level 4's
   separation state carried between steps, the wing walks into a fully separated
   46-degree stall at 4.65 m/s of sink without the solve failing at all.
@@ -2826,16 +2863,22 @@ one that a bounded solve can find. So either:
   what it means has to be stated — it is no longer Jones' Φ and should not be
   reported as it; or
 - the separated regime gets a different formulation entirely, which is item 6's
-  own suggestion and a level rather than a fix; or
+  own suggestion and a level rather than a fix — **and item 6's mechanism is
+  now measured: the iteration stops converging at 12.0°, exactly where the
+  section's lift slope changes sign**, so whatever that formulation is, what it
+  has to replace is the branch a negative slope makes non-contracting; or
 - the target is iterated where that converges and the scheme degrades
   deliberately where it does not, which is honest only if the degradation is
   declared and gated rather than discovered later. **This is now the route with
   both of its halves measured**: the converging side reproduces Jones' function
   to 0.020 over the whole sweep at a cost the shipped solve already pays, and
   the degradation is visible from inside the solve on the tick it happens,
-  through `targetResidual`, at fixed cost. What is still missing is the DECISION
-  about what the scheme does when that signal fires — which is a modelling
-  choice about separated flow, not a measurement.
+  through `targetResidual`, at fixed cost. **And the signal no longer has to be
+  a failed iteration**: item 6's criterion is the sign of dCl/dα, which is a
+  polar lookup at a section's own incidence, so the degradation can be declared
+  on ENTRY rather than detected after the passes are spent. What is still
+  missing is the DECISION about what the scheme does when it fires — which is a
+  modelling choice about separated flow, not a measurement.
 
 **None of these is chosen here, and none should be chosen without the collapse
 gates in front of it** — the frontal is a separated-flow event, so it is the

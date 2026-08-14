@@ -567,6 +567,138 @@ int main()
               "solve at fixed cost, so route 3's degradation can be DECLARED "
               "on the tick it happens instead of surfacing later as a collapse "
               "gate nobody can attribute");
+
+        // -- ITEM 6's MECHANISM, MEASURED RATHER THAN ASSERTED -------------
+        //
+        // Three iterations have now ended at the same place: item 6 is
+        // upstream of everything Level 11 was going to build, and nothing in
+        // strand 2 supplies what it takes away. So it is worth asking whether
+        // item 6's own sentence is right, because it has never been measured.
+        //
+        // What it says: "the separated branch has a negative lift slope, which
+        // inverts the downwash feedback between sections; a wing in deep stall
+        // has no stable steady state to find." That is a MECHANISM, and it
+        // makes a sharp prediction. The cross-section iteration is a fixed
+        // point whose gain runs through dCl/dalpha - each section's circulation
+        // sets a downwash on its neighbours, which moves their incidence, which
+        // moves their lift by the slope. If the slope's SIGN is what breaks it,
+        // then the iteration's contraction factor must pass 1 where the slope
+        // passes zero, and nowhere else.
+        //
+        // THE FIRST INSTRUMENT FOR THIS WAS WRONG AND IT IS WORTH RECORDING
+        // WHY, because it is the obvious one. A contraction factor - the ratio
+        // of target residuals at k and k+1 passes - is the textbook statistic
+        // for "does this iteration converge", and it does not distinguish
+        // these regimes at all: at 25 degrees, where the table above measures
+        // the target landing one to five times the step away and wandering
+        // with the budget, the 8-to-9 ratio is 0.429. A single pair of passes
+        // cannot tell contraction from an iterate part-way round a cycle.
+        //
+        // What does distinguish them is where the residual ENDS UP over a real
+        // budget. A convergent iteration drives it toward zero; a wandering
+        // one has a floor it never gets under, and that floor is the thing
+        // item 6 is about. So the statistic here is the residual after 64
+        // passes, with the 8-pass value printed beside it: the pair says
+        // whether the budget bought anything.
+        std::printf("\n  Item 6's mechanism: is the non-convergence the SIGN "
+                    "of the lift slope?\n");
+        std::printf("%10s %14s %14s %14s %10s %6s\n", "alpha", "dCl/dalpha",
+                    "resid @8", "resid @64", "8x bought", "conv");
+        const SectionPolarTable polars = SectionPolarTable::Analytic();
+        const double stallAngleRad = polars.StallAngleRad(0.0);
+        const auto residualAfter = [&](int passes, double alphaRad)
+        {
+            return march(true, 1, passes, alphaRad).targetResidual;
+        };
+        // Local slope from the polar the SOLVER samples, by central
+        // difference at the separation that incidence settles to - not the
+        // linear-range slope, which is a different number past the knee and
+        // would make the sign change appear in the wrong place.
+        const auto localSlope = [&](double alphaRad)
+        {
+            constexpr double Delta = 0.5 * Pi / 180.0;
+            const auto clAt = [&](double a)
+            {
+                const double separation =
+                    polars.SeparationEquilibrium(a, 0.0, 0.0);
+                return polars.SampleAtSeparation(a, 0.0, separation, 1.0)
+                    .liftCoefficient;
+            };
+            return (clAt(alphaRad + Delta) - clAt(alphaRad - Delta))
+                / (2.0 * Delta);
+        };
+
+        // AND THE CRITERION IS A RATIO, NOT A MAGNITUDE, WHICH IS THE SECOND
+        // INSTRUMENT THIS BLOCK HAD TO FIX. The obvious test is "is the
+        // residual small", and any threshold for that is a number somebody
+        // chose: the attached floor is 2.6e-06 and the solver's own tolerance
+        // is 1e-06, so reading the solver's constant literally calls a solve
+        // that has converged to five decimal places non-convergent, and any
+        // looser number is picked to make the answer come out.
+        //
+        // What needs no chosen constant is whether the BUDGET BOUGHT ANYTHING.
+        // Eight times the passes either drives the residual down by orders or
+        // it does not, and that is a statement about the iteration rather than
+        // about a scale. Attached, the eightfold budget buys three and a half
+        // orders. Separated, it buys nothing - and in one row the residual is
+        // LARGER at 64 passes than at 8.
+        constexpr double BudgetMustBuy = 100.0;
+        double slopeSignChange = -1.0;
+        double convergenceLost = -1.0;
+        double previousSlope = 0.0;
+        bool first = true;
+        for (const double alphaDeg :
+             {2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 18.0, 25.0})
+        {
+            const double alphaRad = alphaDeg * Pi / 180.0;
+            const double slope = localSlope(alphaRad);
+            const double atEight = residualAfter(8, alphaRad);
+            const double floorAt64 = residualAfter(64, alphaRad);
+            const double bought = floorAt64 > 0.0 ? atEight / floorAt64 : 0.0;
+            const bool converges = bought > BudgetMustBuy;
+            std::printf("%9.1f%s %14.3f %14.2e %14.2e %9.0fx %6s\n", alphaDeg,
+                        " deg", slope, atEight, floorAt64, bought,
+                        converges ? "yes" : "NO");
+            if (!first && slopeSignChange < 0.0 && previousSlope > 0.0
+                && slope <= 0.0)
+                slopeSignChange = alphaDeg;
+            if (convergenceLost < 0.0 && !converges) convergenceLost = alphaDeg;
+            previousSlope = slope;
+            first = false;
+        }
+        std::printf("  lift slope changes sign by %.1f deg; the iteration "
+                    "stops converging by %.1f deg;\n  the polar's own stall "
+                    "angle is %.1f deg.\n  'conv' is whether eight times the "
+                    "budget bought at least %.0fx off the residual.\n\n",
+                    slopeSignChange, convergenceLost,
+                    stallAngleRad * 180.0 / Pi, BudgetMustBuy);
+
+        // THE MECHANISM, CONFIRMED OR NOT. Both crossings are located
+        // independently - one from the polar alone, with no solve in it, and
+        // one from the iteration alone, with no polar in it - so agreeing is
+        // a measurement rather than a restatement.
+        Check(slopeSignChange > 0.0 && convergenceLost > 0.0,
+              "both crossings are located inside the swept range, so the "
+              "comparison below is between two measured numbers rather than "
+              "between a number and a missing one");
+        Check(std::fabs(convergenceLost - slopeSignChange) <= 2.0,
+              "ITEM 6's MECHANISM, MEASURED FOR THE FIRST TIME: the "
+              "cross-section iteration stops contracting at the incidence "
+              "where the section's lift slope changes sign. The sentence item "
+              "6 has carried as an assertion since it was written is the one "
+              "the solver obeys");
+
+        // AND THE CONSEQUENCE THAT MAKES IT USEFUL. If the criterion is the
+        // slope, it is available from the POLAR - a table lookup at a section's
+        // own incidence, before any iterating - rather than only from watching
+        // an iteration fail. That is what route 3 needs to declare its
+        // degradation on entry instead of detecting it after the fact, and it
+        // costs a sample.
+        Check(localSlope(stallAngleRad + 6.0 * Pi / 180.0) < 0.0,
+              "and the criterion is available from the polar alone, at a "
+              "section's own incidence, without running the iteration that "
+              "would fail - which is what lets a scheme declare the separated "
+              "regime on entry rather than diagnose it afterwards");
     }
 
     // -- section polars ---------------------------------------------------

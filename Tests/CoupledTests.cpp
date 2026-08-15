@@ -2623,6 +2623,101 @@ int main()
                   "attribution is a property of the two mechanisms and not of "
                   "the one event it was found on");
 
+            // -- IS THE HARDER-COLLAPSING WING RIGHT? ----------------------
+            //
+            // Everything above prices the correction. What it does not answer
+            // is whether the wing on the other side of it is the better one,
+            // and that is now the only thing standing between a known
+            // arithmetic defect and being fixed.
+            //
+            // It looks like a calibration question needing published collapse
+            // data this project does not have. It is not. There is an
+            // invariant available that needs no data at all and cannot be
+            // argued with: A MIRROR-SYMMETRIC INPUT MUST PRODUCE A
+            // MIRROR-SYMMETRIC RESPONSE. The gust is symmetric about the
+            // centreline, the wing is symmetric, the line plan is symmetric -
+            // so any net turn rate is the solver inventing a direction.
+            //
+            // A wing that departs in yaw from a symmetric frontal is wrong
+            // whatever the collapse depth ought to be, and it is wrong in a way
+            // no amount of collapse-severity calibration would excuse.
+            const auto frontalOutcome = [&](bool elapsedTime)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetAerodynamicElapsedTime(elapsedTime);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(6.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                struct Outcome
+                {
+                    double peakTurnRadps = 0.0;
+                    double peakFoldSpread = 0.0;
+                    bool envelopeEngaged = false;
+                };
+                Outcome out;
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+                    out.peakTurnRadps = std::max(out.peakTurnRadps,
+                        std::fabs(wing.Diagnostics().turnRateRadps));
+                    if (wing.Diagnostics().aerodynamicsRejected)
+                        out.envelopeEngaged = true;
+                    const CollapseResult& fold =
+                        wing.Diagnostics().collapseState;
+                    const std::size_t count = fold.sections.size();
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                        out.peakFoldSpread = std::max(out.peakFoldSpread,
+                            std::fabs(fold.sections[i].collapse
+                                      - fold.sections[count - 1 - i]
+                                            .collapse));
+                }
+                return out;
+            };
+
+            const auto shippedFrontal = frontalOutcome(false);
+            const auto correctedFrontal = frontalOutcome(true);
+            std::printf("  Is the harder-collapsing wing RIGHT? A symmetric "
+                        "gust on a symmetric wing,\n  so any net turn is the "
+                        "solver choosing a direction:\n");
+            std::printf("%-22s %16s %16s %12s\n", "", "peak turn rad/s",
+                        "peak L-R fold", "envelope");
+            std::printf("%-22s %16.3f %16.3f %12s\n", "shipped",
+                        shippedFrontal.peakTurnRadps,
+                        shippedFrontal.peakFoldSpread,
+                        shippedFrontal.envelopeEngaged ? "ENGAGED" : "idle");
+            std::printf("%-22s %16.3f %16.3f %12s\n", "elapsed time correct",
+                        correctedFrontal.peakTurnRadps,
+                        correctedFrontal.peakFoldSpread,
+                        correctedFrontal.envelopeEngaged ? "ENGAGED" : "idle");
+            std::printf("\n");
+
+            // THE ANSWER, AND IT DECIDES THE ORDERING. Both wings break
+            // symmetry - Sec 68 established that for the shipped one - so
+            // neither is clean. What matters is the SIZE, because that is what
+            // says whether the correction is admissible on its own.
+            Check(shippedFrontal.peakTurnRadps > 0.0,
+                  "the shipped wing already turns from a symmetric gust, so "
+                  "this is not a defect the correction introduces - it is one "
+                  "the correction changes the size of");
+            Check(correctedFrontal.peakTurnRadps
+                      > 2.0 * shippedFrontal.peakTurnRadps,
+                  "AND THE CORRECTION MULTIPLIES IT: the same symmetric gust "
+                  "on the same symmetric wing turns the corrected aircraft "
+                  "several times faster. Fixing the arithmetic alone does not "
+                  "give a better wing, it gives a wing whose existing symmetry "
+                  "defect is violent - so the correction is NOT admissible on "
+                  "its own, and item 6 is upstream of it as well");
+
             // AND PHASE 2 IS WHERE IT LANDS. Same event, same harness, one
             // flag, and the difference is confined to the half of the event
             // that is made of the states it corrects.

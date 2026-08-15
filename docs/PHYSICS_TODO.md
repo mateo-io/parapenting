@@ -3046,6 +3046,36 @@ completely instead of to a quarter. That is a statement about the aircraft, not
 about the tests. Re-deriving the gates means characterising a wing that
 collapses much harder than the one currently benchmarked, and deciding whether
 that wing is right.
+
+**AND THAT QUESTION IS NOW ANSWERED: NO, AND IT WAS MIS-POSED.** It looks like a
+calibration question needing published collapse data this project does not
+have. It is not. There is an invariant that needs no data and cannot be argued
+with: **a mirror-symmetric input must produce a mirror-symmetric response.**
+The gust is symmetric about the centreline, the wing is symmetric, the line plan
+is symmetric — so any net turn rate is the solver choosing a direction.
+
+| | peak turn rad/s | peak L−R fold | safety envelope |
+|---|---|---|---|
+| shipped | **0.737** | 0.723 | idle |
+| elapsed time correct | **2.831** | 0.853 | **ENGAGED** |
+
+- **The corrected wing departs in yaw at 2.831 rad/s — 162°/s — from a
+  symmetric frontal, and engages the numerical safety envelope.** By guiding
+  rule 12 that run is not flight behaviour at all. No collapse-severity
+  calibration would excuse it: the wing is inventing a direction.
+- **So fixing the arithmetic alone does not give a better wing.** It gives a
+  wing whose existing symmetry defect is violent. **The correction is NOT
+  admissible on its own, and item 6 is upstream of it too.**
+- **This settles item 30's standing discomfort** that the elapsed-time
+  correction "defaults OFF, and the default is the wrong one". The default is
+  wrong arithmetically and right operationally, and now for a measured reason
+  rather than a cost estimate: turning it on ships a wing that spins up from a
+  symmetric gust.
+- **AND THE SHIPPED WING HAS THE SAME DEFECT, WHICH IS WORTH SAYING PLAINLY.**
+  0.737 rad/s is 42°/s of yaw from a perfectly symmetric input. It is four
+  times smaller, it stays out of the safety envelope, and it is not a different
+  kind of thing. §68 established the symmetry break; this puts a flight number
+  on what the break costs, on the aircraft as it ships.
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

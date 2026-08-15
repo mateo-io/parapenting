@@ -2986,6 +2986,36 @@ the collapse model's own pressure balance beside its own output:
 - **It also explains the asymmetric rows of the sensitivity sweep.** The 2 m/s
   gust folds to 0.181 with peak separation 0.000 for the whole run: that is a
   frontal which never reaches phase 2 at all.
+
+**AND THE SPLIT IS NOT A DESCRIPTION IMPOSED ON THE TRACE — IT IS AN
+ATTRIBUTION, AND THE ELAPSED-TIME CORRECTION PROVES IT.** The correction speeds
+up two states, the stall memory and the circulation lag. Both are phase-2
+quantities; phase 1 is a pressure balance neither appears in. So the correction
+must move phase 2 and leave phase 1 alone — and if it moved both, the split
+would be wrong:
+
+| | boundary | phase 1 peak fold | phase 2 peak fold |
+|---|---|---|---|
+| shipped | 1.0000 s | **0.741891025** | 0.999929838 |
+| elapsed time correct | 1.0000 s | **0.741891025** | 0.999999965 |
+
+- **Phase 1 is identical to nine decimals.** Not "close" — the same number. The
+  pressure collapse does not know the correction happened.
+- **Phase 2 is the only thing that moves.** One flag, one benchmark, one
+  harness, and the difference is confined to the half of the event made of the
+  states it corrects.
+- **The phase boundary is the wing's own**, not a chosen constant: the tick
+  separation leaves zero.
+- **The phase-2 column understates its own change and the block says so where
+  the number is.** Fold depth saturates at 1 and phase 2 is already at 0.9999,
+  so a metric with no headroom reports 7e-05 for a change the mirror residual
+  measures as 3.52e-14 → 4.04e-01. **The attribution rests on WHICH column
+  moves, not on how far.**
+- **What this makes possible, and it is the point:** item 30 can say "seven
+  gates fail under the correction" but not what about them failed, because each
+  gate reports one number for two mechanisms. Split by phase, a collapse
+  benchmark says which half moved — so re-deriving them becomes a bounded job
+  on the phase-2 halves rather than a re-characterisation of everything.
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

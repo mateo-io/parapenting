@@ -2488,6 +2488,131 @@ int main()
                       "that a threshold could reverse");
             }
 
+            // -- SPLITTING THE GATE BY PHASE, AND THE ATTRIBUTION TEST -----
+            //
+            // If the frontal is two mechanisms, then a gate reporting one
+            // number for it cannot say which mechanism moved - which is why
+            // item 30 can report that "seven gates fail" under the
+            // elapsed-time correction without being able to say what about
+            // them failed.
+            //
+            // The phase boundary is not a chosen constant: it is the tick
+            // separation leaves zero, which the trace above puts at t=1.000 s
+            // and which the wing decides for itself. Phase 1 is the pressure
+            // collapse in attached flow; phase 2 is everything after the wing
+            // stops being attached.
+            //
+            // AND THIS IS THE ATTRIBUTION TEST. The elapsed-time correction
+            // makes the two aerodynamic states run at real speed. Both of them
+            // are phase-2 quantities - stall memory and circulation lag - and
+            // phase 1 is a pressure balance that neither appears in. So the
+            // correction must move phase 2 and leave phase 1 alone. If it
+            // moves phase 1 as well, the two-phase reading is wrong and the
+            // separation is not clean; if it leaves both alone, the correction
+            // does not reach this benchmark at all.
+            //
+            // Either outcome is worth having, which is why it is measured
+            // rather than asserted from the phases alone.
+            struct Phased
+            {
+                double boundary = -1.0;
+                double phaseOnePeakFold = 0.0;
+                double phaseTwoPeakFold = 0.0;
+            };
+            const auto phased = [&](bool elapsedTime)
+            {
+                CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
+                wing.SetAerodynamicElapsedTime(elapsedTime);
+                CoupledState state;
+                Fly(wing, handsOff, 10.0, &state);
+
+                const double dt = wing.Schedule().timeStepS;
+                const int steps = static_cast<int>(4.0 / dt);
+                const int gustSteps = static_cast<int>(1.0 / dt);
+                Phased out;
+                for (int step = 0; step < steps; ++step)
+                {
+                    CoupledAtmosphere air;
+                    if (step < gustSteps)
+                    {
+                        air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
+                        air.gustSpanFrom = -1.0;
+                        air.gustSpanTo = 1.0;
+                    }
+                    wing.Step(state, handsOff, air);
+
+                    double worstSeparation = 0.0;
+                    for (const double separation :
+                         state.separation.sectionSeparation)
+                        worstSeparation =
+                            std::max(worstSeparation, separation);
+                    double worstFold = 0.0;
+                    for (const SectionCollapseDiagnostics& section :
+                         wing.Diagnostics().collapseState.sections)
+                        worstFold = std::max(worstFold, section.collapse);
+
+                    // The wing names its own boundary: the tick it stops
+                    // being attached.
+                    if (out.boundary < 0.0 && worstSeparation > 0.01)
+                        out.boundary = step * dt;
+                    if (out.boundary < 0.0)
+                        out.phaseOnePeakFold =
+                            std::max(out.phaseOnePeakFold, worstFold);
+                    else
+                        out.phaseTwoPeakFold =
+                            std::max(out.phaseTwoPeakFold, worstFold);
+                }
+                return out;
+            };
+
+            const Phased shippedPhases = phased(false);
+            const Phased correctedPhases = phased(true);
+            std::printf("  The gate split by phase, and what the elapsed-time "
+                        "correction moves:\n");
+            std::printf("%-22s %12s %14s %14s\n", "", "boundary",
+                        "phase 1 fold", "phase 2 fold");
+            std::printf("%-22s %12.4f %14.9f %14.9f\n", "shipped",
+                        shippedPhases.boundary, shippedPhases.phaseOnePeakFold,
+                        shippedPhases.phaseTwoPeakFold);
+            std::printf("%-22s %12.4f %14.9f %14.9f\n", "elapsed time correct",
+                        correctedPhases.boundary,
+                        correctedPhases.phaseOnePeakFold,
+                        correctedPhases.phaseTwoPeakFold);
+            std::printf("  the boundary is the tick separation leaves zero - "
+                        "the wing's own, not a\n  chosen constant. Phase 1 is "
+                        "identical to nine decimals; phase 2 is not.\n");
+            // AND THE PHASE-2 COLUMN UNDERSTATES ITS OWN CHANGE, WHICH IS
+            // WORTH SAYING WHERE THE NUMBER IS. Fold depth saturates at 1, and
+            // phase 2 is already at 0.9999 - so a metric with no headroom left
+            // reports a 7e-05 difference for a change that the mirror residual
+            // measures as 3.52e-14 against 4.04e-01. The attribution below
+            // rests on WHICH column moves, not on how far.
+            std::printf("  phase 2's fold is saturated at its ceiling, so the "
+                        "size of that difference\n  understates it - the "
+                        "mirror residual is the phase-2 metric with range.\n\n");
+
+            // PHASE 1 IS UNTOUCHED, TO THE DIGIT. The correction changes the
+            // rate of two states that do not appear in the pressure balance,
+            // and the pressure collapse does not know it happened.
+            Check(std::fabs(correctedPhases.phaseOnePeakFold
+                            - shippedPhases.phaseOnePeakFold) < 1.0e-9,
+                  "ATTRIBUTION: the elapsed-time correction leaves the "
+                  "frontal's PHASE 1 fold identical to the digit - it is a "
+                  "pressure collapse in attached flow, and neither of the two "
+                  "states the correction speeds up appears in it");
+
+            // AND PHASE 2 IS WHERE IT LANDS. Same event, same harness, one
+            // flag, and the difference is confined to the half of the event
+            // that is made of the states it corrects.
+            Check(std::fabs(correctedPhases.boundary - shippedPhases.boundary)
+                      > 1.0e-9
+                  || std::fabs(correctedPhases.phaseTwoPeakFold
+                               - shippedPhases.phaseTwoPeakFold) > 1.0e-6,
+                  "and PHASE 2 is where the correction lands, so the two-phase "
+                  "split is not a description imposed on the trace - it "
+                  "separates the part of the benchmark Level 11 can reach from "
+                  "the part it cannot");
+
             const Timing symmetric = timeCriterion(benches[3]);
             const Timing asymmetric = timeCriterion(benches[1]);
             Check(symmetric.divergesAt == 0.0 && asymmetric.divergesAt == 0.0,

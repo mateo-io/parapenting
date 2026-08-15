@@ -3016,6 +3016,36 @@ would be wrong:
   gate reports one number for two mechanisms. Split by phase, a collapse
   benchmark says which half moved — so re-deriving them becomes a bounded job
   on the phase-2 halves rather than a re-characterisation of everything.
+
+**AND ON THE ASYMMETRIC GUST, WHICH IS THE CASE THAT COULD HAVE BROKEN THE
+SPLIT, PHASE 2 IS ENORMOUS.** The symmetric frontal's phase-2 fold is saturated
+at its ceiling, so it understates. The 4 m/s asymmetric gust is not saturated
+and it reaches phase 2 only weakly — peak separation 0.149 — which makes it the
+benchmark where phase 1 was most likely to move:
+
+| | phase 1 peak fold | phase 2 peak fold |
+|---|---|---|
+| asymmetric, shipped | **0.723609155** | 0.239 |
+| asymmetric, corrected | **0.723609155** | **1.000** |
+
+- **Phase 1 identical to nine decimals on this benchmark too.** The split is a
+  property of the two mechanisms, not of the one event it was found on.
+- **Phase 2 goes from a quarter fold to a TOTAL COLLAPSE.** This is the honest
+  magnitude the symmetric case's ceiling was hiding.
+
+**WHICH REFRAMES WHAT "RE-DERIVE THE GATES" MEANS, AND IT IS NOT TEST
+MAINTENANCE.** Run with the correction defaulted on, `collapse_tests` passes
+entirely and **`coupled_tests` fails 14 checks** — more than item 30's seven,
+because this session added gates that pin the shipped configuration. Every one
+of them is at or after the phase boundary; none is a phase-1 gate that moved
+when it should not have. But they are not stale expectations either: **the
+aircraft's post-stall behaviour is currently six times too slow, and correcting
+it makes collapses far more severe** — a symmetric frontal that departs at
+2.83 rad/s with the safety envelope engaged, an asymmetric gust that folds
+completely instead of to a quarter. That is a statement about the aircraft, not
+about the tests. Re-deriving the gates means characterising a wing that
+collapses much harder than the one currently benchmarked, and deciding whether
+that wing is right.
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

@@ -2519,7 +2519,7 @@ int main()
                 double phaseOnePeakFold = 0.0;
                 double phaseTwoPeakFold = 0.0;
             };
-            const auto phased = [&](bool elapsedTime)
+            const auto phased = [&](bool elapsedTime, double spanTo = 1.0)
             {
                 CoupledParagliderSolver wing(canopy, Epic2MlLinePlan());
                 wing.SetAerodynamicElapsedTime(elapsedTime);
@@ -2537,7 +2537,7 @@ int main()
                     {
                         air.gustWorldMps = Vec3{0.0, 0.0, -4.0};
                         air.gustSpanFrom = -1.0;
-                        air.gustSpanTo = 1.0;
+                        air.gustSpanTo = spanTo;
                     }
                     wing.Step(state, handsOff, air);
 
@@ -2600,6 +2600,28 @@ int main()
                   "frontal's PHASE 1 fold identical to the digit - it is a "
                   "pressure collapse in attached flow, and neither of the two "
                   "states the correction speeds up appears in it");
+
+            // AND THE SAME ON THE ASYMMETRIC GUST, WHICH IS THE ONE THAT COULD
+            // HAVE BROKEN IT. The attribution above is one benchmark, and this
+            // session has retracted three readings taken from one benchmark.
+            // The 4 m/s asymmetric gust is the harder case - it reaches phase 2
+            // only weakly, peaking at separation 0.149 - so if phase 1 is going
+            // to move anywhere it is here.
+            const Phased asymShipped = phased(false, 0.0);
+            const Phased asymCorrected = phased(true, 0.0);
+            std::printf("%-22s %12.4f %14.9f %14.9f\n", "asym, shipped",
+                        asymShipped.boundary, asymShipped.phaseOnePeakFold,
+                        asymShipped.phaseTwoPeakFold);
+            std::printf("%-22s %12.4f %14.9f %14.9f\n", "asym, corrected",
+                        asymCorrected.boundary, asymCorrected.phaseOnePeakFold,
+                        asymCorrected.phaseTwoPeakFold);
+            std::printf("\n");
+            Check(std::fabs(asymCorrected.phaseOnePeakFold
+                            - asymShipped.phaseOnePeakFold) < 1.0e-9,
+                  "and phase 1 is identical on the ASYMMETRIC gust too, which "
+                  "is the benchmark most likely to break the split - so the "
+                  "attribution is a property of the two mechanisms and not of "
+                  "the one event it was found on");
 
             // AND PHASE 2 IS WHERE IT LANDS. Same event, same harness, one
             // flag, and the difference is confined to the half of the event

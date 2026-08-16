@@ -544,6 +544,16 @@ public:
         const VsmSettings& settings = {}) const;
 
     const std::vector<VsmSection>& Sections() const { return SectionList; }
+    // Induced velocity at control point `i` per unit circulation on section
+    // `j`. Read-only, and exposed for one reason: a mirror-symmetric wing must
+    // have a mirror-symmetric influence matrix, and until that was checked the
+    // claim that this solver treats its two half-spans identically was an
+    // assumption. `aerodynamics_tests` checks it BITWISE - see the note there
+    // on why non-convergence cannot, on its own, produce a turn direction.
+    Vec3 InfluenceAt(std::size_t i, std::size_t j) const
+    {
+        return Influence[i * SectionList.size() + j];
+    }
     double ReferenceAreaM2() const { return ReferenceArea; }
     double ReferenceSpanM() const { return ReferenceSpan; }
     double AspectRatio() const

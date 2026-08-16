@@ -736,6 +736,130 @@ int main()
         // ANY FIELD GETS ADDED AT ALL. If separation moves sharply across the
         // same two degrees the slope's sign does, then the wing already
         // reports the criterion and route 3's signal costs nothing new.
+        // -- WHERE DOES THE ASYMMETRY COME FROM AT ALL? --------------------
+        //
+        // The coupled suite now measures that a mirror-symmetric gust turns
+        // the shipped wing at 0.737 rad/s and the elapsed-time-corrected wing
+        // at 2.831. Both are the solver choosing a direction it has no right
+        // to choose, and the whole ladder attributes that to item 6: "the
+        // separated solve has nothing single-valued to converge to".
+        //
+        // THAT EXPLANATION DOES NOT ACTUALLY EXPLAIN IT, and it took ten
+        // iterations to notice. Non-convergence is not a symmetry-breaking
+        // operation. A symmetric problem, solved by a deterministic algorithm
+        // that treats the two half-spans identically, stays symmetric to the
+        // last bit whether or not it converges - an iterate with no fixed
+        // point still wanders SYMMETRICALLY. To get a direction out, something
+        // in the chain has to actually be asymmetric: the geometry, the
+        // influence matrix, or an order-dependent step in the solve.
+        //
+        // So this checks the three places it can live, bitwise, before any
+        // physics is involved. Exact equality is the right test and not a
+        // strict one: these are mirrored copies of the same arithmetic, so
+        // they agree exactly or something is not mirrored.
+        {
+            std::printf("\n  Where can a direction come from? Bitwise mirror "
+                        "symmetry, before physics:\n");
+            const CanopyGeometry canopy;
+            const VortexStepMethodSolver wing(
+                canopy, SectionPolarTable::Analytic(), 45);
+            const std::vector<VsmSection>& sections = wing.Sections();
+            const std::size_t count = sections.size();
+
+            // Span position first: if the mesh itself is not mirrored, nothing
+            // downstream can be.
+            double worstSpan = 0.0;
+            double worstChord = 0.0;
+            for (std::size_t i = 0; i < count / 2; ++i)
+            {
+                const std::size_t m = count - 1 - i;
+                worstSpan = std::max(worstSpan,
+                    std::fabs(sections[i].controlPointM.y
+                              + sections[m].controlPointM.y));
+                worstChord = std::max(worstChord,
+                    std::fabs(sections[i].chordM - sections[m].chordM));
+            }
+            std::printf("    geometry: worst mirrored span %.3e, worst "
+                        "chord difference %.3e\n", worstSpan, worstChord);
+
+            // The influence matrix. Section i's downwash from section j must
+            // equal its mirror's from j's mirror, or the two half-spans are
+            // solving different problems.
+            double worstInfluence = 0.0;
+            for (std::size_t i = 0; i < count; ++i)
+                for (std::size_t j = 0; j < count; ++j)
+                {
+                    const std::size_t mi = count - 1 - i;
+                    const std::size_t mj = count - 1 - j;
+                    const Vec3 a = wing.InfluenceAt(i, j);
+                    const Vec3 b = wing.InfluenceAt(mi, mj);
+                    // The y component mirrors with a sign flip; x and z do
+                    // not. Comparing the wrong parity here would manufacture
+                    // an asymmetry that is not there.
+                    worstInfluence = std::max(worstInfluence,
+                        std::max(std::fabs(a.x - b.x),
+                                 std::max(std::fabs(a.y + b.y),
+                                          std::fabs(a.z - b.z))));
+                }
+            std::printf("    influence matrix: worst mirrored difference "
+                        "%.3e\n", worstInfluence);
+
+            // And one solve, at an incidence where the flow is attached and
+            // item 6 does not apply at all. If the answer is asymmetric HERE,
+            // the asymmetry has nothing to do with separation.
+            VsmSeparationState state;
+            const VsmSolution solved =
+                wing.SolveUnsteady(Inflow(0.06, 11.0), state, 1.0 / 120.0, {});
+            double worstCirculation = 0.0;
+            for (std::size_t i = 0; i < count / 2; ++i)
+                worstCirculation = std::max(worstCirculation,
+                    std::fabs(solved.sections[i].circulation
+                              - solved.sections[count - 1 - i].circulation));
+            std::printf("    one attached solve: worst mirrored circulation "
+                        "%.3e\n\n", worstCirculation);
+
+            // AND THE ANSWER IS THAT THE SEED IS THERE FROM THE START. The
+            // wing is mirror-symmetric to ROUND-OFF and not to the bit, at
+            // every stage, before any separation exists: the mesh by 5.6e-15,
+            // the influence matrix by 1.5e-14, and an attached solve at trim
+            // by 9.9e-14. Nothing here is separated and nothing here is
+            // non-convergent - this is the solve the whole aircraft flies on.
+            //
+            // Which corrects §68. Its gate says the wing "enters the collapse
+            // mirror-symmetric - the asymmetry it leaves with is acquired
+            // during the event, not carried into it", and that reads as
+            // symmetric-to-zero. It is symmetric to 1e-15, which is a
+            // different statement: the direction IS carried in, and what the
+            // event does is amplify it about thirteen orders to O(1).
+            //
+            // AND THE SEED CANNOT BE REMOVED BY BUILDING A TIDIER MESH. Each
+            // section's downwash is accumulated over j = 0..n, so a section
+            // and its mirror sum the SAME terms in OPPOSITE ORDER, and
+            // floating-point addition is not associative. Even given a
+            // perfectly mirrored mesh the two half-spans would disagree in the
+            // last bits. A seed at round-off is unavoidable in this algorithm.
+            //
+            // So the fix is not to remove the seed - it is to remove the
+            // AMPLIFICATION, which is item 6. That is what the ladder has been
+            // calling the blocker all along, and this is the first measurement
+            // that says why it is the blocker rather than merely upstream.
+            Check(worstSpan > 0.0 && worstSpan < 1.0e-12,
+                  "THE SEED IS IN THE MESH: the wing is mirror-symmetric to "
+                  "round-off and NOT to the bit, before any physics. A "
+                  "deterministic symmetric algorithm cannot invent a "
+                  "direction, so it did not have to - one was there to amplify");
+            Check(worstInfluence > 0.0 && worstInfluence < 1.0e-12,
+                  "and the influence matrix carries it too, at 1e-14, so the "
+                  "two half-spans are solving problems that differ in their "
+                  "last bits");
+            Check(worstCirculation > 0.0 && worstCirculation < 1.0e-12,
+                  "and an ATTACHED solve at trim already returns a mirrored "
+                  "circulation differing at 1e-13 - no separation, no "
+                  "non-convergence, and the direction is already present. What "
+                  "the separated regime adds is thirteen orders of "
+                  "amplification, not the asymmetry itself");
+        }
+
         Check(separationAtSignChange > separationBelowIt + 0.1,
               "THE SOLVER ALREADY CARRIES IT: the separation state moves "
               "sharply across the same two degrees the lift slope changes "

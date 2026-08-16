@@ -3076,6 +3076,46 @@ is symmetric — so any net turn rate is the solver choosing a direction.
   times smaller, it stays out of the safety envelope, and it is not a different
   kind of thing. §68 established the symmetry break; this puts a flight number
   on what the break costs, on the aircraft as it ships.
+
+**AND THEN THE DIRECTION ITSELF WAS TRACED, AND §68's ACCOUNT OF IT IS WRONG.**
+The ladder attributes the turn to item 6 — "the separated solve has nothing
+single-valued to converge to". **That explanation does not explain it**, and it
+took ten iterations to notice: non-convergence is not a symmetry-breaking
+operation. A symmetric problem, solved by a deterministic algorithm treating
+both half-spans identically, stays symmetric to the last bit whether or not it
+converges — an iterate with no fixed point still wanders *symmetrically*. To
+get a direction out, something has to actually be asymmetric.
+
+Checked bitwise, before any physics:
+
+| | worst mirrored difference |
+|---|---|
+| mesh span position | **5.551e-15** |
+| section chord | 1.665e-15 |
+| influence matrix | **1.543e-14** |
+| one ATTACHED solve at trim | **9.948e-14** |
+
+- **The seed is there from the start.** The wing is mirror-symmetric to
+  round-off and *not* to the bit, at every stage, with no separation anywhere
+  and nothing failing to converge. This is the solve the whole aircraft flies
+  on.
+- **Which corrects §68.** Its gate says the wing "enters the collapse
+  mirror-symmetric — the asymmetry it leaves with is acquired during the event,
+  not carried into it". It enters symmetric to 1e-15, which is a different
+  statement. **The direction is carried in; the event amplifies it about
+  thirteen orders to O(1).**
+- **AND THE SEED CANNOT BE BUILT AWAY.** Each section's downwash is accumulated
+  over `j = 0..n`, so a section and its mirror sum the same terms in *opposite
+  order*, and floating-point addition is not associative. Even a perfectly
+  mirrored mesh would disagree in the last bits. **A round-off seed is
+  unavoidable in this algorithm.**
+- **So the fix is not to remove the seed — it is to remove the amplification,
+  which is item 6.** That is what the ladder has called the blocker all along;
+  this is the first measurement saying *why* it is the blocker rather than
+  merely upstream. An iteration that does not contract turns 1e-14 into 1e+00;
+  one that contracts leaves it at 1e-14 forever, which is what the attached
+  rows above show it doing today.
+
 - **This is the general form of the lesson item 19 keeps relearning**, one turn
   further out: a component verified against a published number, and then wired
   into something that changes it, with nothing re-checking the assembled

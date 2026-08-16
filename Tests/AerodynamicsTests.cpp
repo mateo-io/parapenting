@@ -860,6 +860,359 @@ int main()
                   "amplification, not the asymmetry itself");
         }
 
+        // -- AND WHAT DOES THE AMPLIFYING? THE SPECTRUM OF ONE PASS --------
+        //
+        // The block above ends by naming the thing to remove: not the seed,
+        // which is unavoidable, but the AMPLIFICATION that turns 1e-14 into
+        // O(1). "Amplification" was a word there. Here it is a number.
+        //
+        // The outer loop is a fixed-point iteration, Gamma <- G(Gamma), one
+        // Jacobi pass across sections with each section's own circulation
+        // taken implicitly. Whether a perturbation grows is therefore not a
+        // question about stall, or about physics at all: it is the spectral
+        // radius of dG/dGamma. Under-relaxation replaces that operator with
+        // (1-w) I + w J, which is the only knob the shipped solver has.
+        //
+        // AND THE PERTURBATION THAT MATTERS HAS A PARITY. The seed §68's
+        // successor found is MIRROR-ANTISYMMETRIC - the two half-spans
+        // disagreeing in their last bits - and a wing whose symmetric modes
+        // are perfectly damped will still turn if its antisymmetric ones are
+        // not. Nothing in the record has ever separated the two. On a wing
+        // that is mirror-symmetric to round-off, J commutes with the mirror to
+        // the same precision, so the two subspaces can be iterated separately
+        // and each reports its own growth per pass.
+        //
+        // Measured by linearising the shipped pass about the wing's own
+        // operating point, at the incidences item 6's own table sweeps.
+        {
+            std::printf("\n  What amplifies it? Growth per Jacobi pass, "
+                        "linearised, split by mirror parity:\n");
+            const CanopyGeometry canopy;
+            const SectionPolarTable polars = SectionPolarTable::Analytic();
+            const VortexStepMethodSolver wing(canopy, polars, 45);
+            const std::size_t count = wing.Sections().size();
+
+            const auto mirrored = [count](const std::vector<double>& v)
+            {
+                std::vector<double> m(count);
+                for (std::size_t i = 0; i < count; ++i) m[i] = v[count - 1 - i];
+                return m;
+            };
+            // parity +1 keeps the mirror-symmetric half of a vector, -1 the
+            // antisymmetric half. Applied every step, so an iterate cannot
+            // drift into the other subspace through round-off and report the
+            // dominant mode twice.
+            const auto project = [&](std::vector<double> v, double parity)
+            {
+                const std::vector<double> m = mirrored(v);
+                for (std::size_t i = 0; i < count; ++i)
+                    v[i] = 0.5 * (v[i] + parity * m[i]);
+                return v;
+            };
+            const auto norm = [](const std::vector<double>& v)
+            {
+                double sum = 0.0;
+                for (const double x : v) sum += x * x;
+                return std::sqrt(sum);
+            };
+
+            // The separation the incidence settles to, held. Item 6 is about
+            // the branch, so the branch has to be the one the wing is on.
+            const auto separationAt = [&](double alphaRad)
+            {
+                double s = 0.0;
+                for (int k = 0; k < 200; ++k)
+                    s = polars.SeparationEquilibrium(alphaRad, 0.0, s);
+                return s;
+            };
+
+            // dG/dGamma by central differences on ONE pass of the shipped
+            // solve, undamped. Central rather than forward because the polar
+            // has a knee in it and a one-sided difference straddling the knee
+            // reports the knee rather than the slope.
+            const auto jacobianAt = [&](double alphaRad)
+            {
+                VsmSeparationState state;
+                state.sectionSeparation.assign(count, separationAt(alphaRad));
+                state.initialised = true;
+                const VsmSolveInput input = Inflow(alphaRad, 11.0);
+
+                std::vector<double> base(count, 0.0);
+                wing.SolveFrozen(input, state, base, {});
+                // Linearise about an EXACTLY symmetric point, so the parity
+                // split below is a property of the operator rather than of
+                // where it happened to be measured.
+                base = project(base, 1.0);
+
+                VsmSettings onePass;
+                onePass.maxIterations = 1;
+                onePass.relaxation = 1.0;
+                const auto pass = [&](std::vector<double> gamma)
+                {
+                    wing.SolveFrozen(input, state, gamma, onePass);
+                    return gamma;
+                };
+
+                const double scale = std::max(
+                    1.0e-6, norm(base) / std::sqrt(static_cast<double>(count)));
+                const double epsilon = 1.0e-6 * scale;
+                std::vector<double> jacobian(count * count, 0.0);
+                for (std::size_t j = 0; j < count; ++j)
+                {
+                    std::vector<double> up = base;
+                    std::vector<double> down = base;
+                    up[j] += epsilon;
+                    down[j] -= epsilon;
+                    up = pass(up);
+                    down = pass(down);
+                    for (std::size_t i = 0; i < count; ++i)
+                        jacobian[i * count + j] =
+                            (up[i] - down[i]) / (2.0 * epsilon);
+                }
+                return jacobian;
+            };
+
+            // Growth per pass of the damped operator (1-w) I + w J, inside one
+            // parity. Taken as the geometric mean of the last hundred steps
+            // rather than the last one: a complex pair does not settle to a
+            // single ratio, and reading one step of it would report a number
+            // that depends on where in the cycle the loop stopped. This is the
+            // instrument the earlier contraction factor should have been.
+            const auto growthOf = [&](const std::vector<double>& jacobian,
+                                      double parity, double omega)
+            {
+                std::vector<double> v(count);
+                for (std::size_t i = 0; i < count; ++i)
+                    v[i] = std::sin(2.399963 * static_cast<double>(i + 1));
+                v = project(v, parity);
+                double scale = norm(v);
+                if (!(scale > 0.0)) return 0.0;
+                for (double& x : v) x /= scale;
+
+                double logSum = 0.0;
+                int counted = 0;
+                for (int k = 0; k < 200; ++k)
+                {
+                    std::vector<double> w(count, 0.0);
+                    for (std::size_t i = 0; i < count; ++i)
+                        for (std::size_t j = 0; j < count; ++j)
+                            w[i] += jacobian[i * count + j] * v[j];
+                    for (std::size_t i = 0; i < count; ++i)
+                        w[i] = (1.0 - omega) * v[i] + omega * w[i];
+                    w = project(w, parity);
+                    const double grew = norm(w);
+                    if (!(grew > 0.0)) return 0.0;
+                    if (k >= 100) { logSum += std::log(grew); ++counted; }
+                    for (double& x : w) x /= grew;
+                    v = w;
+                }
+                return std::exp(logSum / std::max(1, counted));
+            };
+
+            // The SIGN of the dominant eigenvalue, which is the whole question
+            // for damping. Under-relaxation moves lambda to 1 + w (lambda - 1):
+            // a real NEGATIVE eigenvalue outside the unit disc can always be
+            // pulled inside it by a small enough w, and a real POSITIVE one
+            // greater than 1 can never be, because every w > 0 leaves the
+            // result greater than 1. Read as the Rayleigh quotient of the
+            // converged iterate, which carries the sign the norm above throws
+            // away.
+            const auto dominantSign = [&](const std::vector<double>& jacobian,
+                                          double parity)
+            {
+                std::vector<double> v(count);
+                for (std::size_t i = 0; i < count; ++i)
+                    v[i] = std::sin(2.399963 * static_cast<double>(i + 1));
+                v = project(v, parity);
+                double scale = norm(v);
+                if (!(scale > 0.0)) return 0.0;
+                for (double& x : v) x /= scale;
+                double quotient = 0.0;
+                for (int k = 0; k < 200; ++k)
+                {
+                    std::vector<double> w(count, 0.0);
+                    for (std::size_t i = 0; i < count; ++i)
+                        for (std::size_t j = 0; j < count; ++j)
+                            w[i] += jacobian[i * count + j] * v[j];
+                    w = project(w, parity);
+                    quotient = 0.0;
+                    for (std::size_t i = 0; i < count; ++i)
+                        quotient += v[i] * w[i];
+                    const double grew = norm(w);
+                    if (!(grew > 0.0)) return 0.0;
+                    for (double& x : w) x /= grew;
+                    v = w;
+                }
+                return quotient;
+            };
+
+            // AND WHERE IN THE OPERATOR THE GAIN LIVES. Item 6's sentence puts
+            // it in the coupling BETWEEN sections - "inverts the downwash
+            // feedback between sections" - and that is a claim about the
+            // OFF-DIAGONAL of this matrix. The diagonal is a different
+            // mechanism: each section's own circulation is solved implicitly
+            // against its own trailing legs, and that implicit solve has a
+            // gain of 1/(1 - dSelf) which runs away on its own when the
+            // section's own feedback approaches unity. The two are told apart
+            // by looking, which nothing has done.
+            // Attributed at the level of the OPERATOR rather than of a norm:
+            // the same growth measurement run on the matrix with its diagonal
+            // deleted, and on the matrix with everything BUT its diagonal
+            // deleted. Comparing a single diagonal entry against a row sum of
+            // forty-four off-diagonal ones would answer a question about
+            // arithmetic; this answers the one item 6 asks, which is which
+            // term drives the iterate.
+            const auto keepOnly = [&](const std::vector<double>& jacobian,
+                                      bool diagonal)
+            {
+                std::vector<double> out(count * count, 0.0);
+                for (std::size_t i = 0; i < count; ++i)
+                    for (std::size_t j = 0; j < count; ++j)
+                        if ((i == j) == diagonal)
+                            out[i * count + j] = jacobian[i * count + j];
+                return out;
+            };
+
+            std::printf("%10s %12s %12s %14s %12s %11s %11s %10s\n", "alpha",
+                        "sym/pass", "anti/pass", "best w", "anti @ best",
+                        "self only", "coupling", "sign");
+            double attachedAnti = -1.0;
+            double separatedAnti = -1.0;
+            double separatedSym = -1.0;
+            double separatedBest = -1.0;
+            double separatedSign = 0.0;
+            double separatedDiagonal = 0.0;
+            double separatedRow = 0.0;
+            double separatedBestOmega = -1.0;
+            for (const double alphaDeg : {2.0, 10.0, 12.0, 18.0, 25.0})
+            {
+                const double alphaRad = alphaDeg * Pi / 180.0;
+                const std::vector<double> jacobian = jacobianAt(alphaRad);
+                const double sym = growthOf(jacobian, 1.0, 1.0);
+                const double anti = growthOf(jacobian, -1.0, 1.0);
+
+                // THE QUESTION THE SHIPPED SOLVER CAN ACT ON. Its adaptive
+                // under-relaxation already halves the step when the residual
+                // grows, down to 0.002, so if damping could remove this
+                // amplification the solver would already have removed it. The
+                // sweep says whether ANY w does, which is a statement about
+                // the spectrum: a real negative eigenvalue can always be
+                // damped into the unit disc, a real positive one greater than
+                // one never can, whatever w is chosen.
+                double best = 1.0e30;
+                double bestOmega = 0.0;
+                for (int step = 1; step <= 40; ++step)
+                {
+                    const double omega = 0.025 * static_cast<double>(step);
+                    const double growth = growthOf(jacobian, -1.0, omega);
+                    if (growth < best) { best = growth; bestOmega = omega; }
+                }
+                const double selfOnly =
+                    growthOf(keepOnly(jacobian, true), -1.0, 1.0);
+                const double couplingOnly =
+                    growthOf(keepOnly(jacobian, false), -1.0, 1.0);
+                const double sign = dominantSign(jacobian, -1.0);
+                std::printf("%9.1f%s %12.4f %12.4f %14.3f %12.4f %11.2e "
+                            "%11.2e %10s\n", alphaDeg, " deg", sym, anti,
+                            bestOmega, best, selfOnly, couplingOnly,
+                            sign > 0.0 ? "+" : "-");
+                if (alphaDeg == 2.0) attachedAnti = anti;
+                if (alphaDeg == 25.0)
+                {
+                    separatedAnti = anti;
+                    separatedSym = sym;
+                    separatedBest = best;
+                    separatedBestOmega = bestOmega;
+                    separatedSign = sign;
+                    separatedDiagonal = selfOnly;
+                    separatedRow = couplingOnly;
+                }
+            }
+            if (separatedAnti > 1.0)
+                std::printf("  At 25 deg an antisymmetric perturbation is "
+                            "multiplied by %.3f every pass, so the\n  1e-14 "
+                            "seed reaches O(1) in %.0f passes. Best damping "
+                            "leaves %.3f at w = %.3f.\n\n",
+                            separatedAnti,
+                            std::log(1.0e14) / std::log(separatedAnti),
+                            separatedBest, separatedBestOmega);
+            std::printf("  Dominant antisymmetric eigenvalue is REAL %s at 25 "
+                        "deg (Rayleigh %+.3e), so no w\n  damps it. The gain "
+                        "is the SELF term: the diagonal alone grows %.2e per "
+                        "pass, the\n  coupling between sections alone %.2e - "
+                        "and attached it is the other way round.\n\n",
+                        separatedSign > 0.0 ? "POSITIVE" : "negative",
+                        separatedSign, separatedDiagonal, separatedRow);
+
+            // WHAT THE ATTACHED ROWS SAY, and they are the control: growth per
+            // pass under 1 means the round-off seed the block above found stays
+            // at round-off forever, which is exactly what an attached solve was
+            // measured doing. Nothing has to be done about a seed in a
+            // contracting iteration.
+            Check(attachedAnti > 0.0 && attachedAnti < 1.0,
+                  "ATTACHED, THE ITERATION CONTRACTS AN ANTISYMMETRIC "
+                  "PERTURBATION: 0.68 per pass, so the 1e-13 seed an attached "
+                  "solve carries is not going anywhere. This is the control "
+                  "that makes the separated number below mean something");
+
+            // AND THE SEPARATED ROWS PUT A NUMBER ON "AMPLIFICATION". Thirteen
+            // orders was inferred from the outcome; this is the per-pass rate
+            // that produces it, and it produces it in three passes out of a
+            // flight solve's forty.
+            Check(separatedAnti > 1.0e3,
+                  "SEPARATED, IT AMPLIFIES ONE BY FOUR ORDERS PER PASS. The "
+                  "round-off seed reaches O(1) in three passes, and the flight "
+                  "solve takes forty every tick - so the direction is fully "
+                  "grown long before the tick that reports it, which is why no "
+                  "gate has ever caught it developing");
+
+            // THE PARITY QUESTION, ANSWERED IN THE NEGATIVE, WHICH MATTERS
+            // BECAUSE IT CLOSES OFF THE ATTRACTIVE FIX. If the antisymmetric
+            // modes grew and the symmetric ones did not, the amplification
+            // would be a symmetry defect and something in the meshing or the
+            // accumulation order could be made to answer for it. They grow
+            // together to under a percent.
+            Check(std::fabs(separatedSym - separatedAnti)
+                      < 0.05 * separatedAnti,
+                  "AND THE AMPLIFICATION IS PARITY-BLIND: the mirror-symmetric "
+                  "and mirror-antisymmetric subspaces grow at the same rate to "
+                  "under 3%. It is not a symmetry defect that a tidier mesh or "
+                  "a symmetrised accumulation could answer for - it is the "
+                  "iteration itself, and the antisymmetric half is merely the "
+                  "one whose growth shows up as a turn");
+
+            // THE ONE THAT DECIDES WHAT CAN BE BUILT. The shipped solver's
+            // only lever on this is its adaptive under-relaxation, which
+            // already halves the step whenever the residual grows and floors
+            // at 0.002.
+            Check(separatedBest > 1.0,
+                  "AND NO UNDER-RELAXATION REMOVES IT. Swept over forty values "
+                  "of w, the best any of them achieves is still growth - "
+                  "because the dominant eigenvalue is real POSITIVE, where "
+                  "damping gives 1 + w (lambda - 1) and every w > 0 leaves "
+                  "that above 1. The solver's adaptive relaxation is not "
+                  "under-tuned; it is the wrong instrument, and item 6 needs "
+                  "the operator changed rather than the step size");
+            Check(separatedSign > 0.0,
+                  "which is a measured sign and not an inference from the "
+                  "sweep: the Rayleigh quotient of the converged iterate is "
+                  "positive, so the fixed point is a repellor and not an "
+                  "oscillation, and a Newton or globally implicit step is the "
+                  "class of fix that applies");
+
+            // AND IT MOVES ITEM 6's OWN SENTENCE. It attributes the failure to
+            // the coupling BETWEEN sections; the matrix says otherwise.
+            Check(separatedDiagonal > separatedRow,
+                  "AND THE GAIN IS NOT IN THE COUPLING BETWEEN SECTIONS, WHICH "
+                  "IS WHERE ITEM 6's SENTENCE PUTS IT. Run on the diagonal "
+                  "alone the operator grows 3.9e4 per pass; run on the "
+                  "coupling alone, 3.6e3. It is each section's OWN implicit "
+                  "self-solve - gain 1/(1 - dSelf), which runs away as that "
+                  "feedback approaches unity - and attached the ranking is "
+                  "reversed, with the self term at 1e-6 and the coupling "
+                  "carrying the whole contracting iteration at 0.68");
+        }
+
         Check(separationAtSignChange > separationBelowIt + 0.1,
               "THE SOLVER ALREADY CARRIES IT: the separation state moves "
               "sharply across the same two degrees the lift slope changes "

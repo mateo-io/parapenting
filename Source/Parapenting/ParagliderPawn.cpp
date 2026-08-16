@@ -228,6 +228,25 @@ AParagliderPawn::AParagliderPawn()
 void AParagliderPawn::BeginPlay()
 {
     Super::BeginPlay();
+    // ConstructorHelpers runs while the Asset Registry is still loading, so a
+    // project-local bridge copied from UE's template can be missed there even
+    // though it is discoverable by the time gameplay begins. Resolve it here,
+    // before the fallback primitives are configured. A MetaHuman override
+    // below still wins unconditionally.
+    if (PilotCharacter && !PilotCharacter->GetSkinnedAsset()
+        && PilotMeshOverride.IsNull())
+    {
+        if (USkeletalMesh* const ProjectMannequin =
+            LoadObject<USkeletalMesh>(nullptr,
+                TEXT("/Game/Characters/Mannequins/Meshes/SK_Mannequin"
+                    ".SK_Mannequin")))
+        {
+            PilotCharacter->SetSkinnedAssetAndUpdate(ProjectMannequin);
+            UE_LOG(LogTemp, Log,
+                TEXT("Parapenting: using bundled UE mannequin as the "
+                    "temporary pilot bridge."));
+        }
+    }
     LineGraph = Parapenting::Physics::BuildSuspensionGraph(
         Canopy, Parapenting::Physics::Epic2MlLinePlan());
     SolveSuspensionGraph();

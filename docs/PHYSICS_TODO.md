@@ -1011,6 +1011,61 @@ between sections; a wing in deep stall has no stable steady state to find.
   answer come out. What needs no chosen constant is whether **eight times the
   budget bought anything**: 3000× attached, 1–4× separated, and in one row the
   residual is *larger* at 64 passes than at 8.
+- **AND THE AMPLIFICATION IS NOW A NUMBER, NOT A WORD — AND IT IS NOT WHERE
+  THIS ITEM SAYS IT IS.** §77 found the turn's seed is round-off carried into
+  the event and concluded "the fix is not to remove the seed, it is to remove
+  the amplification". That named the target without measuring it. The outer
+  loop is a fixed point Γ ← G(Γ), so whether a perturbation grows is the
+  spectral radius of dG/dΓ and nothing else. Linearised about the wing's own
+  operating point, on the shipped pass, at the incidences the table above
+  sweeps — growth per pass, split by mirror parity:
+
+  | α | symmetric | antisymmetric | self term alone | coupling alone | best ω |
+  |---|---|---|---|---|---|
+  | 2° | 0.777 | 0.679 | 1.0e-06 | 0.679 | — |
+  | 10° | 0.778 | 0.680 | 1.9e-10 | 0.680 | — |
+  | 12° | 2648 | 2657 | 2.7e+03 | 5.7e+02 | 67.4 |
+  | 18° | 1688 | 1692 | 1.7e+03 | 1.5e+01 | 43.3 |
+  | 25° | 38759 | 39738 | 3.9e+04 | 3.6e+03 | 994 |
+
+  **Attached it contracts at 0.68 a pass**, which is why an attached solve's
+  1e-13 seed sits there forever. **Separated it multiplies by four orders a
+  pass**, so round-off reaches O(1) in **three passes of the flight solve's
+  forty** — the direction is fully grown long before the tick that reports it,
+  which is why no gate has ever caught it developing.
+- **THE AMPLIFICATION IS PARITY-BLIND, which closes off the attractive fix.**
+  Symmetric and antisymmetric modes grow at the same rate to under 3%. It is
+  not a symmetry defect, so a tidier mesh, a symmetrised accumulation order or
+  a mirrored solve would change nothing — the antisymmetric half is merely the
+  one whose growth reads as a turn.
+- **AND NO UNDER-RELAXATION REMOVES IT, BECAUSE THE EIGENVALUE IS REAL
+  POSITIVE.** Rayleigh quotient of the converged iterate at 25°: **+3.97e+04**.
+  Damping replaces λ with 1 + ω(λ−1), which for positive λ > 1 is above 1 for
+  **every** ω > 0 — swept over forty values, the best still grows by 994. The
+  fixed point is a **repellor**, not an oscillation. The solver's adaptive
+  relaxation is not under-tuned for this; it is the wrong instrument, and its
+  0.002 floor was never going to help.
+- **AND THE GAIN IS ON THE DIAGONAL, WHICH CORRECTS THIS ITEM'S OWN SENTENCE.**
+  Item 6 says the negative slope "inverts the downwash feedback **between
+  sections**". Run the same measurement on the operator with its diagonal
+  deleted and then on the diagonal alone: at 25° the self term grows 3.9e4 and
+  the coupling 3.6e3; at 18°, 1.7e3 against 15. **Attached the ranking
+  reverses** — self term 1e-6, coupling 0.68 carrying the whole contracting
+  iteration. What amplifies is each section's **own implicit self-solve**,
+  whose gain is 1/(1 − dSelf) and which runs away as that feedback crosses
+  unity. The lift slope's sign is still the trigger — the earlier measurement
+  stands — but the term it destabilises is the one this solver took implicitly
+  *precisely so that it could not misbehave*. The non-monotonic column (2.7e3
+  at 12°, 1.7e3 at 18°, 3.9e4 at 25°) is what passing near that pole looks
+  like.
+- **SO THE CLASS OF FIX IS DECIDED, AND FOUR CANDIDATES ARE EXCLUDED.** Not
+  under-relaxation (positive eigenvalue), not mesh symmetry (parity-blind), not
+  a better seed (the seed is unavoidable, §77), and not the unsteady wake,
+  which per item 30 avoids the fixed point rather than repairing it. What is
+  left is changing the operator: a Newton step on the whole circulation vector,
+  or a formulation in which the section's own feedback cannot pass unity. That
+  is the next thing to build, and it is the first time this item has said what
+  to build rather than what fails.
 - The honest treatment is Level 11's unsteady wake. **But item 30 has since
   measured that strand 2 does not supply it** — the only configuration that
   ever held the symmetric frontal is one where the aerodynamic states run six

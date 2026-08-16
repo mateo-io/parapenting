@@ -34,6 +34,9 @@ private:
     int32 VisualQAWeatherPreset = INDEX_NONE;
     int32 VisualQACameraMode = 0;
     FString VisualQACaptureName;
+    // An explicit host-visible destination makes packaged capture evidence
+    // independent of macOS's per-app Saved folder convention.
+    FString VisualQAOutputDirectory;
     FString VisualQACapturePath;
 
     UPROPERTY()

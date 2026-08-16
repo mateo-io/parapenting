@@ -60,6 +60,9 @@ void AParapentingGameMode::InitGame(
         VisualQAWeatherPreset);
     FParse::Value(
         FCommandLine::Get(), TEXT("VisualQACamera="), VisualQACameraMode);
+    FParse::Value(
+        FCommandLine::Get(), TEXT("VisualQAOutputDir="),
+        VisualQAOutputDirectory);
     VisualQACameraMode = FMath::Clamp(VisualQACameraMode, 0, 3);
     VisualQAWarmupSeconds = FMath::Max(1.0f, VisualQAWarmupSeconds);
 
@@ -1157,8 +1160,9 @@ void AParapentingGameMode::StartVisualQACapture(AParagliderPawn& Glider)
     if (SafeName.IsEmpty())
         SafeName = TEXT("capture");
 
-    const FString CaptureDirectory = FPaths::Combine(
-        FPaths::ProjectSavedDir(), TEXT("VisualQA"));
+    const FString CaptureDirectory = VisualQAOutputDirectory.IsEmpty()
+        ? FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("VisualQA"))
+        : FPaths::ConvertRelativePathToFull(VisualQAOutputDirectory);
     IFileManager::Get().MakeDirectory(*CaptureDirectory, true);
     VisualQACapturePath = FPaths::Combine(
         CaptureDirectory,

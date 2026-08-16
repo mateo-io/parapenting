@@ -380,6 +380,12 @@ private:
     TObjectPtr<UStaticMeshComponent> PilotHead;
 
     UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> PilotHelmet;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UStaticMeshComponent> PilotVisor;
+
+    UPROPERTY(VisibleAnywhere)
     TObjectPtr<UStaticMeshComponent> HarnessVisual;
 
     UPROPERTY(VisibleAnywhere)

@@ -23,6 +23,11 @@ CANOPY_RIPSTOP_SOURCE = os.path.join(
     "Content/ArtSource/Canopy/T_CanopyRipstop_Albedo_Source_v2.png",
 )
 CANOPY_RIPSTOP_ASSET = f"{TEXTURE_ROOT}/T_CanopyRipstop_Albedo"
+CANOPY_RIPSTOP_NORMAL_SOURCE = os.path.join(
+    unreal.Paths.project_dir(),
+    "Content/ArtSource/Canopy/T_CanopyRipstop_Normal_Source_v1.png",
+)
+CANOPY_RIPSTOP_NORMAL_ASSET = f"{TEXTURE_ROOT}/T_CanopyRipstop_Normal"
 
 
 def load_or_create(name, asset_class, factory):
@@ -63,6 +68,33 @@ def import_canopy_ripstop():
     if not texture:
         raise RuntimeError("Could not import the canopy ripstop texture")
     texture.set_editor_property("srgb", True)
+    unreal.EditorAssetLibrary.save_loaded_asset(texture, False)
+    return texture
+
+
+def import_canopy_ripstop_normal():
+    """Import the generated shallow weave normal with correct texture flags."""
+    if unreal.EditorAssetLibrary.does_asset_exist(CANOPY_RIPSTOP_NORMAL_ASSET):
+        return unreal.EditorAssetLibrary.load_asset(CANOPY_RIPSTOP_NORMAL_ASSET)
+    if not unreal.Paths.file_exists(CANOPY_RIPSTOP_NORMAL_SOURCE):
+        raise RuntimeError(
+            f"Canopy ripstop normal source is missing: {CANOPY_RIPSTOP_NORMAL_SOURCE}"
+        )
+    task = unreal.AssetImportTask()
+    task.set_editor_property("filename", CANOPY_RIPSTOP_NORMAL_SOURCE)
+    task.set_editor_property("destination_path", TEXTURE_ROOT)
+    task.set_editor_property("destination_name", "T_CanopyRipstop_Normal")
+    task.set_editor_property("automated", True)
+    task.set_editor_property("replace_existing", False)
+    task.set_editor_property("save", True)
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+    texture = unreal.EditorAssetLibrary.load_asset(CANOPY_RIPSTOP_NORMAL_ASSET)
+    if not texture:
+        raise RuntimeError("Could not import canopy ripstop normal")
+    texture.set_editor_property("srgb", False)
+    texture.set_editor_property(
+        "compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP
+    )
     unreal.EditorAssetLibrary.save_loaded_asset(texture, False)
     return texture
 
@@ -125,7 +157,7 @@ def make_air_motes():
         return material
     material.set_editor_property("two_sided", True)
     material.set_editor_property(
-        "blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT
+        "blend_mode", unreal.BlendMode.BLEND_ADDITIVE
     )
     material.set_editor_property(
         "shading_model", unreal.MaterialShadingModel.MSM_UNLIT
@@ -133,7 +165,24 @@ def make_air_motes():
     color = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionVertexColor, -360, -40
     )
-    emission = scalar(material, "MoteEmission", 0.28, -160, -100)
+    uv = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionTextureCoordinate, -360, 160
+    )
+    centre = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionConstant2Vector, -170, 210
+    )
+    centre.set_editor_property("r", 0.5)
+    centre.set_editor_property("g", 0.5)
+    disc = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionSphereMask, 30, 160
+    )
+    disc.set_editor_property("attenuation_radius", 0.46)
+    disc.set_editor_property("hardness_percent", 82.0)
+    unreal.MaterialEditingLibrary.connect_material_expressions(uv, "", disc, "A")
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        centre, "", disc, "B"
+    )
+    emission = scalar(material, "MoteEmission", 1.15, -160, -100)
     emissive = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionMultiply, 50, -40
     )
@@ -142,6 +191,15 @@ def make_air_motes():
     )
     unreal.MaterialEditingLibrary.connect_material_expressions(
         emission, "", emissive, "B"
+    )
+    masked_emissive = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 250, -40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        emissive, "", masked_emissive, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        disc, "", masked_emissive, "B"
     )
     opacity_scale = scalar(material, "MoteOpacity", 1.0, -160, 60)
     opacity = unreal.MaterialEditingLibrary.create_material_expression(
@@ -153,8 +211,20 @@ def make_air_motes():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         opacity_scale, "", opacity, "B"
     )
-    connect(emissive, "", material, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-    connect(opacity, "", material, unreal.MaterialProperty.MP_OPACITY)
+    masked_opacity = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 250, 80
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        opacity, "", masked_opacity, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        disc, "", masked_opacity, "B"
+    )
+    connect(
+        masked_emissive, "", material,
+        unreal.MaterialProperty.MP_EMISSIVE_COLOR
+    )
+    connect(masked_opacity, "", material, unreal.MaterialProperty.MP_OPACITY)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_loaded_asset(material, False)
     return material
@@ -179,6 +249,7 @@ def make_canopy_fabric():
         unreal.MaterialShadingModel.MSM_TWO_SIDED_FOLIAGE,
     )
     ripstop_texture = import_canopy_ripstop()
+    ripstop_normal = import_canopy_ripstop_normal()
     color = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionVertexColor, -520, -80
     )
@@ -319,6 +390,16 @@ def make_canopy_fabric():
     unreal.MaterialEditingLibrary.connect_material_expressions(
         ripstop_uv, "", ripstop_sample, "UVs"
     )
+    normal_sample = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionTextureSample, 780, -340
+    )
+    normal_sample.set_editor_property("texture", ripstop_normal)
+    normal_sample.set_editor_property(
+        "sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        ripstop_uv, "", normal_sample, "UVs"
+    )
     ripstop_strength = scalar(material, "RipstopTextureStrength", 0.34, 780, -80)
     neutral_ripstop = vector(
         material, "NeutralRipstop", unreal.LinearColor(1.0, 1.0, 1.0, 1.0),
@@ -384,6 +465,7 @@ def make_canopy_fabric():
         unreal.MaterialProperty.MP_SUBSURFACE_COLOR
     )
     connect(woven_roughness, "", material, unreal.MaterialProperty.MP_ROUGHNESS)
+    connect(normal_sample, "RGB", material, unreal.MaterialProperty.MP_NORMAL)
     connect(underside_emissive, "", material, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_loaded_asset(material, False)

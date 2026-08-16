@@ -26,6 +26,7 @@
 #include "EngineUtils.h"
 #include "Engine/SkeletalMesh.h"
 #include "ReferenceSkeleton.h"
+#include "AnimationRuntime.h"
 #include "Physics/PilotSkeletonAim.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/FileManager.h"
@@ -114,11 +115,16 @@ AParagliderPawn::AParagliderPawn()
     // blockout stays visible, which is why the failure needs to be loud.
     static ConstructorHelpers::FObjectFinder<USkeletalMesh> MannequinFinder(
         TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny.SKM_Manny"));
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> MannequinSimple(
+        TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"
+            ".SKM_Manny_Simple"));
     static ConstructorHelpers::FObjectFinder<USkeletalMesh> MannequinFallback(
         TEXT("/Game/Characters/Mannequin_UE4/Meshes/SK_Mannequin"
             ".SK_Mannequin"));
     USkeletalMesh* const PilotMesh = MannequinFinder.Object
-        ? MannequinFinder.Object : MannequinFallback.Object;
+        ? MannequinFinder.Object
+        : (MannequinSimple.Object
+            ? MannequinSimple.Object : MannequinFallback.Object);
     CanopyVisual = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("CanopyVisual"));
     CanopyVisual->SetupAttachment(Root);
     CanopyVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -167,6 +173,10 @@ AParagliderPawn::AParagliderPawn()
     ConfigurePart(PilotTorso, CubeFinder.Object);
     PilotHead = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PilotHead"));
     ConfigurePart(PilotHead, SphereFinder.Object);
+    PilotHelmet = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PilotHelmet"));
+    ConfigurePart(PilotHelmet, SphereFinder.Object);
+    PilotVisor = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PilotVisor"));
+    ConfigurePart(PilotVisor, CubeFinder.Object);
     HarnessVisual =
         CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HarnessVisual"));
     ConfigurePart(HarnessVisual, CubeFinder.Object);
@@ -292,6 +302,8 @@ void AParagliderPawn::BeginPlay()
     // meadow, rock and water without turning the landscape into UI.
     TintPart(PilotTorso, FLinearColor(0.025f, 0.14f, 0.28f), 0.82f);
     TintPart(PilotHead, FLinearColor(0.90f, 0.30f, 0.045f), 0.62f);
+    TintPart(PilotHelmet, FLinearColor(0.012f, 0.018f, 0.030f), 0.28f);
+    TintPart(PilotVisor, FLinearColor(0.025f, 0.055f, 0.075f), 0.08f);
     TintPart(HarnessVisual, FLinearColor(0.012f, 0.018f, 0.030f), 0.95f);
     for (UStaticMeshComponent* Limb : {
         LeftUpperArm.Get(), RightUpperArm.Get(),
@@ -302,15 +314,26 @@ void AParagliderPawn::BeginPlay()
         TintPart(Limb, FLinearColor(0.018f, 0.026f, 0.045f), 0.90f);
     TintPart(LeftBrakeHandle, FLinearColor(0.95f, 0.035f, 0.012f), 0.56f);
     TintPart(RightBrakeHandle, FLinearColor(0.95f, 0.035f, 0.012f), 0.56f);
-    if (HarnessMesh && SurfaceMaterial)
+    if (HarnessMesh)
     {
-        HarnessMesh->SetMaterial(0, SurfaceMaterial);
-        if (UMaterialInstanceDynamic* Material =
-            HarnessMesh->CreateAndSetMaterialInstanceDynamic(0))
+        if (UMaterialInterface* const HarnessMaterial =
+            LoadObject<UMaterialInterface>(nullptr,
+                TEXT("/Game/Materials/M_HarnessFabric.M_HarnessFabric")))
         {
-            Material->SetVectorParameterValue(
-                TEXT("BaseColor"), FLinearColor(0.01f, 0.016f, 0.025f));
-            Material->SetScalarParameterValue(TEXT("Roughness"), 0.96f);
+            HarnessMesh->SetMaterial(0, HarnessMaterial);
+        }
+        else if (SurfaceMaterial)
+        {
+            // Keep a readable fallback if source control has not yet checked
+            // in the generated fabric UAsset.
+            HarnessMesh->SetMaterial(0, SurfaceMaterial);
+            if (UMaterialInstanceDynamic* Material =
+                HarnessMesh->CreateAndSetMaterialInstanceDynamic(0))
+            {
+                Material->SetVectorParameterValue(
+                    TEXT("BaseColor"), FLinearColor(0.01f, 0.016f, 0.025f));
+                Material->SetScalarParameterValue(TEXT("Roughness"), 0.96f);
+            }
         }
     }
     if (AirMotesVisual)
@@ -1949,6 +1972,15 @@ void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)
         static_cast<float>(RenderRigSnapshot.weightShift) * -4.0f));
     PilotHead->SetRelativeLocation(FVector(-12.0f, 0.0f, 53.0f));
     PilotHead->SetRelativeScale3D(FVector(0.18f, 0.18f, 0.20f));
+    // Equipment remains project-owned geometry and follows the same solved
+    // head target as the character, so it survives the later MetaHuman swap.
+    const FVector HelmetPosition = ToFVector(Pose.headCm)
+        + FVector(1.5f, 0.0f, 1.8f);
+    PilotHelmet->SetRelativeLocation(HelmetPosition);
+    PilotHelmet->SetRelativeScale3D(FVector(0.235f, 0.225f, 0.245f));
+    PilotVisor->SetRelativeLocation(HelmetPosition + FVector(-3.7f, 0.0f, -0.5f));
+    PilotVisor->SetRelativeScale3D(FVector(0.030f, 0.205f, 0.095f));
+    PilotVisor->SetRelativeRotation(FRotator(-8.0f, 0.0f, 0.0f));
 
     const FVector LeftShoulder = ToFVector(Pose.leftShoulderCm);
     const FVector RightShoulder = ToFVector(Pose.rightShoulderCm);
@@ -2068,25 +2100,53 @@ void AParagliderPawn::UpdatePilotSkeleton(
     // The roll about each limb's own length is still unconstrained here - that
     // is wrist orientation, and it belongs to Stage 3 with the grips, where
     // there is a handle to orient against. AimRotationWithRoll is ready for it.
-    const auto AimBone = [this, &RefSkeleton, &Known](const TCHAR* Bone,
+    const auto ReferenceDirection = [&RefSkeleton](const FName BoneName)
+    {
+        const int32 BoneIndex = RefSkeleton.FindBoneIndex(BoneName);
+        if (BoneIndex == INDEX_NONE) return FVector::ZeroVector;
+        const FTransform BoneTransform =
+            FAnimationRuntime::GetComponentSpaceTransformRefPose(
+                RefSkeleton, BoneIndex);
+        // Use the first child in the actual component-space reference pose.
+        // A local bone translation is expressed in the parent's axes, and
+        // treating it as component-space was the source of the Manny limb
+        // twist: the rotation was aiming a local vector at a global target.
+        for (int32 Candidate = BoneIndex + 1;
+             Candidate < RefSkeleton.GetNum(); ++Candidate)
+        {
+            if (RefSkeleton.GetParentIndex(Candidate) == BoneIndex)
+            {
+                const FTransform ChildTransform =
+                    FAnimationRuntime::GetComponentSpaceTransformRefPose(
+                        RefSkeleton, Candidate);
+                return (ChildTransform.GetLocation()
+                    - BoneTransform.GetLocation()).GetSafeNormal();
+            }
+        }
+        return FVector::ZeroVector;
+    };
+    const auto AimBone = [this, &RefSkeleton, &Known, &ReferenceDirection](const TCHAR* Bone,
         const Parapenting::Physics::Vec3& From,
         const Parapenting::Physics::Vec3& To)
     {
         const FName BoneName(Bone);
         if (!Known(BoneName)) return;
         const int32 Index = RefSkeleton.FindBoneIndex(BoneName);
-        // Which way this bone points before anything rotates it. Taken from
-        // the reference skeleton rather than assumed to be any world axis:
-        // the mannequin and a MetaHuman do not agree on bone axes, and
-        // hard-coding one would twist every limb on the other.
-        const FVector RestDirection =
-            RefSkeleton.GetRefBonePose()[Index].GetLocation().GetSafeNormal();
+        const FTransform RestTransform =
+            FAnimationRuntime::GetComponentSpaceTransformRefPose(
+                RefSkeleton, Index);
+        // Which way this bone points before anything rotates it. This is a
+        // component-space reference direction, so it shares the target's
+        // frame. The final rotation keeps the mesh's reference orientation;
+        // it is not merely the delta needed to aim the limb.
+        const FVector RestDirection = ReferenceDirection(BoneName);
         if (RestDirection.IsNearlyZero()) return;
         const Parapenting::Physics::Vec3 Rest{
             RestDirection.X, RestDirection.Y, RestDirection.Z};
         const auto Aim = Parapenting::Physics::AimRotation(Rest, To - From);
         PilotCharacter->SetBoneRotationByName(BoneName,
-            FQuat(Aim.x, Aim.y, Aim.z, Aim.w).Rotator(),
+            (FQuat(Aim.x, Aim.y, Aim.z, Aim.w)
+                * RestTransform.GetRotation()).Rotator(),
             EBoneSpaces::ComponentSpace);
     };
     AimBone(TEXT("upperarm_l"), Pose.leftShoulderCm, Pose.leftElbowCm);
@@ -2102,7 +2162,7 @@ void AParagliderPawn::UpdatePilotSkeleton(
     // The brake line supplies the missing roll constraint at the wrist. A
     // plain aim can place the hand but leaves it free to spin around the
     // forearm, which makes a real handle loop look unheld.
-    const auto RollWrist = [this, &RefSkeleton, &Known](const TCHAR* Bone,
+    const auto RollWrist = [this, &RefSkeleton, &Known, &ReferenceDirection](const TCHAR* Bone,
         const Parapenting::Physics::Vec3& From,
         const Parapenting::Physics::Vec3& To,
         const Parapenting::Physics::Vec3& WristUp)
@@ -2110,15 +2170,18 @@ void AParagliderPawn::UpdatePilotSkeleton(
         const FName BoneName(Bone);
         if (!Known(BoneName)) return;
         const int32 Index = RefSkeleton.FindBoneIndex(BoneName);
-        const FTransform& RestTransform = RefSkeleton.GetRefBonePose()[Index];
-        const FVector RestDirection = RestTransform.GetLocation().GetSafeNormal();
+        const FTransform RestTransform =
+            FAnimationRuntime::GetComponentSpaceTransformRefPose(
+                RefSkeleton, Index);
+        const FVector RestDirection = ReferenceDirection(BoneName);
         if (RestDirection.IsNearlyZero()) return;
         const FVector RestUp = RestTransform.GetRotation().GetUpVector();
         const auto Rotation = Parapenting::Physics::AimRotationWithRoll(
             {RestDirection.X, RestDirection.Y, RestDirection.Z},
             {RestUp.X, RestUp.Y, RestUp.Z}, To - From, WristUp);
         PilotCharacter->SetBoneRotationByName(BoneName,
-            FQuat(Rotation.x, Rotation.y, Rotation.z, Rotation.w).Rotator(),
+            (FQuat(Rotation.x, Rotation.y, Rotation.z, Rotation.w)
+                * RestTransform.GetRotation()).Rotator(),
             EBoneSpaces::ComponentSpace);
     };
     RollWrist(TEXT("lowerarm_l"), Pose.leftElbowCm, Pose.leftHandCm,
@@ -2176,7 +2239,12 @@ void AParagliderPawn::BuildHarnessMesh()
         {
             Vertices.Add(Centre + FVector(X * Extent.X, Y * Extent.Y, Z * Extent.Z));
             Normals.Add(FVector::UpVector);
-            UVs.Add(FVector2D::ZeroVector);
+            // The nylon weave is deliberately mapped in harness-local space:
+            // it follows the load-bearing seat and straps instead of sliding
+            // in world space as the pilot moves through turbulence.
+            UVs.Add(FVector2D(
+                (Centre.X + X * Extent.X) / 70.0f,
+                (Centre.Z + Z * Extent.Z) / 70.0f));
             Colours.Add(Colour);
         }
         constexpr int32 Faces[] = {

@@ -281,6 +281,7 @@ private:
     void BuildCanopyMesh();
     void UpdateCanopyMesh();
     void UpdatePilotVisual(float DeltaSeconds);
+    void UpdateAirMotesVisual();
     void UpdatePilotSkeleton(const Parapenting::Physics::PilotPose& Pose);
     void BuildHarnessMesh();
     void CaptureGliderRigSnapshot(double SimulationTimeSeconds);
@@ -332,6 +333,12 @@ private:
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> SuspensionVisual;
+
+    // Scenic, presentation-only wind tracers.  These are not a substitute
+    // for the simulator's airflow debug view: each mote only makes the
+    // existing weather wind visible near the camera.
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UProceduralMeshComponent> AirMotesVisual;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UProceduralMeshComponent> GhostCanopyVisual;
@@ -500,6 +507,7 @@ private:
     TArray<FVector2D> SuspensionUVs;
     TArray<FColor> SuspensionColors;
     bool bSuspensionMeshInitialized = false;
+    bool bAirMotesMeshInitialized = false;
     enum class PilotPoseFamily : uint8
     {
         Seated,

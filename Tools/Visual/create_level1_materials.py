@@ -111,6 +111,55 @@ def make_vertex_lit():
     return material
 
 
+def make_air_motes():
+    """Tiny unlit, translucent wind tracers for the camera-local mote field.
+
+    Opacity is carried by the deterministic procedural mesh's vertex alpha;
+    this keeps the VFX system data-only and avoids an independently simulated
+    particle behaviour that could contradict the weather model.
+    """
+    material, created = load_or_create(
+        "M_AirMotes", unreal.Material, unreal.MaterialFactoryNew()
+    )
+    if not created:
+        return material
+    material.set_editor_property("two_sided", True)
+    material.set_editor_property(
+        "blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT
+    )
+    material.set_editor_property(
+        "shading_model", unreal.MaterialShadingModel.MSM_UNLIT
+    )
+    color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionVertexColor, -360, -40
+    )
+    emission = scalar(material, "MoteEmission", 0.28, -160, -100)
+    emissive = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 50, -40
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "RGB", emissive, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        emission, "", emissive, "B"
+    )
+    opacity_scale = scalar(material, "MoteOpacity", 1.0, -160, 60)
+    opacity = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionMultiply, 50, 80
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        color, "A", opacity, "A"
+    )
+    unreal.MaterialEditingLibrary.connect_material_expressions(
+        opacity_scale, "", opacity, "B"
+    )
+    connect(emissive, "", material, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    connect(opacity, "", material, unreal.MaterialProperty.MP_OPACITY)
+    unreal.MaterialEditingLibrary.recompile_material(material)
+    unreal.EditorAssetLibrary.save_loaded_asset(material, False)
+    return material
+
+
 def make_canopy_fabric():
     """Two-sided transmitted-light fabric for the procedural canopy.
 
@@ -957,6 +1006,7 @@ def make_swatches(parent):
 def build_material_library():
     unreal.EditorAssetLibrary.make_directory(ROOT)
     make_vertex_lit()
+    make_air_motes()
     make_canopy_fabric()
     make_water_surface()
     make_terrain_lit()

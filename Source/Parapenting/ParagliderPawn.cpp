@@ -129,6 +129,12 @@ AParagliderPawn::AParagliderPawn()
     SuspensionVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     SuspensionVisual->SetCastShadow(true);
 
+    AirMotesVisual = CreateDefaultSubobject<UProceduralMeshComponent>(
+        TEXT("AirMotesVisual"));
+    AirMotesVisual->SetupAttachment(Root);
+    AirMotesVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    AirMotesVisual->SetCastShadow(false);
+
     PilotVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PilotVisual"));
     PilotVisual->SetupAttachment(Root);
     PilotVisual->SetStaticMesh(SphereFinder.Object);
@@ -306,6 +312,13 @@ void AParagliderPawn::BeginPlay()
                 TEXT("BaseColor"), FLinearColor(0.01f, 0.016f, 0.025f));
             Material->SetScalarParameterValue(TEXT("Roughness"), 0.96f);
         }
+    }
+    if (AirMotesVisual)
+    {
+        if (UMaterialInterface* const AirMoteMaterial =
+            LoadObject<UMaterialInterface>(nullptr,
+                TEXT("/Game/Materials/M_AirMotes.M_AirMotes")))
+            AirMotesVisual->SetMaterial(0, AirMoteMaterial);
     }
     // The licensed pilot is assigned in the editor, not found by path here. A
     // MetaHuman lands under its own character name, so no constructor path can
@@ -1035,6 +1048,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         BaseFov + static_cast<float>(
             CameraResponse.fieldOfViewDeltaDegrees),
         DeltaSeconds, 2.0f));
+    UpdateAirMotesVisual();
 
     // Render a load-responsive suspension fan. The line endpoints follow the
     // same collapse/cravat contraction as the canopy mesh, while unloaded
@@ -1731,6 +1745,99 @@ void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
         T},
         CurrentRigSnapshot.simulationTimeSeconds > 0.0
             ? &CurrentRigSnapshot : nullptr);
+}
+
+void AParagliderPawn::UpdateAirMotesVisual()
+{
+    if (!AirMotesVisual || !Camera) return;
+
+    // This is deliberately a compact, deterministic presentation field, not
+    // a particle simulation and not a thermal indicator. It samples only the
+    // already-published weather wind, so the particles cannot get ahead of or
+    // contradict the actual air the pilot is flying through.
+    constexpr int32 MoteCount = 52;
+    constexpr float CmPerMetre = 100.0f;
+    constexpr float TravelCycleCm = 1900.0f;
+    const auto Wind = Parapenting::Physics::WindVectorFromMeteorological(
+        AirModel.GetSnapshot().windFromDegrees,
+        AirModel.GetSnapshot().windSpeedMps);
+    const FVector WindCmPerSecond(
+        static_cast<float>(Wind.x) * CmPerMetre,
+        static_cast<float>(Wind.y) * CmPerMetre, 0.0f);
+    const FRotator CameraRotation = Camera->GetRelativeRotation();
+    const FRotationMatrix CameraAxes(CameraRotation);
+    const FVector Forward = CameraAxes.GetUnitAxis(EAxis::X);
+    const FVector Right = CameraAxes.GetUnitAxis(EAxis::Y);
+    const FVector Up = CameraAxes.GetUnitAxis(EAxis::Z);
+    const FVector CameraOrigin = Camera->GetRelativeLocation();
+
+    TArray<FVector> Vertices;
+    TArray<int32> Triangles;
+    TArray<FVector> Normals;
+    TArray<FVector2D> UVs;
+    TArray<FColor> Colors;
+    TArray<FProcMeshTangent> Tangents;
+    Vertices.Reserve(MoteCount * 4);
+    Triangles.Reserve(MoteCount * 6);
+    Normals.Reserve(MoteCount * 4);
+    UVs.Reserve(MoteCount * 4);
+    Colors.Reserve(MoteCount * 4);
+
+    const auto Hash = [](int32 Index, float Salt)
+    {
+        return FMath::Frac(FMath::Sin(Index * 127.1f + Salt * 311.7f)
+            * 43758.5453f);
+    };
+    const float TimeSeconds = static_cast<float>(SimulationTimeSeconds);
+    for (int32 Index = 0; Index < MoteCount; ++Index)
+    {
+        const float Depth01 = Hash(Index, 1.0f);
+        const float Side01 = Hash(Index, 2.0f);
+        const float Height01 = Hash(Index, 3.0f);
+        const float Phase = Hash(Index, 4.0f);
+        const float DepthCm = FMath::Lerp(180.0f, 1450.0f, Depth01);
+        const float DriftCm = FMath::Fmod(
+            TimeSeconds * WindCmPerSecond.Size() + Phase * TravelCycleCm,
+            TravelCycleCm) - 0.5f * TravelCycleCm;
+        // Wider at depth gives the camera a genuinely volumetric field rather
+        // than a flat plane pasted over the landscape.
+        const FVector Centre = CameraOrigin + Forward * DepthCm
+            + Right * ((Side01 - 0.5f) * DepthCm * 1.18f)
+            + Up * ((Height01 - 0.5f) * DepthCm * 0.70f)
+            + WindCmPerSecond.GetSafeNormal() * DriftCm;
+        const float HalfSizeCm = FMath::Lerp(0.65f, 2.5f,
+            Hash(Index, 5.0f));
+        const float Alpha = FMath::Lerp(18.0f, 56.0f,
+            FMath::Square(1.0f - Depth01));
+        const int32 Base = Vertices.Num();
+        Vertices.Append({
+            Centre - Right * HalfSizeCm - Up * HalfSizeCm,
+            Centre + Right * HalfSizeCm - Up * HalfSizeCm,
+            Centre + Right * HalfSizeCm + Up * HalfSizeCm,
+            Centre - Right * HalfSizeCm + Up * HalfSizeCm,
+        });
+        Triangles.Append({Base, Base + 1, Base + 2, Base, Base + 2, Base + 3});
+        for (int32 Corner = 0; Corner < 4; ++Corner)
+        {
+            Normals.Add(-Forward);
+            UVs.Add(FVector2D(
+                Corner == 1 || Corner == 2 ? 1.0f : 0.0f,
+                Corner >= 2 ? 1.0f : 0.0f));
+            Colors.Add(FColor(244, 227, 181,
+                static_cast<uint8>(FMath::RoundToInt(Alpha))));
+        }
+    }
+    if (!bAirMotesMeshInitialized)
+    {
+        AirMotesVisual->CreateMeshSection(0, Vertices, Triangles, Normals,
+            UVs, Colors, Tangents, false);
+        bAirMotesMeshInitialized = true;
+    }
+    else
+    {
+        AirMotesVisual->UpdateMeshSection(0, Vertices, Normals, UVs, Colors,
+            Tangents);
+    }
 }
 
 void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)

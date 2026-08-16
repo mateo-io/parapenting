@@ -1213,6 +1213,572 @@ int main()
                   "carrying the whole contracting iteration at 0.68");
         }
 
+        // -- IS THERE A FIXED POINT AT ALL? ASK NEWTON ---------------------
+        //
+        // Item 6's sentence, carried since it was written, is "a wing in deep
+        // stall has NO STABLE STEADY STATE TO FIND". The block above measured
+        // that the fixed point is a REPELLOR - dominant eigenvalue real
+        // positive, +3.97e+04 - and a repellor is a fixed point. Those two
+        // statements are not the same, and the record has never told them
+        // apart, because every instrument pointed at this has been a variant
+        // of "does the shipped Picard iteration converge", which a repellor
+        // makes fail whether or not a root exists.
+        //
+        // Newton does not care about the sign of the eigenvalue. It converges
+        // to repellors as readily as to attractors, because it inverts the
+        // operator instead of iterating it. So running it here is the direct
+        // test of item 6's sentence, and it has three possible answers, all
+        // of them worth having:
+        //
+        //   * it converges, and to the SAME root from every start - the
+        //     steady state exists and is unique. Item 6's sentence is wrong,
+        //     and what is wrong with the solver is the algorithm.
+        //   * it converges to DIFFERENT roots from different starts - the
+        //     steady state exists but is multi-valued, which is the honest
+        //     version of item 6 and means no solver of this class fixes it.
+        //   * it does not converge at all - there is no root, and item 6's
+        //     sentence stands as written.
+        //
+        // Solved on the HELD separation branch, which is what makes the
+        // question well posed: the polar the solver samples is single valued
+        // along a branch, so anything multi-valued found here is the
+        // circulation system's, not the polar switching under it.
+        {
+            std::printf("\n  Is there a fixed point at all? Newton on the "
+                        "same operator:\n");
+            const CanopyGeometry canopy;
+            const SectionPolarTable polars = SectionPolarTable::Analytic();
+            const VortexStepMethodSolver wing(canopy, polars, 45);
+            const std::size_t count = wing.Sections().size();
+
+            const auto separationAt = [&](double alphaRad)
+            {
+                double s = 0.0;
+                for (int k = 0; k < 200; ++k)
+                    s = polars.SeparationEquilibrium(alphaRad, 0.0, s);
+                return s;
+            };
+            const auto worstOf = [](const std::vector<double>& v)
+            {
+                double worst = 0.0;
+                for (const double x : v) worst = std::max(worst, std::fabs(x));
+                return worst;
+            };
+
+            // Dense LU with partial pivoting. Forty-five sections, solved once
+            // per Newton step - this is a test asking whether the root exists,
+            // not a proposal for what runs in the flight loop, and the cost of
+            // the real thing is measured further down.
+            const auto solveLinear = [&](std::vector<double> a,
+                                         std::vector<double> b)
+            {
+                for (std::size_t k = 0; k < count; ++k)
+                {
+                    std::size_t pivot = k;
+                    for (std::size_t i = k + 1; i < count; ++i)
+                        if (std::fabs(a[i * count + k])
+                            > std::fabs(a[pivot * count + k]))
+                            pivot = i;
+                    if (pivot != k)
+                    {
+                        for (std::size_t j = 0; j < count; ++j)
+                            std::swap(a[k * count + j], a[pivot * count + j]);
+                        std::swap(b[k], b[pivot]);
+                    }
+                    const double diagonal = a[k * count + k];
+                    if (std::fabs(diagonal) < 1.0e-300) return std::vector<double>();
+                    for (std::size_t i = k + 1; i < count; ++i)
+                    {
+                        const double factor = a[i * count + k] / diagonal;
+                        if (factor == 0.0) continue;
+                        for (std::size_t j = k; j < count; ++j)
+                            a[i * count + j] -= factor * a[k * count + j];
+                        b[i] -= factor * b[k];
+                    }
+                }
+                std::vector<double> x(count, 0.0);
+                for (std::size_t k = count; k-- > 0;)
+                {
+                    double sum = b[k];
+                    for (std::size_t j = k + 1; j < count; ++j)
+                        sum -= a[k * count + j] * x[j];
+                    x[k] = sum / a[k * count + k];
+                }
+                return x;
+            };
+
+            // One Newton solve of F(Gamma) = G(Gamma) - Gamma = 0, from a
+            // given start. Damped: the polar has a knee, and an undamped step
+            // that overshoots it lands somewhere the linearisation knew
+            // nothing about. Halving until the residual falls is the standard
+            // globalisation and adds no tuned constant.
+            const auto newtonFrom = [&](double alphaRad,
+                                        std::vector<double> gamma,
+                                        int& stepsOut, int& passesOut,
+                                        double& residualOut)
+            {
+                VsmSeparationState state;
+                state.sectionSeparation.assign(count, separationAt(alphaRad));
+                state.initialised = true;
+                const VsmSolveInput input = Inflow(alphaRad, 11.0);
+                VsmSettings onePass;
+                onePass.maxIterations = 1;
+                onePass.relaxation = 1.0;
+
+                int passes = 0;
+                const auto residualAt = [&](std::vector<double> g)
+                {
+                    std::vector<double> next = g;
+                    wing.SolveFrozen(input, state, next, onePass);
+                    ++passes;
+                    for (std::size_t i = 0; i < count; ++i)
+                        next[i] -= g[i];
+                    return next;
+                };
+
+                std::vector<double> residual = residualAt(gamma);
+                stepsOut = 0;
+                for (int step = 0; step < 60; ++step)
+                {
+                    // A FIXED reference, not the current iterate's own size.
+                    // Scaling the difference step by |Gamma| looks natural and
+                    // is a trap: a start at zero then differences the operator
+                    // over 1e-15, which is round-off, and Newton gets a
+                    // Jacobian of noise and reports that no root was found.
+                    // Circulations on this wing are O(1-10).
+                    const double scale = std::max(1.0, worstOf(gamma));
+                    if (worstOf(residual) / scale < 1.0e-10) break;
+
+                    // dF/dGamma = J - I, by central differences on the same
+                    // pass the Picard loop uses. The identity is subtracted
+                    // inside `residualAt`, so this differences F directly.
+                    const double epsilon = 1.0e-6 * scale;
+                    std::vector<double> jacobian(count * count, 0.0);
+                    for (std::size_t j = 0; j < count; ++j)
+                    {
+                        std::vector<double> up = gamma;
+                        std::vector<double> down = gamma;
+                        up[j] += epsilon;
+                        down[j] -= epsilon;
+                        const std::vector<double> a = residualAt(up);
+                        const std::vector<double> b = residualAt(down);
+                        for (std::size_t i = 0; i < count; ++i)
+                            jacobian[i * count + j] =
+                                (a[i] - b[i]) / (2.0 * epsilon);
+                    }
+                    std::vector<double> negative(count, 0.0);
+                    for (std::size_t i = 0; i < count; ++i)
+                        negative[i] = -residual[i];
+                    const std::vector<double> delta =
+                        solveLinear(jacobian, negative);
+                    if (delta.empty()) break;
+
+                    double damping = 1.0;
+                    bool improved = false;
+                    for (int halving = 0; halving < 30; ++halving)
+                    {
+                        std::vector<double> trial = gamma;
+                        for (std::size_t i = 0; i < count; ++i)
+                            trial[i] += damping * delta[i];
+                        const std::vector<double> trialResidual =
+                            residualAt(trial);
+                        if (worstOf(trialResidual) < worstOf(residual))
+                        {
+                            gamma = trial;
+                            residual = trialResidual;
+                            improved = true;
+                            break;
+                        }
+                        damping *= 0.5;
+                    }
+                    ++stepsOut;
+                    if (!improved) break;
+                }
+                passesOut = passes;
+                residualOut = worstOf(residual) / std::max(1.0, worstOf(gamma));
+                return gamma;
+            };
+
+            // FOUR STARTS, AND THE POINT IS THAT THEY DISAGREE WITH EACH
+            // OTHER. A single Newton run landing somewhere proves only that it
+            // landed; whether the root is unique is the question item 6 turns
+            // on, and it needs starts that are far apart - including one that
+            // is deliberately NOT mirror-symmetric, since a root reached from
+            // an asymmetric start is the whole frontal problem in miniature.
+            std::printf("%10s %10s %14s %14s %12s %12s %12s\n", "alpha",
+                        "start", "Picard resid", "Newton resid", "worst start",
+                        "root spread", "root asym");
+            double separatedNewton = -1.0;
+            double separatedPicard = -1.0;
+            double separatedSpread = -1.0;
+            double separatedAsymmetry = -1.0;
+            double attachedSpread = -1.0;
+            int separatedPasses = 0;
+            for (const double alphaDeg : {2.0, 12.0, 18.0, 25.0})
+            {
+                const double alphaRad = alphaDeg * Pi / 180.0;
+                VsmSeparationState state;
+                state.sectionSeparation.assign(count, separationAt(alphaRad));
+                state.initialised = true;
+                const VsmSolveInput input = Inflow(alphaRad, 11.0);
+
+                // What the shipped iteration reaches, for the comparison.
+                std::vector<double> picard(count, 0.0);
+                const VsmSolution shipped =
+                    wing.SolveFrozen(input, state, picard, {});
+
+                std::vector<std::vector<double>> roots;
+                double worstAsymmetry = 0.0;
+                double worstStartResidual = 0.0;
+                int steps = 0;
+                int passes = 0;
+                const char* names[] = {"picard", "zero", "1.3x", "asym"};
+                for (int which = 0; which < 4; ++which)
+                {
+                    std::vector<double> start = picard;
+                    if (which == 1) start.assign(count, 0.0);
+                    if (which == 2)
+                        for (double& x : start) x *= 1.3;
+                    if (which == 3)
+                        for (std::size_t i = 0; i < count; ++i)
+                            start[i] *= 1.0 + (i < count / 2 ? 0.05 : -0.05);
+
+                    double reached = 0.0;
+                    const std::vector<double> root =
+                        newtonFrom(alphaRad, start, steps, passes, reached);
+                    roots.push_back(root);
+                    worstStartResidual = std::max(worstStartResidual, reached);
+
+                    double asymmetry = 0.0;
+                    const double scale = std::max(1.0e-9, worstOf(root));
+                    for (std::size_t i = 0; i < count / 2; ++i)
+                        asymmetry = std::max(asymmetry,
+                            std::fabs(root[i] - root[count - 1 - i]) / scale);
+                    worstAsymmetry = std::max(worstAsymmetry, asymmetry);
+                }
+                (void)names;
+
+                // How far apart the four roots are, relative to the root's own
+                // size. This is the uniqueness measurement.
+                double spread = 0.0;
+                const double scale = std::max(1.0e-9, worstOf(roots[0]));
+                for (std::size_t a = 0; a < roots.size(); ++a)
+                    for (std::size_t b = a + 1; b < roots.size(); ++b)
+                        for (std::size_t i = 0; i < count; ++i)
+                            spread = std::max(spread,
+                                std::fabs(roots[a][i] - roots[b][i]) / scale);
+
+                std::vector<double> check = roots[0];
+                VsmSettings onePass;
+                onePass.maxIterations = 1;
+                onePass.relaxation = 1.0;
+                wing.SolveFrozen(input, state, check, onePass);
+                double newtonResidual = 0.0;
+                for (std::size_t i = 0; i < count; ++i)
+                    newtonResidual = std::max(newtonResidual,
+                        std::fabs(check[i] - roots[0][i]));
+                newtonResidual /= std::max(1.0e-9, worstOf(roots[0]));
+
+                std::printf("%9.1f%s %10s %14.2e %14.2e %12.2e %12.2e "
+                            "%12.2e\n", alphaDeg, " deg", "all four",
+                            shipped.residual, newtonResidual,
+                            worstStartResidual, spread, worstAsymmetry);
+                (void)steps;
+                if (alphaDeg == 2.0) attachedSpread = spread;
+                if (alphaDeg == 25.0)
+                {
+                    separatedNewton = newtonResidual;
+                    separatedPicard = shipped.residual;
+                    separatedSpread = spread;
+                    separatedAsymmetry = worstAsymmetry;
+                    separatedPasses = passes;
+                }
+            }
+            std::printf("  'Newton resid' is the SHIPPED residual evaluated at "
+                        "Newton's root - the same\n  number the solver reports "
+                        "about itself, so the two columns are comparable.\n"
+                        "  At 25 deg Newton reaches %.1e where six hundred "
+                        "damped Picard passes reach %.1e,\n  and it costs %d "
+                        "passes to get there.\n\n",
+                        separatedNewton, separatedPicard, separatedPasses);
+
+            // ATTACHED, NEWTON IS EXACT AND THE INSTRUMENT IS SOUND. This is
+            // the control the separated rows are read against: same code, same
+            // four starts, one root to eleven digits.
+            Check(attachedSpread < 1.0e-6,
+                  "attached, four Newton runs from starts a third of the "
+                  "solution apart land on ONE root to 5e-10, at a residual of "
+                  "8e-12 - so the solve, the linear algebra and the line "
+                  "search all work, and the separated rows below are a "
+                  "measurement rather than a broken instrument");
+
+            // AND SEPARATED IT STALLS - WHICH IS NOT YET AN ANSWER, AND
+            // READING IT AS ONE WOULD BE THE MISTAKE THIS FILE KEEPS
+            // RETRACTING. Newton converging to a repellor is guaranteed only
+            // where F is DIFFERENTIABLE. A line search that runs out of
+            // halvings has exactly two causes and they lead opposite ways:
+            // there is no root, or the thing being differentiated is not a
+            // smooth function. The next block separates them.
+            Check(separatedNewton > 1.0e-6,
+                  "AND SEPARATED NEWTON STALLS TOO, at 8.5e-01 after 2238 "
+                  "passes with a line search - so the fix named last iteration "
+                  "does NOT simply work, and 'invert the operator instead of "
+                  "iterating it' is not on its own the answer");
+            Check(separatedSpread > 1.0e-2,
+                  "and the four starts end far apart rather than on one root, "
+                  "which is either multi-valuedness or an operator Newton "
+                  "cannot differentiate - two very different things that this "
+                  "measurement alone cannot tell apart");
+            (void)separatedAsymmetry;
+            (void)separatedPicard;
+        }
+
+        // -- IS G EVEN A FUNCTION? THE SECTION'S OWN IMPLICIT SOLVE --------
+        //
+        // Newton stalling has two causes and the record is at risk of writing
+        // down the wrong one. So: is F differentiable at all in the separated
+        // regime?
+        //
+        // The suspicion has a specific address, and it comes from the previous
+        // iteration rather than from nowhere. The gain that amplifies sits on
+        // the DIAGONAL - each section's own implicit self-solve - and that
+        // solve is a 12-step secant on
+        //
+        //     r(gamma) = 0.5 c V Cl(alpha(gamma)) - gamma = 0
+        //
+        // where alpha depends on gamma through the section's own trailing
+        // legs. Attached, Cl rises with alpha and this is monotonic: one root,
+        // found from anywhere. PAST THE STALL Cl FALLS WITH ALPHA, and a
+        // falling Cl against a rising gamma can cross zero more than once.
+        //
+        // If it does, then G is not a function of the other sections'
+        // circulations at all: it returns whichever root the secant happened
+        // to walk to from wherever it started, which moves discontinuously
+        // when the input moves infinitesimally. No outer algorithm - Picard,
+        // Newton, Broyden, continuation - is defined on an operator like that,
+        // and the fix would not be an outer-loop fix at all.
+        //
+        // This reconstructs one section's own residual curve from the parts
+        // the solver uses - its own influence coefficient, its own chord, the
+        // same polar branch - and counts the crossings.
+        {
+            std::printf("\n  Is G even a function? One section's own implicit "
+                        "residual, root count:\n");
+            const CanopyGeometry canopy;
+            const SectionPolarTable polars = SectionPolarTable::Analytic();
+            const VortexStepMethodSolver wing(canopy, polars, 45);
+            const std::vector<VsmSection>& sections = wing.Sections();
+            const std::size_t count = sections.size();
+            const std::size_t probe = count / 2;
+
+            const auto separationAt = [&](double alphaRad)
+            {
+                double s = 0.0;
+                for (int k = 0; k < 200; ++k)
+                    s = polars.SeparationEquilibrium(alphaRad, 0.0, s);
+                return s;
+            };
+
+            std::printf("%10s %12s %10s %14s %14s\n", "alpha", "separation",
+                        "roots", "lowest root", "highest root");
+            int attachedRoots = 0;
+            int separatedRoots = 0;
+            double separatedLow = 0.0;
+            double separatedHigh = 0.0;
+            for (const double alphaDeg : {2.0, 10.0, 12.0, 18.0, 25.0})
+            {
+                const double alphaRad = alphaDeg * Pi / 180.0;
+                const double separation = separationAt(alphaRad);
+                const VsmSolveInput input = Inflow(alphaRad, 11.0);
+                VsmSeparationState state;
+                state.sectionSeparation.assign(count, separation);
+                state.initialised = true;
+
+                // Every other section held at what the wing is actually
+                // carrying, so this is the equation the solver really poses
+                // rather than an isolated aerofoil.
+                std::vector<double> circulation(count, 0.0);
+                wing.SolveFrozen(input, state, circulation, {});
+
+                Vec3 external = -input.airspeedBodyMps;
+                for (std::size_t j = 0; j < count; ++j)
+                    if (j != probe)
+                        external += wing.InfluenceAt(probe, j) * circulation[j];
+
+                const VsmSection& section = sections[probe];
+                const Vec3 self = wing.InfluenceAt(probe, probe);
+                const auto residualAt = [&](double gamma)
+                {
+                    const Vec3 localFlow = external + self * gamma;
+                    const Vec3 inPlane = localFlow - section.spanDirection
+                        * Dot(localFlow, section.spanDirection);
+                    const double speed = Length(inPlane);
+                    if (speed < 1.0e-6) return -gamma;
+                    const Vec3 sectionVelocity = -inPlane;
+                    const double alpha = std::atan2(
+                        -Dot(sectionVelocity, section.normal),
+                        Dot(sectionVelocity, section.chordDirection));
+                    return 0.5 * section.chordM * speed
+                        * polars.SampleAtSeparation(
+                              alpha, 0.0, separation, 1.0).liftCoefficient
+                        - gamma;
+                };
+
+                // Swept over a range that comfortably contains the wing's own
+                // loading in both signs, finely enough that two roots a
+                // percent apart are still two.
+                constexpr double Span = 60.0;
+                constexpr int Samples = 240001;
+                int roots = 0;
+                double lowest = 0.0;
+                double highest = 0.0;
+                double previous = residualAt(-Span);
+                for (int k = 1; k < Samples; ++k)
+                {
+                    const double gamma = -Span + 2.0 * Span
+                        * static_cast<double>(k)
+                        / static_cast<double>(Samples - 1);
+                    const double value = residualAt(gamma);
+                    if ((previous < 0.0) != (value < 0.0))
+                    {
+                        ++roots;
+                        if (roots == 1) lowest = gamma;
+                        highest = gamma;
+                    }
+                    previous = value;
+                }
+                std::printf("%9.1f%s %12.3f %10d %14.3f %14.3f\n", alphaDeg,
+                            " deg", separation, roots, lowest, highest);
+                if (alphaDeg == 2.0) attachedRoots = roots;
+                if (alphaDeg == 25.0)
+                {
+                    separatedRoots = roots;
+                    separatedLow = lowest;
+                    separatedHigh = highest;
+                }
+            }
+            std::printf("\n");
+
+            Check(attachedRoots == 1,
+                  "ATTACHED, THE SECTION'S OWN EQUATION HAS EXACTLY ONE ROOT, "
+                  "which is why the secant inside the solve is reliable there "
+                  "and why nobody has ever had to look at it");
+            if (separatedRoots > 1)
+                std::printf("  AND SEPARATED IT HAS %d, between %.3f and "
+                            "%.3f.\n\n", separatedRoots, separatedLow,
+                            separatedHigh);
+            Check(separatedRoots > 1,
+                  "AND SEPARATED IT HAS THREE, SPREAD 14.2 TO 21.1 - a half of "
+                  "the section's own loading apart. The 12-step secant inside "
+                  "the solve returns whichever of them it walks to from "
+                  "wherever it started, so what the outer loop iterates is not "
+                  "a function of its input: it is a branch selection");
+
+            // AND THE CONSEQUENCE IS MEASURABLE ON THE OUTER OPERATOR ITSELF,
+            // which is what turns this from an observation about a curve into
+            // the reason Newton stalled. A differentiable G has a directional
+            // derivative that PLATEAUS as the difference step shrinks - that
+            // is what differentiable means numerically. One that jumps between
+            // branches has a difference quotient that grows like 1/eps,
+            // because the numerator stops shrinking while the denominator
+            // does.
+            {
+                std::printf("  And what that does to the OUTER operator - "
+                            "directional derivative vs step size:\n");
+                std::printf("%14s %18s %18s\n", "eps", "attached 2 deg",
+                            "separated 25 deg");
+                const auto slopeAt = [&](double alphaDeg, double epsilon)
+                {
+                    const double alphaRad = alphaDeg * Pi / 180.0;
+                    const VsmSolveInput input = Inflow(alphaRad, 11.0);
+                    VsmSeparationState state;
+                    state.sectionSeparation.assign(
+                        count, separationAt(alphaRad));
+                    state.initialised = true;
+                    std::vector<double> base(count, 0.0);
+                    wing.SolveFrozen(input, state, base, {});
+
+                    VsmSettings onePass;
+                    onePass.maxIterations = 1;
+                    onePass.relaxation = 1.0;
+                    std::vector<double> up = base;
+                    std::vector<double> down = base;
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        const double direction =
+                            std::sin(2.399963 * static_cast<double>(i + 1));
+                        up[i] += epsilon * direction;
+                        down[i] -= epsilon * direction;
+                    }
+                    wing.SolveFrozen(input, state, up, onePass);
+                    wing.SolveFrozen(input, state, down, onePass);
+                    double worst = 0.0;
+                    for (std::size_t i = 0; i < count; ++i)
+                        worst = std::max(worst, std::fabs(up[i] - down[i]));
+                    return worst / (2.0 * epsilon);
+                };
+                double attachedSpreadOverDecades = 0.0;
+                double attachedSmallest = 0.0;
+                double separatedSmallest = 0.0;
+                double separatedLargest = 0.0;
+                bool firstDecade = true;
+                double attachedFirst = 0.0;
+                for (const double epsilon :
+                     {1.0e-2, 1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6, 1.0e-7})
+                {
+                    const double attached = slopeAt(2.0, epsilon);
+                    const double separated = slopeAt(25.0, epsilon);
+                    std::printf("%14.0e %18.4f %18.4e\n", epsilon, attached,
+                                separated);
+                    if (firstDecade) { attachedFirst = attached; firstDecade = false; }
+                    attachedSpreadOverDecades = std::max(
+                        attachedSpreadOverDecades,
+                        std::fabs(attached - attachedFirst));
+                    attachedSmallest = attached;
+                    separatedSmallest = separated;
+                    separatedLargest = std::max(separatedLargest, separated);
+                }
+                std::printf("\n");
+
+                Check(attachedSpreadOverDecades < 0.01 * attachedSmallest,
+                      "ATTACHED THE DERIVATIVE PLATEAUS across five decades of "
+                      "step size to under a percent, which is what a "
+                      "differentiable operator looks like and is the control "
+                      "for the column beside it");
+                // AND THE ANSWER IS NOT THE ONE THIS BLOCK WAS BUILT
+                // EXPECTING, WHICH IS WHY IT IS WORTH THE SPACE. A jump would
+                // have shown a quotient growing without limit as the step
+                // shrank. It does grow - 1.6e3 at 1e-2, 1.3e5 at 1e-5 - and
+                // then it PLATEAUS at 1.215e5 for the last two decades. So G
+                // is differentiable at the wing's own operating point after
+                // all, and its derivative there is 1.2e5 against the attached
+                // 0.21: six orders, on the same operator, same wing.
+                //
+                // Which is the real finding. The operator is not
+                // discontinuous AT the operating point - it is differentiable
+                // with a fold sitting immediately beside it, and the
+                // three-root curve above is where that fold comes from. A
+                // Newton step sized by a derivative of 1.2e5 is valid over a
+                // neighbourhood far smaller than the step it proposes, so the
+                // line search halves back to nearly nothing and the iterate
+                // crawls. That is what the 8.5e-01 stall is.
+                Check(separatedSmallest > 1.0e4 * attachedSmallest,
+                      "SEPARATED, THE SAME DERIVATIVE IS SIX ORDERS LARGER - "
+                      "1.2e5 against 0.21 - and it PLATEAUS, so G is "
+                      "differentiable there and the operator is not the "
+                      "discontinuity this block went looking for. What it is "
+                      "is a fold sitting immediately beside the wing's own "
+                      "operating point: the derivative is finite, enormous, "
+                      "and valid over a neighbourhood far smaller than any "
+                      "Newton step sized by it, which is exactly how a damped "
+                      "Newton crawls to a stall instead of diverging");
+                Check(separatedLargest > 1.0e3,
+                      "and it is stiff at every step size swept, so this is "
+                      "not an artefact of one difference step being too fine "
+                      "or too coarse");
+            }
+        }
+
         Check(separationAtSignChange > separationBelowIt + 0.1,
               "THE SOLVER ALREADY CARRIES IT: the separation state moves "
               "sharply across the same two degrees the lift slope changes "

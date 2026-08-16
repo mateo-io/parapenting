@@ -1063,9 +1063,69 @@ between sections; a wing in deep stall has no stable steady state to find.
   a better seed (the seed is unavoidable, §77), and not the unsteady wake,
   which per item 30 avoids the fixed point rather than repairing it. What is
   left is changing the operator: a Newton step on the whole circulation vector,
-  or a formulation in which the section's own feedback cannot pass unity. That
-  is the next thing to build, and it is the first time this item has said what
-  to build rather than what fails.
+  or a formulation in which the section's own feedback cannot pass unity.
+  **THE FIRST OF THOSE TWO WAS TRIED IMMEDIATELY AND DOES NOT WORK — see the
+  next bullet.** The second is where this item now points.
+- **NEWTON DOES NOT FIX IT EITHER, AND WHY NOT MOVES THE ITEM TO ITS FINAL
+  ADDRESS.** §78 recommended inverting the operator instead of iterating it,
+  because Newton converges to repellors. Built — damped, line-searched, dense
+  LU on the 45×45 system, four starts a third of the solution apart:
+
+  | α | Picard residual | Newton residual | worst start | root spread |
+  |---|---|---|---|---|
+  | 2° | 9.3e-07 | **8.5e-12** | 9.6e-11 | **4.9e-10** |
+  | 12° | 1.85 | 7.9e-01 | 7.9e-01 | 2.25 |
+  | 18° | 0.99 | 1.4e-01 | 1.05 | 1.08 |
+  | 25° | 2.07 | **8.5e-01** | 3.96 | 11.0 |
+
+  **Attached it is exact** — four starts, one root to 5e-10, residual 8e-12 —
+  which is the control that makes the rest a measurement rather than a broken
+  instrument. **Separated it stalls at 8.5e-01 after 2238 passes** and the four
+  starts end far apart. (The first version of this had the finite-difference
+  step scaled by the iterate's own size, so a start at zero differenced the
+  operator over 1e-15 and reported failure everywhere. That bug is why the
+  attached control row is not optional.)
+- **AND THE REASON IS THE SECTION'S OWN IMPLICIT SOLVE, WHICH HAS THREE ROOTS.**
+  The solver takes each section's own circulation implicitly by a 12-step
+  secant on `r(Γ) = 0.5 c V Cl(α(Γ)) − Γ`, precisely so that term cannot
+  misbehave. Reconstructed from the solver's own parts and swept:
+
+  | α | separation | roots | lowest | highest |
+  |---|---|---|---|---|
+  | 2° | 0.000 | **1** | 7.921 | 7.921 |
+  | 10° | 0.000 | 1 | 17.999 | 17.999 |
+  | 12° | 0.288 | 1 | 6.187 | 6.187 |
+  | 18° | 1.000 | **3** | 14.663 | 21.755 |
+  | 25° | 1.000 | **3** | 14.246 | 21.108 |
+
+  Attached, a rising `Cl` against a rising `Γ` crosses once. **Past full
+  separation a falling `Cl` crosses three times, and the outer roots are 48%
+  apart in circulation.** The secant returns whichever one it walks to from
+  where it started, so what the outer loop iterates is a **branch selection**,
+  not a function of its input. That is the multi-valuedness item 6 has always
+  asserted — but it is one section's own equation, not the coupling between
+  sections, and it is inside the term this solver made implicit to be safe.
+- **THE OPERATOR IS STILL DIFFERENTIABLE AT THE OPERATING POINT — WITH A FOLD
+  BESIDE IT.** The obvious next inference is that `G` is discontinuous and has
+  no Jacobian to invert. Measured instead of assumed, as a directional
+  derivative against difference step: attached it is **0.2099 across five
+  decades**, flat. Separated it grows from 1.6e3 to 1.29e5 and then **plateaus
+  at 1.215e5** for the last two. So `G` is differentiable there and its
+  derivative is **six orders larger** than attached. A Newton step sized by
+  1.2e5 is valid over a neighbourhood far smaller than the step it proposes,
+  the line search halves back to nothing, and the iterate crawls — which is
+  what an 8.5e-01 stall after 2238 passes looks like. The eigenvalue §78
+  measured at +3.9e4 is this fold seen from the other side.
+- **SO THE FIFTH CANDIDATE IS EXCLUDED AND THE FIX IS AT THE SECTION LEVEL.**
+  No outer-loop algorithm — Picard, damped Picard, Newton, Broyden,
+  continuation — repairs an inner solve that returns a different branch
+  depending on where it was started. What is left is making the section's own
+  root a **carried state**, selected by continuity from the last tick, the way
+  `VsmSeparationState::sectionSeparation` already is for stall memory. The
+  circulation is warm-started today but the branch is not *chosen* — nothing
+  in the secant knows there are three roots or which one the wing was on. That
+  is the next thing to build, and it is a change to `SolveHeld`'s inner solve
+  rather than to anything around it.
 - The honest treatment is Level 11's unsteady wake. **But item 30 has since
   measured that strand 2 does not supply it** — the only configuration that
   ever held the symmetric frontal is one where the aerodynamic states run six

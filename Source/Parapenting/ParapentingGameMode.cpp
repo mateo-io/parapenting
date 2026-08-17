@@ -63,7 +63,7 @@ void AParapentingGameMode::InitGame(
     FParse::Value(
         FCommandLine::Get(), TEXT("VisualQAOutputDir="),
         VisualQAOutputDirectory);
-    VisualQACameraMode = FMath::Clamp(VisualQACameraMode, 0, 3);
+    VisualQACameraMode = FMath::Clamp(VisualQACameraMode, 0, 4);
     VisualQAWarmupSeconds = FMath::Max(1.0f, VisualQAWarmupSeconds);
 
     // InitGame runs before the default pawn is spawned. Loading the

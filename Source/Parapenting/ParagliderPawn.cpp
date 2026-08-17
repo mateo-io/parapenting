@@ -321,6 +321,16 @@ void AParagliderPawn::BeginPlay()
                 TEXT("/Game/Materials/M_HarnessFabric.M_HarnessFabric")))
         {
             HarnessMesh->SetMaterial(0, HarnessMaterial);
+            if (UMaterialInstanceDynamic* Material =
+                HarnessMesh->CreateAndSetMaterialInstanceDynamic(0))
+            {
+                // A harness must retain its folded, load-bearing silhouette
+                // against a bright alpine sky. This is still dark nylon, but
+                // not so black that its texture and protective volumes vanish.
+                Material->SetVectorParameterValue(
+                    TEXT("NylonTint"), FLinearColor(0.68f, 0.80f, 0.98f));
+                Material->SetScalarParameterValue(TEXT("NylonRoughness"), 0.76f);
+            }
         }
         else if (SurfaceMaterial)
         {
@@ -352,6 +362,27 @@ void AParagliderPawn::BeginPlay()
     {
         if (USkeletalMesh* const Assigned = PilotMeshOverride.LoadSynchronous())
             PilotCharacter->SetSkinnedAssetAndUpdate(Assigned);
+    }
+    if (PilotCharacter && PilotCharacter->GetSkinnedAsset() && SurfaceMaterial)
+    {
+        // The free mannequin's default white material reads as a development
+        // asset at any chase distance. Until the MetaHuman body replaces it,
+        // present it as a single, functional technical suit: helmet and
+        // harness remain separately readable, while the body/hands become
+        // clothing and gloves rather than exposed plastic.
+        for (int32 Slot = 0; Slot < PilotCharacter->GetNumMaterials(); ++Slot)
+        {
+            PilotCharacter->SetMaterial(Slot, SurfaceMaterial);
+            if (UMaterialInstanceDynamic* Material =
+                PilotCharacter->CreateDynamicMaterialInstance(Slot))
+            {
+                Material->SetVectorParameterValue(
+                    TEXT("BaseColor"), FLinearColor(0.018f, 0.075f, 0.16f));
+                Material->SetVectorParameterValue(
+                    TEXT("Color"), FLinearColor(0.018f, 0.075f, 0.16f));
+                Material->SetScalarParameterValue(TEXT("Roughness"), 0.79f);
+            }
+        }
     }
     if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {
@@ -1029,6 +1060,14 @@ void AParagliderPawn::Tick(float DeltaSeconds)
         CameraBase = FVector(-890.0f, -980.0f, 410.0f);
         BaseFov = 70.0f;
     }
+    else if (CameraMode == 4)
+    {
+        // Hero pilot: deterministic, close three-quarter framing for store
+        // media and asset QA. It remains a live pawn-relative camera, so the
+        // body, line anchors, harness and canopy all stay simulation-faithful.
+        CameraBase = FVector(-330.0f, -245.0f, 78.0f);
+        BaseFov = 54.0f;
+    }
     // At flare height, a long low chase angle tends to lose either the wing
     // or the landing surface. Blend to a slightly higher, centred composition
     // from the same deterministic ground-clearance query. This is presentation
@@ -1056,7 +1095,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     constexpr float CanopyFocusHeightCm = 730.0f;
     const FVector CanopyFocus(0.0f, 0.0f, CanopyFocusHeightCm);
     const float CanopyFocusBlend = CameraMode == 1 ? 0.28f
-        : (CameraMode == 2 ? 0.46f : 0.43f);
+        : (CameraMode == 2 ? 0.46f : (CameraMode == 4 ? 0.13f : 0.43f));
     const FVector CameraFocus = FMath::Lerp(PilotFocus, CanopyFocus,
         CanopyFocusBlend);
     const FRotator FocusRotation = (CameraFocus - CameraTarget).Rotation();
@@ -2253,13 +2292,58 @@ void AParagliderPawn::BuildHarnessMesh()
             0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6};
         for (int32 Index : Faces) Triangles.Add(Base + Index);
     };
+    const auto AddTaperedPod = [&Vertices, &Triangles, &Normals, &UVs,
+        &Colours](const FVector& Centre, float HalfDepth, float HalfWidth,
+            float HalfHeight, const FColor& Colour)
+    {
+        // A paragliding harness is padded, tapered equipment, not a cargo
+        // crate. Four elliptic rings give the back protector and reserve
+        // their soft, load-bearing silhouette without changing the rig's
+        // physical anchors or adding a decorative mesh detached from them.
+        constexpr int32 Sides = 10;
+        constexpr int32 Rings = 4;
+        constexpr float HeightScale[Rings] = {-1.0f, -0.36f, 0.42f, 1.0f};
+        constexpr float RadiusScale[Rings] = {0.44f, 1.0f, 0.92f, 0.38f};
+        const int32 Base = Vertices.Num();
+        for (int32 Ring = 0; Ring < Rings; ++Ring)
+        {
+            for (int32 Side = 0; Side < Sides; ++Side)
+            {
+                const float Angle = 2.0f * PI * Side / Sides;
+                const float Scale = RadiusScale[Ring];
+                const FVector Normal(0.0f, FMath::Cos(Angle),
+                    FMath::Sin(Angle));
+                Vertices.Add(Centre + FVector(
+                    FMath::Sin(Angle) * HalfDepth * Scale,
+                    FMath::Cos(Angle) * HalfWidth * Scale,
+                    HeightScale[Ring] * HalfHeight));
+                Normals.Add(Normal);
+                UVs.Add(FVector2D(
+                    static_cast<float>(Side) / Sides,
+                    static_cast<float>(Ring) / (Rings - 1)));
+                Colours.Add(Colour);
+            }
+        }
+        for (int32 Ring = 0; Ring < Rings - 1; ++Ring)
+        {
+            for (int32 Side = 0; Side < Sides; ++Side)
+            {
+                const int32 Next = (Side + 1) % Sides;
+                const int32 A = Base + Ring * Sides + Side;
+                const int32 B = Base + Ring * Sides + Next;
+                const int32 C = Base + (Ring + 1) * Sides + Next;
+                const int32 D = Base + (Ring + 1) * Sides + Side;
+                Triangles.Append({A, B, C, A, C, D});
+            }
+        }
+    };
     // Seat, back protector, and reserve volume are intentionally bespoke
     // project geometry at the measured carabiner and shoulder anchor scale.
     AddBox(FVector(4.0f, 0.0f, -19.0f), FVector(29.0f, 20.0f, 5.0f),
         FColor(18, 25, 38));
-    AddBox(FVector(-8.0f, 0.0f, 4.0f), FVector(8.0f, 18.0f, 29.0f),
+    AddTaperedPod(FVector(-8.0f, 0.0f, 4.0f), 10.0f, 18.0f, 29.0f,
         FColor(20, 30, 46));
-    AddBox(FVector(16.0f, 0.0f, -7.0f), FVector(15.0f, 19.0f, 13.0f),
+    AddTaperedPod(FVector(16.0f, 0.0f, -7.0f), 16.0f, 19.0f, 13.0f,
         FColor(28, 38, 56));
     // Webbing. Every strap ends on an anchor the load path already uses, so
     // the harness reads as the thing carrying the pilot rather than a box they
@@ -3180,7 +3264,7 @@ void AParagliderPawn::SetVisualQACameraMode(int32 Mode)
     // A capture must name its view rather than inherit whichever camera a
     // player last saved. This affects composition only, never controls or
     // physics, so the same replay remains comparable across camera passes.
-    CameraMode = FMath::Clamp(Mode, 0, 3);
+    CameraMode = FMath::Clamp(Mode, 0, 4);
 }
 
 void AParagliderPawn::FetchLiveWeather()
@@ -4025,7 +4109,7 @@ void AParagliderPawn::ToggleAirflowVisualization()
 
 void AParagliderPawn::CycleCameraMode()
 {
-    CameraMode = (CameraMode + 1) % 4;
+    CameraMode = (CameraMode + 1) % 5;
 }
 
 void AParagliderPawn::CycleAccessibilityProfile()
@@ -4298,6 +4382,7 @@ const char* AParagliderPawn::GetCameraModeDisplayName() const
         case 1: return "CLOSE TECHNICAL";
         case 2: return "SIDE TECHNICAL";
         case 3: return "SCENIC WING";
+        case 4: return "HERO PILOT";
         default: return "REAR CHASE";
     }
 }

@@ -107,7 +107,68 @@ stages sum to a third of the frame is not a measurement.
 pointless. If the frame is 95% GPU in volumetric fog, Level 4's canopy
 allocations are noise and should not be touched.
 
-## Level 1 — the frames nobody asked for
+## Level 1 — the frames nobody asked for — **BUILT**
+
+> **Done, with one correction to this section's own reasoning and one thing
+> still owed.** The cap is in and gated. What is *not* measured is the symptom:
+> package power before and after needs a running standalone build, which is
+> Level 0's protocol and has not been run. Level 1 removed the cause the
+> configuration indicted; whether that is *the* cause is still open.
+>
+> **The gate this section names was already green before it was written.**
+> `determinism_tests` has a "render-rate independence" block that hashes 30 s
+> of flight at 10, 30, 60, 120, 144 and 240 Hz plus two jittered rates: all
+> eight identical. So no test needed writing for the claim that the clock does
+> not care — it was built with the clock.
+>
+> **What nothing covered is the path by which a cap CAN reach the flight.**
+> That block samples the controls as a function of simulation time, and its own
+> comment says sampling per frame "would make the comparison meaningless" —
+> correct for testing a clock. But `AParagliderPawn::Tick` samples input once
+> per frame and applies it to every step that frame issues, so input sampling
+> is the one channel from frame rate to handling. Measured, 30 s of flight
+> against controls sampled every step:
+>
+> | frame rate | drift | airspeed drift |
+> |---|---|---|
+> | 240 Hz | **bit-identical** | 0 |
+> | 144 Hz | **bit-identical** | 0 |
+> | 120 Hz | 0.0007 m | 0.0000 m/s |
+> | 60 Hz | 0.0776 m | 0.0015 m/s |
+> | 30 Hz | 0.2292 m | 0.0045 m/s |
+> | 20 Hz | 0.3792 m | 0.0075 m/s |
+>
+> **And the expected answer was wrong in a way worth keeping.** The derivation
+> written first was "a cap at the simulation rate is exactly free, because one
+> frame issues one step". Rates *above* the step rate are exactly free; the
+> step rate itself is not, because 1/120 does not accumulate exactly, so
+> occasionally one frame issues zero steps and the next issues two — and the
+> second of those runs on a control value one step old. That is the whole
+> 0.0007 m. It is 0.7 mm over 30 s against the 8 m a step covers, so the cap is
+> sound at 120; what is not true is that it is bit-clean, and the record does
+> not claim it.
+>
+> **Below the step rate the cost is real and monotonic** — 7.8 cm at 60 Hz —
+> so the lower tiers buy their power with a handling change, now stated instead
+> of assumed.
+>
+> **What landed:** `frameRateCapHz` and `verticalSync` on `GraphicsProfile`
+> (Low 30 no vsync, Medium 60, High and Epic at the 120 Hz step rate);
+> `ApplyGraphicsProfile` applying both; a `[SystemSettings] t.MaxFPS=120` /
+> `r.VSync=1` startup baseline in `DefaultEngine.ini` so the first frames of a
+> session are capped before a profile loads; the control-sampling table gated
+> in `determinism_tests`; and the cap ordering, the pinning of the top tiers to
+> the step rate, and "no tier is uncapped" gated structurally in
+> `physics_tests`.
+>
+> **Found while here, not fixed, belongs to Level 4:** `DefaultEngine.ini` runs
+> Unreal's own physics substepping at `MaxSubstepDeltaTime=0.008333` with
+> `MaxSubsteps=8`, i.e. up to eight engine physics substeps per frame, in a
+> project whose flight dynamics are not Unreal's. Whether anything depends on
+> it — terrain collision, the rollout — is unmeasured, so it is a suspect and
+> not yet a saving.
+
+
 
 The cheapest suspect, and the one the configuration already indicts.
 

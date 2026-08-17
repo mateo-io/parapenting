@@ -2811,6 +2811,35 @@ int main()
         assert(GetGraphicsProfile(GraphicsProfileId::High).qualityLevel == 2);
         // Graphics profiles contain render quality only. Flight integration
         // remains fixed at 120 Hz and is not coupled to frame rate or tier.
+
+        // PERFORMANCE PLAN, LEVEL 1. The frame cap is part of the profile, and
+        // these are the structural properties a wall-clock measurement cannot
+        // give: that no tier is uncapped, that the caps are ordered with the
+        // tiers, and that the top tiers sit AT the simulation rate rather than
+        // above or below it.
+        //
+        // Why the top is pinned to the step rate rather than merely bounded:
+        // above it a frame carries no physics and no input that the previous
+        // frame did not, and below it per-frame control sampling costs
+        // measurable drift - 7.8 cm at 60 Hz over 30 s, gated in
+        // determinism_tests. So the step rate is not a preference here, it is
+        // the point where both curves stop paying.
+        for (const auto& profile : profiles)
+        {
+            assert(profile.frameRateCapHz > 0.0);
+            assert(profile.frameRateCapHz <= SimulationRateHz);
+        }
+        for (std::size_t index = 1; index < profiles.size(); ++index)
+            assert(profiles[index].frameRateCapHz
+                >= profiles[index - 1].frameRateCapHz);
+        assert(GetGraphicsProfile(GraphicsProfileId::High).frameRateCapHz
+            == SimulationRateHz);
+        assert(GetGraphicsProfile(GraphicsProfileId::Epic).frameRateCapHz
+            == SimulationRateHz);
+        // And the lowest tier is the one place vsync is off: a machine that
+        // cannot hold 30 should not also be waiting for a scan-out.
+        assert(!GetGraphicsProfile(GraphicsProfileId::Low).verticalSync);
+        assert(GetGraphicsProfile(GraphicsProfileId::Epic).verticalSync);
     }
 
     {

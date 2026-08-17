@@ -272,6 +272,135 @@ int main()
         }
     }
 
+    // -- PERFORMANCE PLAN, LEVEL 1 -----------------------------------------
+    //
+    // The block above is the gate the performance plan names for capping the
+    // frame rate, and it was already green before the plan was written: the
+    // clock and the solver do not care what rate frames arrive at. But it
+    // proves that by sampling the controls as a function of SIMULATION time -
+    // its own comment says sampling per frame "would make the comparison
+    // meaningless", and for testing the clock that is exactly right.
+    //
+    // THE SHIPPED PAWN SAMPLES PER FRAME. `AParagliderPawn::Tick` reads the
+    // input once and applies the same `AppliedControls` to every fixed step
+    // that frame issues. So a frame cap does reach the flight, and it reaches
+    // it through exactly one path: how often the pilot's hands are read. That
+    // is what this measures, because a cap chosen without it is a cap chosen
+    // on power alone.
+    //
+    // The reference is per-STEP sampling, which is the finest the simulation
+    // can consume - one control value per 1/120 s. Every row below samples
+    // once per frame and holds it, which is what the pawn does.
+    std::printf("\nControl sampling: how a frame cap reaches the flight\n");
+    {
+        constexpr std::uint64_t Steps = 30 * 120;
+        struct Outcome
+        {
+            std::uint64_t hash = 0;
+            Vec3 position{};
+            double airspeed = 0.0;
+        };
+        const auto Run = [](double frameSeconds, bool samplePerFrame)
+        {
+            ParagliderSolverClock clock;
+            ParagliderDynamics dynamics(
+                GetWingProfile(WingProfileId::Epic2MLResearch).parameters);
+            FlightState state;
+            const auto ControlsAt = [](double t)
+            {
+                ControlInput input;
+                input.leftBrake = 0.25 + 0.20 * std::sin(t * 0.7);
+                input.rightBrake = 0.15 + 0.10 * std::sin(t * 0.4 + 1.1);
+                input.weightShift = 0.5 * std::sin(t * 0.3);
+                return input;
+            };
+            while (clock.StepsRunCount() < Steps)
+            {
+                const int steps = clock.BeginFrame(frameSeconds);
+                // Sampled ONCE for the frame, before any step runs - which is
+                // where the pawn samples it.
+                const ControlInput held =
+                    ControlsAt(clock.SimulationTimeSeconds());
+                for (int i = 0;
+                     i < steps && clock.StepsRunCount() < Steps; ++i)
+                {
+                    const ControlInput input = samplePerFrame
+                        ? held : ControlsAt(clock.SimulationTimeSeconds());
+                    dynamics.Step(state, input, Atmosphere{},
+                                  clock.StepSeconds());
+                    clock.EndStep();
+                }
+            }
+            Outcome out;
+            out.hash = HashFlightState(state);
+            out.position = state.positionWorldM;
+            out.airspeed = dynamics.LastTelemetry().airspeedMps;
+            return out;
+        };
+
+        const Outcome reference = Run(1.0 / 120.0, false);
+        std::printf("%14s %14s %16s %14s\n", "frame rate", "sampled",
+                    "position drift", "airspeed drift");
+        double driftAt120 = -1.0;
+        double driftAt240 = -1.0;
+        double driftAt30 = -1.0;
+        double driftAt60 = -1.0;
+        for (const double rate : {240.0, 144.0, 120.0, 60.0, 30.0, 20.0})
+        {
+            const Outcome held = Run(1.0 / rate, true);
+            const double drift = Length(Vec3{
+                held.position.x - reference.position.x,
+                held.position.y - reference.position.y,
+                held.position.z - reference.position.z});
+            std::printf("%13.0f%s %14s %13.4f m %12.4f m/s\n", rate, " Hz",
+                        held.hash == reference.hash ? "identical" : "held",
+                        drift, held.airspeed - reference.airspeed);
+            if (rate == 240.0) driftAt240 = drift;
+            if (rate == 120.0) driftAt120 = drift;
+            if (rate == 60.0) driftAt60 = drift;
+            if (rate == 30.0) driftAt30 = drift;
+        }
+        std::printf("  Drift is after 30 s of flight, against controls "
+                    "sampled every step.\n\n");
+
+        // AND THE ANSWER IS NOT THE TIDY ONE THIS BLOCK WAS WRITTEN TO ASSERT.
+        // The expectation was that a cap AT the simulation rate is exactly
+        // free, because one frame issues one step. It is not quite: 240 and
+        // 144 Hz are bit-identical to per-step sampling and 120 Hz is not.
+        //
+        // The reason is the boundary, and it is the clock working correctly.
+        // ABOVE the step rate every frame issues at most one step, and the
+        // control sampled at the frame's start is the control at that step's
+        // start - identical by construction. AT the step rate, 1/120 does not
+        // accumulate exactly, so occasionally a frame issues zero steps and the
+        // next issues two, and the second of those two runs on a control value
+        // one step old. That is the entire 0.0007 m.
+        //
+        // 0.7 mm of drift over 30 s of flight is not a handling change, and
+        // saying so is a physical judgement rather than a tolerance: it is four
+        // orders below the 8 m the wing travels in one step. So the cap is
+        // sound at 120 - what is NOT true is that it is bit-clean, and the
+        // record should not claim it.
+        Check(driftAt240 == 0.0 && driftAt120 > 0.0,
+              "A CAP ABOVE THE STEP RATE IS EXACTLY FREE AND A CAP AT IT IS "
+              "NOT: 240 and 144 Hz are bit-identical to per-step sampling, "
+              "while 120 Hz drifts 0.0007 m because 1/120 does not accumulate "
+              "exactly and an occasional frame issues two steps, the second of "
+              "them on a control value one step old");
+        Check(driftAt120 < 0.001,
+              "and that drift is 0.7 mm over 30 s - four orders below the 8 m "
+              "the wing covers in a single step - so capping at the simulation "
+              "rate is a power decision with no handling consequence, which is "
+              "what makes 120 defensible as the default");
+        Check(driftAt60 > 10.0 * driftAt120 && driftAt30 > driftAt60
+                  && driftAt30 > 0.1,
+              "BUT BELOW THE STEP RATE THE COST IS REAL AND MONOTONIC: 7.8 cm "
+              "at 60 Hz, 22.9 cm at 30, 37.9 cm at 20. A held control value is "
+              "stale by up to a frame, so a cap under 120 is a handling change "
+              "and not only a saving - which is the price the lower graphics "
+              "tiers pay, now stated rather than assumed");
+    }
+
     std::printf("\nStill-air EPIC 2 ML baseline\n");
     {
         // Frozen reference. These are the converged still-air numbers with

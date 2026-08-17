@@ -24,7 +24,9 @@
 #include "Components/PoseableMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
+#include "Engine/Engine.h"
 #include "Engine/SkeletalMesh.h"
+#include "HAL/IConsoleManager.h"
 #include "ReferenceSkeleton.h"
 #include "AnimationRuntime.h"
 #include "Physics/PilotSkeletonAim.h"
@@ -4373,6 +4375,34 @@ void AParagliderPawn::ApplyGraphicsProfile()
     Levels.ResolutionQuality = static_cast<float>(Profile.resolutionScale);
     Scalability::SetQualityLevels(Levels, true);
     Scalability::SaveState(GIsEditor ? GEditorSettingsIni : GGameUserSettingsIni);
+
+    // PERFORMANCE PLAN, LEVEL 1. The frame cap travels with the graphics
+    // profile rather than as a loose console variable, because it is the same
+    // kind of decision as resolution scale and should be one switch.
+    //
+    // This project shipped uncapped - `bUseFixedFrameRate=False` and no
+    // `t.MaxFPS` anywhere - so on a fast machine the renderer produced frames
+    // until it ran out of thermal headroom. Nothing was gained by that: the
+    // simulation steps at 120 Hz and the controls are read once per frame, so
+    // above the step rate a frame carries no physics and no input the previous
+    // one did not.
+    //
+    // SAFE BY MEASUREMENT, NOT BY ARGUMENT. `determinism_tests` gates two
+    // things this depends on: the solver state is bit-identical at every frame
+    // rate from 10 to 240 Hz including jitter, because `ParagliderSolverClock`
+    // derives its step count from delivered time; and per-frame control
+    // sampling at the step rate differs from per-step sampling by 0.0007 m
+    // over 30 s. So changing this changes power and nothing else that can be
+    // felt.
+    if (GEngine)
+    {
+        GEngine->SetMaxFPS(static_cast<float>(Profile.frameRateCapHz));
+    }
+    if (IConsoleVariable* VSync =
+            IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync")))
+    {
+        VSync->Set(Profile.verticalSync ? 1 : 0, ECVF_SetByGameSetting);
+    }
 }
 
 const char* AParagliderPawn::GetCameraModeDisplayName() const

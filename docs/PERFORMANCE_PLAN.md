@@ -29,9 +29,12 @@ is 6.5% of one core. Nothing in this plan touches it.
 
 1. ~~**[L1] Fix the capture harness.**~~ **Done** — `Tools/frame-capture.sh`,
    reproducible to 1% on frame and GPU.
-2. **[L2] TSR and the GPU feature tiers.** 3.48 ms of 7.83, one setting, and
-   the first row already measures −1.5 ms. **NEXT.**
+2. ~~**[L2] TSR and the GPU feature tiers.**~~ **Measured**: TAA −19% of GPU,
+   TAA+67% −22%, nothing else above 3%. Not shipped — needs a look at the
+   lines in motion.
 3. **[L3] The actor tick that is not the solver.** ~3.1 ms of the game thread.
+   **NEXT**, and now the larger of the two remaining costs: with the GPU at
+   6.26 ms under L2's best row, the 5.07 ms game thread stops being second.
 4. **[L4] The atmosphere sample.** Unmeasured, and it is what the wind work
    grows. Must land *before* that work, not alongside it.
 
@@ -100,7 +103,21 @@ spread. A harness that cannot reproduce itself cannot measure a 10% change.
 **Deliverable:** `Tools/frame-capture.sh`, and its variance stated in
 `FRAME_PROFILE.md`.
 
-## L2 — TSR, and what the GPU is actually spending it on — **NEXT**
+## L2 — TSR, and what the GPU is actually spending it on — **MEASURED, NOT SHIPPED**
+
+> Sweep in `FRAME_PROFILE.md`. **TAA is −1.53 ms of GPU (19%), TAA at 67%
+> screen is −1.79 (22%)**, and everything else on the list is worth 3% or
+> nothing.
+>
+> **The level's own premise needed correcting: TSR is 44% of the GPU frame but
+> removing it returns 19%.** A pass's cost is not the recoverable cost.
+>
+> **No change shipped.** At a 120 cap none of this moves the frame rate — it
+> moves GPU occupancy from 93% to 74%, which is the thermal symptom and the
+> right quantity. But the wing hangs on 254 m of 1 mm line, which is the
+> sub-pixel geometry a temporal upscaler exists to hold together, so the trade
+> needs eyes on the lines in motion. That is `VISUAL_QA.md`'s call, and then it
+> is one line in `GraphicsProfile.cpp`, per tier.
 
 3.48 ms of a 7.83 ms frame, in an upscaler running at **100% screen
 percentage** — reconstructing a frame from a frame the same size. More than

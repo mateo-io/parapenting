@@ -217,3 +217,85 @@ Not L2 — one row, to prove the harness detects the change it was built for:
 repeatability that is a result rather than noise. It is one run of one row and
 the image has not been looked at, so it is L2's starting point and not L2's
 answer.
+
+
+---
+
+# L2 — the GPU sweep
+
+One knob per row on `Tools/frame-capture.sh`, reference measured twice at the
+start and end of the sweep. GPU is the column that matters; frame time is
+capped at 120 and barely moves, which is itself the point (below).
+
+| row | GPU ms | vs reference | top pass |
+|---|---|---|---|
+| **reference** (TSR, 100%) | 8.05 | — | TSR 3.64 |
+| reference, repeated at the end | 8.06 | +0.1% | TSR 3.65 |
+| **TAA + 67% screen** | **6.26** | **−1.79 (−22%)** | Postprocessing 0.73 |
+| FXAA | 6.49 | −1.56 (−19%) | Unaccounted 0.77 |
+| **TAA** | **6.52** | **−1.53 (−19%)** | Unaccounted 0.77 |
+| TSR at 67% screen | 7.00 | −1.05 (−13%) | TSR 1.90 |
+| TSR at 77% screen | 7.53 | −0.52 (−6%) | TSR 2.46 |
+| no SSAO | 7.83 | −0.22 (−3%) | TSR 3.66 |
+| no volumetric cloud | 7.84 | −0.21 (−3%) | TSR 3.65 |
+| `r.TSR.History.ScreenPercentage 100` | 8.05 | 0.00 | TSR 3.66 |
+
+## The correction this sweep makes to its own premise
+
+**TSR is 44% of the GPU frame and removing it returns 19%, not 44%.** The pass
+costs 3.64 ms; deleting it saves 1.53. Whatever replaces it — TAA, FXAA — does
+work of its own, and FXAA landing within 0.03 ms of TAA says that remainder is
+not the anti-aliasing method either. **A pass's cost is not the recoverable
+cost**, and the plan promoted this level on the assumption that it was.
+
+The saving is real and it is the largest single one available. It is just
+two thirds smaller than the attribution implied.
+
+## Three things the rows say
+
+**1. Switching the AA method beats upscaling with TSR.** TAA at full resolution
+(6.52) is cheaper than TSR at 67% (7.00), and TSR at 77% barely pays (−0.52).
+Stacking them is worth only another 0.26 ms — TAA + 67% at 6.26 against TAA's
+6.52 — so the two levers are not additive and the resolution one is nearly
+spent once the method changes.
+
+**2. Nothing else on the list is worth having.** SSAO and volumetric cloud are
+0.22 and 0.21 ms — each within a rounding error of the pass cost the profile
+attributed to them, which is a small confirmation that the attribution is sound
+where the pass is a leaf. `r.TSR.History.ScreenPercentage` is inert.
+
+**3. None of it changes the frame rate, and that is the point.** Every row sits
+between 8.4 and 8.8 ms because the 120 cap binds. What moves is **GPU
+occupancy: 8.05 of 8.61 ms is 93% busy; 6.26 of 8.47 is 74%.** The symptom
+that started this plan was thermal, so occupancy is the quantity, and fps was
+never going to show it.
+
+## Repeatability, restated more precisely than L1 did
+
+The reference measured 8.05 at the start of the sweep and 8.06 at the end —
+**0.1%**, better than the 1.1% the L1 pair suggested. But the *within-window*
+scene spread ran 20–84% across rows, and one row had to be thrown away and
+repeated: volumetric cloud first read 8.19 ms, i.e. slower than the reference,
+at a spread of 352%.
+
+**So the two numbers measure different things and only one of them is the
+error bar.** Run-to-run variance of the mean is ~0.1–1%. Within-window spread
+is the scene changing during the window, which inflates no average but does
+signal a row that wandered somewhere unrepresentative. Any row over ~100%
+spread should be repeated before it is read, which is the rule this sweep
+adopted after the cloud row.
+
+## What is NOT decided here, and why
+
+**The image has not been judged, and this level does not get to decide it.**
+`VISUAL_QA.md` is the gate, and there is a specific reason to be careful on
+this wing rather than a general one: the aircraft is suspended on **254 m of
+1 mm line**, which is exactly the sub-pixel geometry temporal upscalers exist
+to hold together and spatial anti-aliasing does not. A 19% GPU saving that
+makes the risers shimmer in flight is not obviously a good trade on a
+simulator whose whole subject is the wing.
+
+So this level ships **no change**. It ships the numbers, and the recommendation
+that the comparison worth looking at is **TAA against TSR, in motion, on the
+lines** — at which point the choice is one line in `GraphicsProfile.cpp` and
+can be per tier rather than global.

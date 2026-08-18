@@ -4,11 +4,8 @@ Performance plan Level 0. `SOLVER_PROFILE.md` measured the flight solver;
 this measures everything else, which had never been measured at all.
 
 ```sh
-# The capture, from the project root. Writes into
-# ~/Library/Application Support/Epic/UnrealEngine/5.8/Saved/Profiling/CSV/
-"/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" \
-  "$PWD/Parapenting.uproject" -game -windowed -resx=1280 -resy=720 \
-  -csvCaptureFrames=2400 -csvGpuStats -ExecCmds="t.MaxFPS 120"
+Tools/frame-capture.sh reference                        # one row
+Tools/frame-capture.sh "TAA" r.AntiAliasingMethod=2     # one knob off it
 ```
 
 Like the solver profile, this asserts nothing and is not part of
@@ -148,3 +145,75 @@ do.
 2. **Level 4**, the ~3.1 ms of actor tick that is not the solver.
 3. **Level 2**, the atmosphere sample, before the wind work rather than with it.
 4. **Level 3 is closed** by point 3 above.
+
+
+---
+
+# The harness (plan L1)
+
+The profile above was taken by hand and produced two comparisons it could not
+stand behind. `Tools/frame-capture.sh` is what replaced that, and it is a
+level of the plan rather than a convenience because **an A/B is unmeasurable
+until it is repeatable**.
+
+## Repeatability, which is the gate
+
+Same configuration, two runs:
+
+| | frame | GPU | TSR |
+|---|---|---|---|
+| reference A | 8.66 ms | 8.10 ms | 3.70 ms |
+| reference B | 8.57 ms | 8.01 ms | 3.31 ms |
+| spread | **1.0%** | **1.1%** | **11%** |
+
+**Frame and GPU reproduce to about 1%, per-pass numbers to about 11%.** So a
+row that moves the GPU by less than ~2% is not a result, and a per-pass
+attribution that moves by less than ~20% is not either. Stated because the next
+level is a sweep and every row of it will be read against these two numbers.
+
+## What it does, and why each part is one of Level 0's failures
+
+- **Aligns to the flight rather than freezing it.** The simulation is
+  deterministic and locked to real time, so the same seconds after the flight
+  starts is the same aircraft in the same place at any frame rate. The capture
+  begins at *engine* start and level load varies, so the harness finds the
+  flight in the capture itself — the first frame after which two continuous
+  seconds pass with nothing over 50 ms — and measures from there. Scene spread
+  fell from **97% to 10–13%**.
+- **Defeats the background throttle** with `t.IdleWhenNotForeground 0`, which is
+  what made Level 0's unfocused runs swing between 7% and 137% of CPU.
+- **Reads the CSV by column name**, because the column layout changes between
+  captures — `FrameTime` moved 27 columns between two of Level 0's runs.
+- **Reports the scene spread**, so a row that measured the route instead of the
+  knob says so.
+
+## The bug that invalidated Level 0's freeze attempts, and the wrong diagnosis
+
+Both `pause` and `slomo 0.001` appeared to be ignored, and the first
+explanation written down was that `-ExecCmds` runs before a world exists, so
+world commands are dropped while cvars survive. **That was plausible and it was
+wrong.**
+
+**`-ExecCmds` separates on commas, not semicolons.** The semicolon-joined
+string was executed as a single command, so the leading cvar swallowed the rest
+as its argument and stopped parsing at the first `;`. That is also why
+`t.MaxFPS 120; slomo 0.001` still capped at 120 — the number parsed — which is
+what made the failure invisible: the cap worked, so the string looked fine, and
+the blame went to the engine's lifecycle.
+
+Caught by reading the log for the command rather than reasoning about it. With
+commas, the same mechanism works first time.
+
+## The first sweep row, as validation
+
+Not L2 — one row, to prove the harness detects the change it was built for:
+
+| | frame | GPU | top pass |
+|---|---|---|---|
+| reference (TSR, 100%) | 8.57–8.66 ms | 8.01–8.10 | TSR 3.31–3.70 |
+| `r.AntiAliasingMethod 2` (TAA) | 8.35 ms | **6.58** | Unaccounted 0.85 |
+
+**−1.5 ms of GPU, 18%**, and TSR leaves the pass list entirely. Against a 1.1%
+repeatability that is a result rather than noise. It is one run of one row and
+the image has not been looked at, so it is L2's starting point and not L2's
+answer.

@@ -72,7 +72,24 @@ retractable instead of load-bearing:
 
 ---
 
-## Level 0 — measure the frame (blocks every level below)
+## Level 0 — measure the frame (blocks every level below) — **DONE**
+
+> **Measured, in `docs/FRAME_PROFILE.md`.** Frame 8.41 ms / 118.9 fps, GPU
+> **7.83 ms (93% of the frame)**, game thread 5.07 ms. Four findings, two of
+> which change this document:
+>
+> 1. **The frame is GPU-bound and the cap was not the cause.** Uncapped 119.6
+>    fps against capped 118.2 — the cap bought 1.4 fps. Level 1 was right and
+>    is not the answer.
+> 2. **TSR is 44% of the GPU frame** — 3.48 ms, more than base pass, shadows,
+>    lighting, SSAO, fog and clouds combined. Level 5 moves to the front.
+> 3. **Level 3 is cancelled**: the whole base pass is 0.60 ms. See below.
+> 4. **Level 4 is real but second**: 5.07 ms of game thread, of which at most
+>    0.54 ms is the solver.
+>
+> **Owed:** package power (needs `sudo powermetrics`), a standalone build
+> rather than editor `-game`, the three scene points separately, and the 60 fps
+> saving — whose measurement failed twice, for reasons the profile records.
 
 Nothing here changes behaviour. It produces the document the rest of the plan
 is read against.
@@ -222,7 +239,17 @@ we are about to build fits.
 the atmosphere sample explicitly, so that it can never again be a stage that no
 table contains.
 
-## Level 3 — the terrain render mesh
+## Level 3 — the terrain render mesh — **CANCELLED BY LEVEL 0**
+
+> **The reasoning below was wrong, and it is left standing so the shape of the
+> error is visible.** It argued from a structural fact — 64 procedural sections,
+> ~320k triangles, no LOD chain, drawn at every distance — to a performance
+> conclusion, without a measurement in between. Measured, **the entire base pass
+> is 0.60 ms, 8% of the GPU frame.** Terrain LOD, static mesh conversion and
+> Nanite would return nothing worth the risk of touching a mesh that collision,
+> airflow and survey provenance all read.
+>
+> This is the level Level 0 was given permission to cancel, and it cancelled it.
 
 64 sections, ~320k triangles, no LOD, drawn at full density from 10 km away.
 
@@ -269,7 +296,13 @@ is easy to skip and should not be:** the pilot rig, canopy and lines must be
 visually identical before and after — this is refactoring, and any visible
 difference means it was not.
 
-## Level 5 — what the GPU is actually spending it on
+## Level 5 — what the GPU is actually spending it on — **NOW FIRST**
+
+> Level 0 promoted this from last to next, and gave it a target it did not
+> have: **TemporalSuperResolution, 3.48 ms of a 7.83 ms GPU frame.** An
+> upscaler running at 100% screen percentage, costing more than base pass,
+> shadows, lighting, SSAO, fog and clouds put together. The tier sweep below
+> still stands, but it now has one row worth doing first.
 
 `DefaultScalability.ini` already defines four tiers across view distance,
 shadows, volumetric fog, volumetric clouds and foliage density, and
@@ -327,11 +360,20 @@ what this table leaves, or the schedule amortises it the way
 
 ## Order of work
 
-Level 0 first and alone, because it can invalidate any of the others. Then
-Level 1, because it is one setting and the configuration already indicts it.
-Then whichever of 3, 4 or 5 Level 0 points at — **not all three**. Level 2 can
-run in parallel with any of them, since it touches nothing the others do, and
-it must land before the wind work starts rather than alongside it.
+~~Level 0 first and alone... then whichever of 3, 4 or 5 Level 0 points at.~~
+**Both done. The remaining order is now measured rather than guessed:**
+
+1. **Level 5, TSR first** — 3.48 ms of 7.83, one setting, and the frame is
+   GPU-bound so this is the only place a large saving exists.
+2. **Level 4** — ~3.1 ms of actor tick that is not the solver.
+3. **Level 2** — the atmosphere sample, before the wind work rather than
+   alongside it.
+4. ~~Level 3~~ — cancelled by measurement: the base pass is 0.60 ms.
+
+Still owed from Level 0 and worth closing before Level 5 is judged: package
+power (`sudo powermetrics`), a standalone build rather than editor `-game`, and
+the three scene points separately — the slope-versus-air spread turned out to
+be 7.8 ms against 15–28, which is larger than anything Level 5 will save.
 
 ## The one number that would close this document
 

@@ -35,7 +35,8 @@
 class UCameraComponent;
 class UProceduralMeshComponent;
 class UParaglidingAudioComponent;
-class UPoseableMeshComponent;
+class UControlRigComponent;
+class USkeletalMeshComponent;
 class USkeletalMesh;
 class USceneComponent;
 class UStaticMeshComponent;
@@ -283,6 +284,7 @@ private:
     void UpdatePilotVisual(float DeltaSeconds);
     void UpdateAirMotesVisual();
     void UpdatePilotSkeleton(const Parapenting::Physics::PilotPose& Pose);
+    void ConfigurePilotControlRig();
     void BuildHarnessMesh();
     void CaptureGliderRigSnapshot(double SimulationTimeSeconds);
     void BeginSuspensionMesh();
@@ -352,10 +354,13 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UStaticMeshComponent> PilotVisual;
 
-    // UE5 Mannequin blockout. A licensed character swaps in through the same
-    // Mannequin-compatible skeleton/retargeter without changing rig code.
+    // UE5 Mannequin body driven by its authored Control Rig. A licensed
+    // Mannequin-compatible pilot can swap in without changing flight pose data.
     UPROPERTY(VisibleAnywhere)
-    TObjectPtr<UPoseableMeshComponent> PilotCharacter;
+    TObjectPtr<USkeletalMeshComponent> PilotCharacter;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UControlRigComponent> PilotControlRig;
 
     // The pilot body mesh, assigned in the editor. Leave it empty to use the
     // engine mannequin. A MetaHuman body mesh goes here: its core bone names
@@ -366,9 +371,13 @@ private:
     UPROPERTY(EditAnywhere, Category = "Pilot")
     TSoftObjectPtr<USkeletalMesh> PilotMeshOverride;
 
-    // Whether the assigned mesh has been checked against the bones the rig
-    // actually drives. Checked once, on the first pose, and reported.
-    bool bPilotSkeletonValidated = false;
+    // Runtime-only: the authored Mannequin control rig has been mapped to the
+    // live skeletal mesh and can now solve its FK/IK hierarchy.
+    bool bPilotControlRigConfigured = false;
+    FVector PilotLeftHandControlRest = FVector::ZeroVector;
+    FVector PilotRightHandControlRest = FVector::ZeroVector;
+    FVector PilotLeftElbowControlRest = FVector::ZeroVector;
+    FVector PilotRightElbowControlRest = FVector::ZeroVector;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<USceneComponent> PilotRig;

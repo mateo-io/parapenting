@@ -21,7 +21,8 @@
 #include "Components/InputComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/PoseableMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "ControlRigComponent.h"
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 #include "Engine/Engine.h"
@@ -153,14 +154,19 @@ AParagliderPawn::AParagliderPawn()
     PilotRig = CreateDefaultSubobject<USceneComponent>(TEXT("PilotRig"));
     PilotRig->SetupAttachment(Root);
 
-    PilotCharacter = CreateDefaultSubobject<UPoseableMeshComponent>(
+    PilotCharacter = CreateDefaultSubobject<USkeletalMeshComponent>(
         TEXT("PilotCharacter"));
     PilotCharacter->SetupAttachment(PilotRig);
-    PilotCharacter->SetSkinnedAssetAndUpdate(PilotMesh);
+    PilotCharacter->SetSkeletalMeshAsset(PilotMesh);
     PilotCharacter->SetRelativeLocation(FVector::ZeroVector);
     PilotCharacter->SetRelativeScale3D(FVector(0.88f));
     PilotCharacter->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     PilotCharacter->SetCastShadow(true);
+
+    PilotControlRig = CreateDefaultSubobject<UControlRigComponent>(
+        TEXT("PilotControlRig"));
+    PilotControlRig->SetupAttachment(PilotRig);
+    PilotControlRig->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
     const auto ConfigurePart = [this](
         UStaticMeshComponent* Part, UStaticMesh* Mesh)
@@ -259,7 +265,7 @@ void AParagliderPawn::BeginPlay()
                 TEXT("/Game/Characters/Mannequins/Meshes/SK_Mannequin"
                     ".SK_Mannequin")))
         {
-            PilotCharacter->SetSkinnedAssetAndUpdate(ProjectMannequin);
+            PilotCharacter->SetSkeletalMeshAsset(ProjectMannequin);
             UE_LOG(LogTemp, Log,
                 TEXT("Parapenting: using bundled UE mannequin as the "
                     "temporary pilot bridge."));
@@ -363,33 +369,35 @@ void AParagliderPawn::BeginPlay()
     if (PilotCharacter && !PilotMeshOverride.IsNull())
     {
         if (USkeletalMesh* const Assigned = PilotMeshOverride.LoadSynchronous())
-            PilotCharacter->SetSkinnedAssetAndUpdate(Assigned);
+            PilotCharacter->SetSkeletalMeshAsset(Assigned);
     }
-    if (PilotCharacter && PilotCharacter->GetSkinnedAsset() && SurfaceMaterial)
+    if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {
-        // The free mannequin's default white material reads as a development
-        // asset at any chase distance. Until the MetaHuman body replaces it,
-        // present it as a single, functional technical suit: helmet and
-        // harness remain separately readable, while the body/hands become
-        // clothing and gloves rather than exposed plastic.
+        // Keep Manny's authored normal/roughness maps: a flat debug material
+        // turns every close hero shot into a low-poly placeholder. The same
+        // slot assignment remains overridable by a licensed MetaHuman.
+        UMaterialInterface* const MannyMaterial = LoadObject<UMaterialInterface>(
+            nullptr, TEXT("/Game/Materials/M_HarnessFabric.M_HarnessFabric"));
         for (int32 Slot = 0; Slot < PilotCharacter->GetNumMaterials(); ++Slot)
         {
-            PilotCharacter->SetMaterial(Slot, SurfaceMaterial);
-            if (UMaterialInstanceDynamic* Material =
-                PilotCharacter->CreateDynamicMaterialInstance(Slot))
+            if (MannyMaterial)
             {
-                Material->SetVectorParameterValue(
-                    TEXT("BaseColor"), FLinearColor(0.018f, 0.075f, 0.16f));
-                Material->SetVectorParameterValue(
-                    TEXT("Color"), FLinearColor(0.018f, 0.075f, 0.16f));
-                Material->SetScalarParameterValue(TEXT("Roughness"), 0.79f);
+                PilotCharacter->SetMaterial(Slot, MannyMaterial);
+                if (UMaterialInstanceDynamic* Material =
+                    PilotCharacter->CreateDynamicMaterialInstance(Slot))
+                {
+                    Material->SetVectorParameterValue(
+                        TEXT("NylonTint"), FLinearColor(0.08f, 0.19f, 0.34f));
+                    Material->SetScalarParameterValue(TEXT("NylonRoughness"), 0.70f);
+                }
             }
         }
     }
     if (PilotCharacter && PilotCharacter->GetSkinnedAsset())
     {
         for (UStaticMeshComponent* Part : {
-            PilotTorso.Get(), PilotHead.Get(), HarnessVisual.Get(),
+            PilotTorso.Get(), PilotHead.Get(), PilotHelmet.Get(),
+            PilotVisor.Get(), HarnessVisual.Get(),
             LeftUpperArm.Get(), RightUpperArm.Get(),
             LeftForearm.Get(), RightForearm.Get(), LeftThigh.Get(),
             RightThigh.Get(), LeftShin.Get(), RightShin.Get()})
@@ -404,6 +412,7 @@ void AParagliderPawn::BeginPlay()
                  "pilot under Content/Characters/Pilot - see "
                  "docs/PILOT_CHARACTER_ASSET_GUIDE.md"));
     }
+    ConfigurePilotControlRig();
 }
 
 void AParagliderPawn::ResetFlight()
@@ -2075,7 +2084,142 @@ void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)
 void AParagliderPawn::UpdatePilotSkeleton(
     const Parapenting::Physics::PilotPose& Pose)
 {
+    // Never pull a skinned mesh apart by writing joint positions directly.
+    // The Mannequin's authored Control Rig preserves limb lengths, twist
+    // bones and wrist orientation while its IK controls receive the same
+    // physically-solved hand targets the line system uses.
+    if (!bPilotControlRigConfigured || !PilotControlRig) return;
+    constexpr EControlRigComponentSpace RigSpace =
+        EControlRigComponentSpace::RigSpace;
+    constexpr EControlRigComponentSpace LocalSpace =
+        EControlRigComponentSpace::LocalSpace;
+    const float LeftBrake = FMath::Clamp(static_cast<float>(
+        RenderRigSnapshot.brakeTravel[0]), 0.0f, 1.0f);
+    const float RightBrake = FMath::Clamp(static_cast<float>(
+        RenderRigSnapshot.brakeTravel[1]), 0.0f, 1.0f);
+    // The stock Mannequin rig already knows every twist bone and joint axis.
+    // Use its FK chain for a relaxed harness seat rather than translating
+    // joints.  Feet stay slightly lower than knees, as in a pod harness.
+    PilotControlRig->SetControlFloat(TEXT("leg_l_fk_ik_switch"), 0.0f);
+    PilotControlRig->SetControlFloat(TEXT("leg_r_fk_ik_switch"), 0.0f);
+    PilotControlRig->SetControlRotator(TEXT("hips_ctrl"),
+        FRotator(-28.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("spine_01_ctrl"),
+        FRotator(12.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("spine_02_ctrl"),
+        FRotator(8.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("thigh_l_fk_ctrl"),
+        FRotator(-72.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("thigh_r_fk_ctrl"),
+        FRotator(-72.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("calf_l_fk_ctrl"),
+        FRotator(78.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("calf_r_fk_ctrl"),
+        FRotator(78.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("foot_l_fk_ctrl"),
+        FRotator(8.0f, 0.0f, 0.0f), LocalSpace);
+    PilotControlRig->SetControlRotator(TEXT("foot_r_fk_ctrl"),
+        FRotator(8.0f, 0.0f, 0.0f), LocalSpace);
+    // Control positions are authored in the mannequin's own global space.
+    // Preserve those bases and apply only the physically meaningful brake
+    // motion; replacing them with unrelated simulation coordinates is what
+    // folded the body in the first capture.
+    PilotControlRig->SetControlPosition(TEXT("hand_l_ik_ctrl"),
+        PilotLeftHandControlRest + FVector(-5.0f, 0.0f, -22.0f * LeftBrake), RigSpace);
+    PilotControlRig->SetControlPosition(TEXT("hand_r_ik_ctrl"),
+        PilotRightHandControlRest + FVector(-5.0f, 0.0f, -22.0f * RightBrake), RigSpace);
+    // Pole vectors keep the elbows in front and outboard of the harness,
+    // avoiding the snapped-over "rubber arm" silhouette under brake load.
+    PilotControlRig->SetControlPosition(TEXT("arm_l_pv_ik_ctrl"),
+        PilotLeftElbowControlRest + FVector(-8.0f, 0.0f, -6.0f * LeftBrake), RigSpace);
+    PilotControlRig->SetControlPosition(TEXT("arm_r_pv_ik_ctrl"),
+        PilotRightElbowControlRest + FVector(-8.0f, 0.0f, -6.0f * RightBrake), RigSpace);
+    return;
+
+#if 0 // Superseded by the Control Rig above; retained for pose comparison only.
     if (!PilotCharacter || !PilotCharacter->GetSkinnedAsset()) return;
+    const FReferenceSkeleton& PoseReferenceSkeleton =
+        PilotCharacter->GetSkinnedAsset()->GetRefSkeleton();
+    // Kept as an opt-in QA experiment until it is backed by the Mannequin
+    // Control Rig. The mesh's twist-bone axes are not safe to infer from
+    // Euler angles, so this must never replace the stable solved pose merely
+    // because a skeleton exists.
+    if (PoseReferenceSkeleton.GetNum() > 0 && FParse::Param(
+            FCommandLine::Get(), TEXT("PilotRotationPosePrototype")))
+    {
+    // A poseable mesh is still a hierarchy. Setting every joint's component
+    // position independently makes a skinned body satisfy points but destroys
+    // its anatomical rest lengths (the source of the rubber-arm pilot). Keep
+    // the reference translations intact and articulate only local rotations.
+    // This gives the placeholder a clean, seated flight posture now; the same
+    // brake amount becomes a small, readable arm pull instead of a hand
+    // teleport. The MetaHuman can later take these semantic pose values via a
+    // Control Rig without changing any simulation data.
+    const TCHAR* const PoseBones[] = {
+        TEXT("pelvis"), TEXT("spine_01"), TEXT("spine_03"), TEXT("head"),
+        TEXT("clavicle_l"), TEXT("clavicle_r"),
+        TEXT("upperarm_l"), TEXT("upperarm_r"),
+        TEXT("lowerarm_l"), TEXT("lowerarm_r"),
+        TEXT("hand_l"), TEXT("hand_r"),
+        TEXT("thigh_l"), TEXT("thigh_r"), TEXT("calf_l"), TEXT("calf_r"),
+        TEXT("foot_l"), TEXT("foot_r")};
+    for (const TCHAR* Bone : PoseBones)
+        PilotCharacter->ResetBoneTransformByName(FName(Bone));
+
+    const float LeftBrake = FMath::Clamp(static_cast<float>(
+        RenderRigSnapshot.brakeTravel[0]), 0.0f, 1.0f);
+    const float RightBrake = FMath::Clamp(static_cast<float>(
+        RenderRigSnapshot.brakeTravel[1]), 0.0f, 1.0f);
+    const float SymmetricBrake = 0.5f * (LeftBrake + RightBrake);
+    const auto SetLocal = [this, &PoseReferenceSkeleton](const TCHAR* Bone,
+        const FRotator& Rotation)
+    {
+        const FName BoneName(Bone);
+        const int32 BoneIndex = PoseReferenceSkeleton.FindBoneIndex(BoneName);
+        if (BoneIndex == INDEX_NONE) return;
+        const int32 ParentIndex = PoseReferenceSkeleton.GetParentIndex(BoneIndex);
+        FQuat ParentRotation = FQuat::Identity;
+        if (ParentIndex != INDEX_NONE)
+        {
+            ParentRotation = PilotCharacter->GetBoneRotationByName(
+                PoseReferenceSkeleton.GetBoneName(ParentIndex),
+                EBoneSpaces::ComponentSpace).Quaternion();
+        }
+        // PoseableMesh deliberately has no parent-local option. Compose the
+        // requested local pose with the live parent component transform to
+        // obtain the equivalent component-space rotation.
+        PilotCharacter->SetBoneRotationByName(
+            BoneName, (ParentRotation * Rotation.Quaternion()).Rotator(),
+            EBoneSpaces::ComponentSpace);
+    };
+    // Conservative angles: seated at trim, hips and knees carry the posture;
+    // no bone translates, so femur and shin lengths remain the mesh's own.
+    SetLocal(TEXT("pelvis"), FRotator(-12.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("spine_01"), FRotator(8.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("spine_03"), FRotator(9.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("head"), FRotator(3.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("thigh_l"), FRotator(-76.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("thigh_r"), FRotator(-76.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("calf_l"), FRotator(76.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("calf_r"), FRotator(76.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("foot_l"), FRotator(12.0f, 0.0f, 0.0f));
+    SetLocal(TEXT("foot_r"), FRotator(12.0f, 0.0f, 0.0f));
+    // Brake inputs draw both arms down/back through a restrained elbow bend.
+    // The independent terms retain asymmetric steering at the silhouette.
+    SetLocal(TEXT("upperarm_l"), FRotator(-30.0f - 24.0f * LeftBrake,
+        -18.0f, -32.0f));
+    SetLocal(TEXT("upperarm_r"), FRotator(-30.0f - 24.0f * RightBrake,
+        18.0f, 32.0f));
+    SetLocal(TEXT("lowerarm_l"), FRotator(32.0f + 38.0f * LeftBrake,
+        0.0f, -8.0f));
+    SetLocal(TEXT("lowerarm_r"), FRotator(32.0f + 38.0f * RightBrake,
+        0.0f, 8.0f));
+    SetLocal(TEXT("hand_l"), FRotator(8.0f + 12.0f * LeftBrake, 0.0f, 0.0f));
+    SetLocal(TEXT("hand_r"), FRotator(8.0f + 12.0f * RightBrake, 0.0f, 0.0f));
+    PilotCharacter->RefreshBoneTransforms();
+    return;
+    }
+
     // Whatever this function actually asks for is what gets checked, on the
     // first pose after a mesh is assigned. A hand-maintained list of expected
     // bones beside the code that drives them would drift; this cannot.
@@ -2260,6 +2404,57 @@ void AParagliderPawn::UpdatePilotSkeleton(
                 *GetNameSafe(PilotCharacter->GetSkinnedAsset()),
                 MissingBones.Num(), *Names);
         }
+    }
+#endif
+}
+
+void AParagliderPawn::ConfigurePilotControlRig()
+{
+    if (bPilotControlRigConfigured || !PilotControlRig || !PilotCharacter
+        || !PilotCharacter->GetSkinnedAsset())
+        return;
+
+    // This rig ships alongside SKM_Manny_Simple in project content. Keeping
+    // it data-driven also makes an installed MetaHuman an editor assignment,
+    // not a new hard-coded character path.
+    UClass* const RigClass = LoadClass<UControlRig>(nullptr,
+        TEXT("/Game/Characters/Mannequins/Rigs/CR_Mannequin_Body"
+            ".CR_Mannequin_Body_C"));
+    if (!RigClass)
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("Parapenting: CR_Mannequin_Body is unavailable; pilot uses "
+                 "its authored reference pose."));
+        return;
+    }
+
+    PilotControlRig->SetControlRigClass(RigClass);
+    PilotControlRig->AddMappedCompleteSkeletalMesh(PilotCharacter,
+        EControlRigComponentMapDirection::Output);
+    bPilotControlRigConfigured = PilotControlRig->GetControlRig() != nullptr;
+    if (bPilotControlRigConfigured)
+    {
+        constexpr EControlRigComponentSpace RigSpace =
+            EControlRigComponentSpace::RigSpace;
+        PilotLeftHandControlRest = PilotControlRig->GetControlPosition(
+            TEXT("hand_l_ik_ctrl"), RigSpace);
+        PilotRightHandControlRest = PilotControlRig->GetControlPosition(
+            TEXT("hand_r_ik_ctrl"), RigSpace);
+        PilotLeftElbowControlRest = PilotControlRig->GetControlPosition(
+            TEXT("arm_l_pv_ik_ctrl"), RigSpace);
+        PilotRightElbowControlRest = PilotControlRig->GetControlPosition(
+            TEXT("arm_r_pv_ik_ctrl"), RigSpace);
+    }
+    if (bPilotControlRigConfigured)
+    {
+        UE_LOG(LogTemp, Log,
+            TEXT("Parapenting: mapped Mannequin Control Rig for natural "
+                 "seated pose."));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("Parapenting: failed to map Mannequin Control Rig."));
     }
 }
 

@@ -122,7 +122,11 @@ END {
     # cols, not NF: in END, NF holds the field count of the LAST record,
     # and a trailing blank line makes it zero - which silently reported no
     # GPU pass at all on the first run of this.
-    for (j = 1; j <= cols; j++) if (nm[j] ~ /^GPU\// && v[j]+0 == v[j]) pass[nm[j]] += v[j]
+    for (j = 1; j <= cols; j++) {
+      if (nm[j] ~ /^GPU\// && v[j]+0 == v[j]) pass[nm[j]] += v[j]
+      # L3: game-thread attribution, from CSV_DEFINE_CATEGORY(Parapenting).
+      if (nm[j] ~ /^Parapenting\// && v[j]+0 == v[j]) { own[nm[j]] += v[j]; seen[nm[j]]++ }
+    }
     x = v[c["GPUTime"]] + 0
     if (x > hi) hi = x
     if (lo == 0 || x < lo) lo = x
@@ -136,4 +140,14 @@ END {
   spread = 100*(hi-lo)/(gpu/n)
   printf "%-22s %7.2f ms %6.1f fps | game %5.2f (tick %5.2f) | GPU %6.2f | %-24s %5.2f | flight+%.0fs spread %3.0f%%\n",
          label, f/n, 1000/(f/n), g/n, tick/n, gpu/n, top, topv, settle, spread
+  # Printed only when the module carries the L3 stats, so a stock build gives
+  # the same single row it always did.
+  if (length(own)) {
+    acc = 0
+    for (k in own) { sub(/^Parapenting\//, "", k) }
+    for (k in own) { kk = k; sub(/^Parapenting\//, "", kk); acc += own[k]/n
+      printf "    %-26s %6.3f ms\n", kk, own[k]/n }
+    printf "    %-26s %6.3f ms  (game thread %.2f, so %.2f is elsewhere)\n",
+           "= attributed", acc, g/n, g/n - acc
+  }
 }' "$CSV"

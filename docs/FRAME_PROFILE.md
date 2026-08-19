@@ -299,3 +299,91 @@ So this level ships **no change**. It ships the numbers, and the recommendation
 that the comparison worth looking at is **TAA against TSR, in motion, on the
 lines** — at which point the choice is one line in `GraphicsProfile.cpp` and
 can be per tier rather than global.
+
+
+---
+
+# L3 — the game thread, attributed and then halved
+
+The frame profile put 5.07 ms on the game thread and could say nothing about
+what it was. `CSV_DEFINE_CATEGORY(Parapenting, true)` in `ParagliderPawn.cpp`
+and a scoped stat per per-frame block is what attributed it, read by the same
+harness as everything else.
+
+## The attribution
+
+| block | ms |
+|---|---|
+| **canopy mesh** | **2.614** |
+| suspension build (254 m of line, inline in `Tick`) | 0.198 |
+| pilot visual | 0.103 |
+| HUD | 0.080 |
+| canopy mesh upload (`UpdateMeshSection`) | 0.018 |
+| suspension commit | 0.018 |
+| **fixed-step spine — the entire flight simulation** | **0.013** |
+| air motes | 0.008 |
+| rig snapshot | 0.002 |
+| attributed | 3.05 of 5.07 |
+
+## Two things this corrects before anything was optimised
+
+**1. The flight simulation is 0.013 ms a frame, not 0.54.** Every version of the
+performance plan has carried "at most 0.54 ms of the game thread is the flight
+solver", taken from `SOLVER_PROFILE.md`. That figure belongs to
+`CoupledParagliderSolver` — **which does not fly the game**. The pawn runs
+`ParagliderDynamics`, and it costs 13 microseconds a frame. The number was
+right about a solver the shipped aircraft does not use.
+
+That matters for L4: when the geometry-driven stack does become the flight
+model, it adds ~0.54 ms per step to a game thread that currently spends 0.013.
+
+**2. The upload was not the problem, and it was the obvious suspect.** The plan
+named `UpdateMeshSection` and the five per-frame `TArray` allocations. The
+upload is **0.018 ms**. The 2.61 ms was arithmetic — 3.1 µs per vertex for 846
+vertices, which is not arithmetic at all.
+
+## What it actually was
+
+`CanopyGeometry::InflatedSectionAt` solves a **cell relaxation** — the membrane
+balance of one inflated cell against its seam allowance and internal pressure —
+and the render mesh called it **once per vertex**, inside both surface loops,
+846 times a frame. It depends on nothing but the chord fraction, and the mesh
+evaluates exactly **nine** of those.
+
+So half the game thread was re-deriving the same nine numbers 94 times each,
+every frame, for a canopy whose shape they describe.
+
+## The fix, and what it is gated on
+
+Nine solves hoisted above the loops, indexed by the same `C` the loop already
+computes its chord fraction from. **Same values, same order, no interpolation.**
+
+The hoist is valid only if the function is pure, so that is gated in
+`aerodynamics_tests` rather than assumed: the same chord fraction returns the
+same solved cell bitwise, with other fractions solved in between to catch a
+cache keyed on the last argument, and the nine stations are checked to actually
+differ. The alternative to a pure function here is a canopy whose camber depends
+on the order the mesh was built in, which no visual check would reliably catch.
+
+## After
+
+| | before | after |
+|---|---|---|
+| canopy mesh | 2.614 ms | **0.138 ms** |
+| `TickActors` | 3.73 ms | **1.19 ms** |
+| **game thread** | **5.07 ms** | **2.48 ms** |
+| frame | 8.75 ms | 8.70 ms |
+| GPU | 8.15 ms | 8.09 ms |
+
+Repeated: 2.48 and 2.51 ms. **The game thread halved, and the frame did not
+move** — because the frame is GPU-bound at ~8.1 ms and capped at 120, exactly as
+L2 found. What this buys is not frame rate; it is **2.6 ms per frame of CPU
+that is no longer being spent**, which is the thermal symptom, and headroom for
+the wind work at L4.
+
+## What is left on the game thread
+
+1.93 ms of the 2.48 is still unattributed — engine tick overhead, audio,
+streaming, and whatever else is not inside a `Parapenting` stat. The suspension
+build at 0.198 ms is now the largest thing this project owns on that thread,
+and it is small enough that the next real target is L4 rather than more of this.

@@ -1787,6 +1787,54 @@ int main()
               "per-section field is needed to declare the separated regime");
     }
 
+    // -- PERFORMANCE PLAN L3: the render path leans on this being pure ----
+    //
+    // `InflatedSectionAt` solves a cell relaxation, and the canopy render mesh
+    // called it once per VERTEX - 846 times a frame - where nine distinct
+    // chord stations exist. Measured at 2.61 ms of a 5.07 ms game thread, so
+    // half the frame's CPU was re-deriving the same nine numbers, while the
+    // mesh upload everyone would have suspected was 0.018 ms.
+    //
+    // Hoisting it is only valid if the function depends on nothing but its
+    // argument. Gated here rather than assumed: the alternative to a pure
+    // function is a canopy whose camber depends on the order the mesh was
+    // built in, which no visual check would catch reliably.
+    {
+        const CanopyGeometry canopy;
+        bool stable = true;
+        for (const double chord : {0.0, 0.125, 0.45, 0.5, 0.875, 1.0})
+        {
+            const CellInflation first = canopy.InflatedSectionAt(chord);
+            // Other chord fractions between the two calls, so a hidden cache
+            // keyed on the last argument would show up here.
+            canopy.InflatedSectionAt(0.31);
+            canopy.InflatedSectionAt(0.77);
+            const CellInflation again = canopy.InflatedSectionAt(chord);
+            stable = stable && first.sagittaM == again.sagittaM
+                && first.radiusM == again.radiusM
+                && first.holdsSection == again.holdsSection;
+        }
+        Check(stable,
+              "InflatedSectionAt IS PURE: same chord fraction, same solved "
+              "cell, bitwise, with other fractions solved in between. This is "
+              "what lets the render mesh evaluate nine stations instead of 846 "
+              "vertices - a 2.6 ms saving on a 5.07 ms game thread");
+
+        constexpr int ChordCount = 9;
+        double lowest = 1.0e9;
+        double highest = -1.0e9;
+        for (int c = 0; c < ChordCount; ++c)
+        {
+            const double sagitta = canopy.InflatedSectionAt(
+                static_cast<double>(c) / (ChordCount - 1)).sagittaM;
+            lowest = std::min(lowest, sagitta);
+            highest = std::max(highest, sagitta);
+        }
+        Check(highest > lowest,
+              "and the nine stations differ, so the hoist is a saving rather "
+              "than nine copies of one constant");
+    }
+
     // -- section polars ---------------------------------------------------
     {
         const SectionPolarTable polar = SectionPolarTable::Analytic();

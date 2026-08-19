@@ -287,6 +287,9 @@ private:
     void ConfigurePilotControlRig();
     void BuildHarnessMesh();
     void CaptureGliderRigSnapshot(double SimulationTimeSeconds);
+    // L3 instrumentation only: when the inline suspension build started, so
+    // CommitSuspensionMesh can report its duration to the CSV profiler.
+    uint64 SuspensionBuildStartCycles = 0;
     void BeginSuspensionMesh();
     void AddSuspensionSegment(
         const FVector& start, const FVector& end,

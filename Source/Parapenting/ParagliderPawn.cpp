@@ -28,6 +28,7 @@
 #include "Engine/Engine.h"
 #include "Engine/SkeletalMesh.h"
 #include "HAL/IConsoleManager.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 #include "ReferenceSkeleton.h"
 #include "AnimationRuntime.h"
 #include "Physics/PilotSkeletonAim.h"
@@ -49,6 +50,18 @@
 #include "Scalability.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Materials/MaterialInstanceDynamic.h"
+
+// PERFORMANCE PLAN, L3. The frame profile puts 5.07 ms on the game thread with
+// TickActors at 3.68, of which at most 0.54 can be the flight solver at one
+// 120 Hz step per frame - so roughly 3.1 ms is per-frame visual work that no
+// table has ever contained. These stats are what attribute it, and they are
+// here rather than in a stat group because `Tools/frame-capture.sh` reads the
+// CSV profiler and nothing else.
+//
+// Cost when not capturing is a branch on a global. The plan's rule is that a
+// level states its instrument before its change; this is that instrument, and
+// no behaviour moves with it.
+CSV_DEFINE_CATEGORY(Parapenting, true);
 
 namespace
 {
@@ -592,6 +605,8 @@ void AParagliderPawn::Tick(float DeltaSeconds)
     // simulation time is an exact multiple of the step instead of a running
     // sum. See ParagliderSolverClock.h.
     const int DueSteps = SolverClock.BeginFrame(DeltaSeconds);
+    {
+    CSV_SCOPED_TIMING_STAT(Parapenting, FixedStepSpine);
     for (int StepIndex = 0; StepIndex < DueSteps; ++StepIndex)
     {
         const double PreviousSimulationTime = SimulationTimeSeconds;
@@ -839,6 +854,7 @@ void AParagliderPawn::Tick(float DeltaSeconds)
                 SelectedScenarioIndex),
             PreviousSimulationTime, SimulationTimeSeconds));
     }
+    }   // FixedStepSpine
     if (bRecordingTelemetry)
     {
         TelemetryAccumulatorSeconds += DeltaSeconds;
@@ -1768,6 +1784,7 @@ FVector AParagliderPawn::CanopyAttachmentLocalCm(
 
 void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
 {
+    CSV_SCOPED_TIMING_STAT(Parapenting, RigSnapshot);
     const auto& T = Dynamics.LastTelemetry();
     constexpr double MetresToCm =
         Parapenting::Physics::WorldAxes::MetresToUnrealUnits;
@@ -1822,6 +1839,7 @@ void AParagliderPawn::CaptureGliderRigSnapshot(double TimestampSeconds)
 
 void AParagliderPawn::UpdateAirMotesVisual()
 {
+    CSV_SCOPED_TIMING_STAT(Parapenting, AirMotes);
     if (!AirMotesVisual || !Camera) return;
 
     // This is deliberately a compact, deterministic presentation field, not
@@ -1915,6 +1933,7 @@ void AParagliderPawn::UpdateAirMotesVisual()
 
 void AParagliderPawn::UpdatePilotVisual(float DeltaSeconds)
 {
+    CSV_SCOPED_TIMING_STAT(Parapenting, PilotVisual);
     const auto& T = RenderRigSnapshot.telemetry;
     auto Pose = RenderRigSnapshot.pilot;
     const double SymmetricBrake = 0.5 * (RenderRigSnapshot.brakeTravel[0]
@@ -2574,6 +2593,11 @@ void AParagliderPawn::BuildHarnessMesh()
 
 void AParagliderPawn::BeginSuspensionMesh()
 {
+    // Timed across the pair rather than by a scope: the build is inline in
+    // Tick across ~380 lines whose locals the debug drawing below still uses,
+    // so bracketing it would change what compiles rather than only what is
+    // measured.
+    SuspensionBuildStartCycles = FPlatformTime::Cycles64();
     SuspensionVertices.Reset();
     SuspensionTriangles.Reset();
     SuspensionNormals.Reset();
@@ -2633,6 +2657,11 @@ void AParagliderPawn::AddSuspensionSegment(
 
 void AParagliderPawn::CommitSuspensionMesh()
 {
+    CSV_SCOPED_TIMING_STAT(Parapenting, SuspensionCommit);
+    CSV_CUSTOM_STAT(Parapenting, SuspensionBuildMs,
+        static_cast<float>(FPlatformTime::ToMilliseconds64(
+            FPlatformTime::Cycles64() - SuspensionBuildStartCycles)),
+        ECsvCustomStatOp::Set);
     TArray<FProcMeshTangent> Tangents;
     if (!bSuspensionMeshInitialized)
     {
@@ -2669,6 +2698,22 @@ void AParagliderPawn::BuildCanopyMesh()
     Colors.SetNum(SurfaceVertexCount * 2);
     const CanopyColourway& Colourway = ColourwayFor(SelectedWing);
 
+    // L3. ONE CELL RELAXATION PER CHORD STATION, NOT ONE PER VERTEX.
+    //
+    // `InflatedSectionAt` solves a cell relaxation and depends on nothing but
+    // its chord fraction, and this mesh evaluates it at exactly nine of them -
+    // but it was being called inside both vertex loops, 846 times a frame.
+    // Measured before this: 2.61 ms of a 5.07 ms game thread, which was half
+    // the frame's CPU spent re-deriving the same nine numbers.
+    //
+    // Same values, same order, no interpolation: the loops below index this
+    // table by the same C they used to compute Chord01 from. That the function
+    // is pure - the property this depends on - is gated in `physics_tests`.
+    Parapenting::Physics::CellInflation ChordInflation[ChordCount];
+    for (int32 C = 0; C < ChordCount; ++C)
+        ChordInflation[C] = Canopy.InflatedSectionAt(
+            static_cast<double>(C) / (ChordCount - 1));
+
     for (int32 S = 0; S < SpanCount; ++S)
     {
         for (int32 C = 0; C < ChordCount; ++C)
@@ -2697,8 +2742,7 @@ void AParagliderPawn::BuildCanopyMesh()
                 static_cast<float>(RestStation.positionM.y) * MetresToCm,
                 SuspensionRiseCm
                     + static_cast<float>(RestStation.positionM.z) * MetresToCm
-                    + static_cast<float>(
-                        Canopy.InflatedSectionAt(Chord01).sagittaM)
+                    + static_cast<float>(ChordInflation[C].sagittaM)
                         * MetresToCm + RibSeamCm);
             // Ram-air intakes retain a real leading-edge gap. The old sine
             // section collapsed both skins to the same point at chord zero,
@@ -2827,6 +2871,7 @@ void AParagliderPawn::BuildCanopyMesh()
 
 void AParagliderPawn::UpdateCanopyMesh()
 {
+    CSV_SCOPED_TIMING_STAT(Parapenting, CanopyMesh);
     constexpr int32 SpanCount = 47;
     constexpr int32 ChordCount = 9;
     constexpr int32 SurfaceVertexCount = SpanCount * ChordCount;
@@ -2862,6 +2907,23 @@ void AParagliderPawn::UpdateCanopyMesh()
     const auto LoadPose = Parapenting::Physics::EvaluateCanopyLoadPose(
         bGroundLaunching ? 0.0 : T.highLoadDeformation,
         bGroundLaunching ? 1.0 : T.loadFactor);
+    // L3. ONE CELL RELAXATION PER CHORD STATION, NOT ONE PER VERTEX.
+    //
+    // `InflatedSectionAt` solves a cell relaxation and depends on nothing but
+    // its chord fraction, and this mesh evaluates it at exactly nine of them -
+    // but it was called inside the vertex loops, 846 times every frame.
+    // Measured before this change: 2.61 ms of a 5.07 ms game thread, so half
+    // the frame's CPU was re-deriving the same nine numbers, and the upload
+    // that everyone would have suspected was 0.018 ms.
+    //
+    // Same values, same order, no interpolation: the loop below indexes this
+    // table by the same C it computes Chord01 from. That the function is pure
+    // - the property this depends on - is gated in `physics_tests`.
+    Parapenting::Physics::CellInflation ChordInflation[ChordCount];
+    for (int32 C = 0; C < ChordCount; ++C)
+        ChordInflation[C] = Canopy.InflatedSectionAt(
+            static_cast<double>(C) / (ChordCount - 1));
+
     TArray<FVector> Vertices;
     TArray<FVector> Normals;
     TArray<FVector2D> UVs;
@@ -2916,7 +2978,7 @@ void AParagliderPawn::UpdateCanopyMesh()
             // rather than a fixed amplitude. Scaled by the live canopy
             // pressure so a deflating cell loses its section.
             const float Camber = static_cast<float>(
-                    Canopy.InflatedSectionAt(Chord01).sagittaM)
+                    ChordInflation[C].sagittaM)
                 * MetresToCm
                 * static_cast<float>(VisualCanopyPressure)
                 * static_cast<float>(LoadPose.camberScale)
@@ -3054,8 +3116,14 @@ void AParagliderPawn::UpdateCanopyMesh()
     {
         Normal.Normalize();
     }
-    CanopyVisual->UpdateMeshSection(
-        0, Vertices, Normals, UVs, Colors, Tangents);
+    {
+        // Split from the build above, because the two have different fixes:
+        // the build is arithmetic and allocation this actor controls, the
+        // upload is what UProceduralMeshComponent does with the result.
+        CSV_SCOPED_TIMING_STAT(Parapenting, CanopyUpload);
+        CanopyVisual->UpdateMeshSection(
+            0, Vertices, Normals, UVs, Colors, Tangents);
+    }
 }
 
 void AParagliderPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

@@ -32,11 +32,15 @@ is 6.5% of one core. Nothing in this plan touches it.
 2. ~~**[L2] TSR and the GPU feature tiers.**~~ **Measured**: TAA −19% of GPU,
    TAA+67% −22%, nothing else above 3%. Not shipped — needs a look at the
    lines in motion.
-3. **[L3] The actor tick that is not the solver.** ~3.1 ms of the game thread.
-   **NEXT**, and now the larger of the two remaining costs: with the GPU at
-   6.26 ms under L2's best row, the 5.07 ms game thread stops being second.
+3. ~~**[L3] The actor tick that is not the solver.**~~ **Done** — a cell
+   relaxation solved per vertex instead of per chord station: game thread
+   5.07 → 2.48 ms.
 4. **[L4] The atmosphere sample.** Unmeasured, and it is what the wind work
-   grows. Must land *before* that work, not alongside it.
+   grows. Must land *before* that work, not alongside it. **NEXT**, and L3
+   sharpened why: the flight model the game actually runs costs 0.013 ms a
+   frame, so the budget the wind work spends is nearly all still unspent —
+   and the geometry-driven solver, when it becomes the flight model, wants
+   ~0.54 ms per step of it.
 
 **Closed:** the frame cap (built, and measured to buy 1.4 fps — right, but not
 the cause). **Cancelled:** the terrain render mesh — the entire base pass is
@@ -144,7 +148,21 @@ this is where `VISUAL_QA.md` is the gate rather than a formality.
 four, and `ApplyGraphicsProfile` already applies them; what has never existed is
 a measurement of what each buys, and therefore a defensible default.
 
-## L3 — the actor tick that is not the solver
+## L3 — the actor tick that is not the solver — **DONE**
+
+> **Attributed, then halved.** The canopy render mesh was calling
+> `InflatedSectionAt` — a cell relaxation solve — **once per vertex, 846 times
+> a frame**, for a quantity that takes nine distinct values. Hoisted:
+> **canopy mesh 2.614 → 0.138 ms, game thread 5.07 → 2.48 ms.**
+>
+> **Two of this section's own suspects were wrong.** The upload the plan named
+> is 0.018 ms, and the per-frame `TArray` allocations were never the cost. And
+> the flight simulation is **0.013 ms a frame**, not the ≤0.54 every version of
+> this plan has carried — that figure belongs to `CoupledParagliderSolver`,
+> which does not fly the game.
+>
+> The frame did not move: it is GPU-bound and capped. What this buys is 2.6 ms
+> of CPU per frame not spent, and headroom for L4.
 
 5.07 ms of game thread, `TickActors` 3.68, at most 0.54 of it the flight solver.
 The rest is per-frame work in `ParagliderPawn`, all found by reading and none of

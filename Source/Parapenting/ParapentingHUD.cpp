@@ -3,6 +3,7 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 
 void AParapentingHUD::DrawFlightDeck(const AParagliderPawn* Glider)
 {
@@ -381,8 +382,11 @@ void AParapentingHUD::DrawCompactHUD(
     }
 }
 
+CSV_DECLARE_CATEGORY_EXTERN(Parapenting);
+
 void AParapentingHUD::DrawHUD()
 {
+    CSV_SCOPED_TIMING_STAT(Parapenting, HUD);
     Super::DrawHUD();
     if (!Canvas) return;
 

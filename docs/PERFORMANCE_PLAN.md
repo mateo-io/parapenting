@@ -35,12 +35,15 @@ is 6.5% of one core. Nothing in this plan touches it.
 3. ~~**[L3] The actor tick that is not the solver.**~~ **Done** — a cell
    relaxation solved per vertex instead of per chord station: game thread
    5.07 → 2.48 ms.
-4. **[L4] The atmosphere sample.** Unmeasured, and it is what the wind work
-   grows. Must land *before* that work, not alongside it. **NEXT**, and L3
-   sharpened why: the flight model the game actually runs costs 0.013 ms a
-   frame, so the budget the wind work spends is nearly all still unspent —
-   and the geometry-driven solver, when it becomes the flight model, wants
-   ~0.54 ms per step of it.
+4. ~~**[L4] The atmosphere sample.**~~ **Done** — 2.6 µs a step, 0.03%, and
+   90% of it terrain query. `AIR_PROFILE.md`.
+
+**Every level is now measured, and the plan's question is answered: the
+simulation side of a step is 94% unspent.** What was hot was never physics — a
+cell relaxation solved 846 times a frame in the render path (L3), and a GPU
+frame dominated by an upscaler (L2, measured but deliberately not shipped).
+What is left is one decision that needs eyes rather than numbers: TSR against
+TAA, in motion, on the lines.
 
 **Closed:** the frame cap (built, and measured to buy 1.4 fps — right, but not
 the cause). **Cancelled:** the terrain render mesh — the entire base pass is
@@ -182,7 +185,23 @@ them. **Gate:** allocations per frame, which is structural and assertable, plus
 an unchanged rig visually — this is refactoring, and any visible difference
 means it was not.
 
-## L4 — the atmosphere sample, before the wind work
+## L4 — the atmosphere sample, before the wind work — **DONE**
+
+> `parapenting_air_profile`, results in `AIR_PROFILE.md`. **The atmosphere is
+> 2.6 µs of an 8333 µs step — 0.03%.** It was never a cost; it had never been
+> counted, which is a different thing.
+>
+> **90% of the sample is terrain query** (`LeeRotorPotential` 347 ns,
+> `RidgeExposure` 174, `Normal` 165, `HeightM` 39 ×2), so **more weather
+> structure is free and more sample points is what scales** — a per-section
+> wind field for all 45 VSM sections would be 38.9 µs, 0.47%.
+>
+> **One row had to be retracted inside the level.** It priced "one more piece of
+> weather" at 204 ns per volume by regressing across presets; its own table
+> refuted it, since two zero-volume presets sit at 47 and 816 ns. Volume count
+> does not order the rows, weather mode does.
+>
+> **The budget table has no blank rows left: the step is 94% unspent.**
 
 `AirModel.SampleCanopy` runs once per fixed step from the pawn, and
 `AtmosphereModel.cpp` is 25 KB of gusts, thermals, ridge lift, slope circulation

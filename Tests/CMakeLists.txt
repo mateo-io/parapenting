@@ -90,6 +90,35 @@ target_include_directories(parapenting_flight_probe PRIVATE
 )
 target_compile_options(parapenting_flight_probe PRIVATE -Wall -Wextra -Wpedantic)
 
+# Performance plan L4. The atmosphere sample, which no profile ever
+# contained and which the wind and lift work grows. Asserts nothing and is
+# not part of check-build.sh, like the solver profile beside it.
+add_executable(parapenting_air_profile
+    AirProfile.cpp
+    ../Source/Parapenting/Physics/ParagliderDynamics.cpp
+    ../Source/Parapenting/Physics/PayloadRigidBody.cpp
+    ../Source/Parapenting/Physics/HarnessGeometry.cpp
+    ../Source/Parapenting/Physics/AtmosphereModel.cpp
+    ../Source/Parapenting/Physics/DiurnalCycle.cpp
+    ../Source/Parapenting/Physics/GroundEffectModel.cpp
+    ../Source/Parapenting/Physics/LandingRolloutModel.cpp
+    ../Source/Parapenting/Physics/TerrainModel.cpp
+    ../Source/Parapenting/Physics/WingCatalogue.cpp
+    ../Source/Parapenting/Physics/EquipmentSetup.cpp
+    ../Source/Parapenting/Physics/RouteCatalogue.cpp
+    ../Source/Parapenting/Physics/SpanwiseCanopyModel.cpp
+    ../Source/Parapenting/Physics/TrainingScenario.cpp
+    ../Source/Parapenting/Physics/ChallengeEvaluator.cpp
+    ../Source/Parapenting/Physics/WeatherSnapshot.cpp
+    ../Source/Parapenting/Physics/HeightfieldGrid.cpp
+    ../Source/Parapenting/Physics/AerodynamicPolar.cpp
+    ../Source/Parapenting/Physics/SuspensionSystem.cpp
+)
+target_include_directories(parapenting_air_profile PRIVATE
+    ../Source/Parapenting/Physics
+)
+target_compile_options(parapenting_air_profile PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(parapenting_regression_matrix
     RegressionMatrix.cpp
     ../Source/Parapenting/Physics/ParagliderDynamics.cpp
